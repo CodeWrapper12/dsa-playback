@@ -56,15 +56,22 @@ not actually been demonstrated.
 
 | # | Criterion | Status |
 |---|-----------|--------|
-| 1 | Single VS Code command produces a report | Not attempted (M3) |
-| 2 | Per-statement execution count and bytes | Met |
-| 2b | Inputs configured rather than coded | Met in the engine; the panel is M3 |
-| 3 | Chart across input sizes | Data met; the chart is M3 |
+| 1 | Single VS Code command produces a report | Built; **unverified end to end** — see below |
+| 2 | Per-statement execution count and bytes | Met, and shown in the cost view |
+| 2b | Inputs configured rather than coded | Met — arrangement and sizes are set in the panel and re-measured in place |
+| 3 | Chart across input sizes | Met — linear and log-log axes |
 | 4 | Measured class and static estimate, disagreement flagged | Met |
 | 5 | Step-through of local state | Not attempted (M4) |
-| 6 | Two solutions compared on one chart | Data met; the chart is M3 |
+| 6 | Two solutions compared on one chart | Met |
 | 7 | Infinite loop terminated, editor survives | Met |
 | 8 | Instrumentation does not alter behaviour | Met |
+
+Criterion 1 is marked unverified deliberately. The engine's `--list-entries` and `--job`
+modes were exercised directly, the webview was rendered against real engine output and
+inspected, and the extension's TypeScript compiles clean — but the command, the method
+picker and the panel have not been run inside a VS Code Extension Host. Until someone
+presses F5 on the extension folder and uses it, that path is untested rather than
+working, and it is recorded as such.
 
 ## Constraints
 

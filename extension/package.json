@@ -1,0 +1,60 @@
+{
+  "name": "dsa-visualizer",
+  "displayName": "DSA Visualizer",
+  "description": "Shows what each line of a C# solution costs in time and memory, and plots how that cost grows with input size.",
+  "version": "0.1.0",
+  "publisher": "local",
+  "private": true,
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Visualization", "Education"],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "dsaViz.measure",
+        "title": "DSA Visualizer: Measure Current File",
+        "icon": "$(graph)"
+      },
+      {
+        "command": "dsaViz.compare",
+        "title": "DSA Visualizer: Compare With Another Solution..."
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        { "command": "dsaViz.measure", "when": "resourceLangId == csharp", "group": "navigation" }
+      ]
+    },
+    "configuration": {
+      "title": "DSA Visualizer",
+      "properties": {
+        "dsaViz.enginePath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to the built `DsaViz.Engine` executable. Left empty, the extension looks for it under `engine/DsaViz.Engine/bin/Debug/net8.0/` in the open workspace."
+        },
+        "dsaViz.sizes": {
+          "type": "array",
+          "items": { "type": "integer" },
+          "default": [10, 25, 50, 100, 250, 500, 1000],
+          "description": "Input sizes to measure. Smaller sets run faster; wider spreads separate similar complexity classes more reliably."
+        },
+        "dsaViz.budget": {
+          "type": "integer",
+          "default": 50000000,
+          "description": "Maximum statements a single run may execute before it is stopped. This is what keeps a runaway loop from hanging the editor."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.4.0"
+  }
+}

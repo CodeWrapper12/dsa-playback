@@ -35,29 +35,79 @@ public static class StaticEstimator
             return new StaticEstimate(ComplexityClass.Unknown,
                 $"No method named '{entryMethod}' was found to analyse.", 0, 0, 0);
 
-        int selfCalls = CountSelfCalls(entry);
+        // Recursion has to be looked for across everything the entry point reaches,
+        // not just in the entry method itself. MergeSort.Sort does not call itself at
+        // all — it calls SortRange, which does — and an estimator that only inspects
+        // the entry sees a plain loop and reports Linear.
+        var recursion = FindRecursion(entry, byName);
         var shape = Analyse(entry, byName, new HashSet<string> { entryMethod });
 
-        return Classify(shape, selfCalls);
+        return Classify(shape, recursion);
     }
 
-    private static StaticEstimate Classify(Shape shape, int selfCalls)
+    private sealed record Recursion(int Branches, bool ShrinksByHalving, string MethodName);
+
+    private static Recursion FindRecursion(
+        MethodDeclarationSyntax entry, IReadOnlyDictionary<string, MethodDeclarationSyntax> byName)
+    {
+        var seen = new HashSet<string>();
+        var queue = new Queue<MethodDeclarationSyntax>();
+        queue.Enqueue(entry);
+        seen.Add(entry.Identifier.Text);
+
+        var strongest = new Recursion(0, false, "");
+
+        while (queue.Count > 0)
+        {
+            var method = queue.Dequeue();
+            int selfCalls = CountSelfCalls(method);
+
+            if (selfCalls > strongest.Branches)
+                strongest = new Recursion(
+                    selfCalls, HalvesSomething(method.Body), method.Identifier.Text);
+
+            foreach (var invocation in method.DescendantNodes().OfType<InvocationExpressionSyntax>())
+            {
+                string? called = NameOf(invocation);
+                if (called is null || !seen.Add(called)) continue;
+                if (byName.TryGetValue(called, out var declaration)) queue.Enqueue(declaration);
+            }
+        }
+
+        return strongest;
+    }
+
+    private static StaticEstimate Classify(Shape shape, Recursion recursion)
     {
         string loops = $"loop nesting depth {shape.LinearDepth}" +
                        (shape.LogDepth > 0 ? $", {shape.LogDepth} of them halving or doubling" : "");
 
-        if (selfCalls >= 2)
-            return new StaticEstimate(ComplexityClass.Exponential,
-                $"The method calls itself {selfCalls} times per invocation with no memoisation " +
-                "visible, so the call tree branches — that is exponential unless results are cached.",
-                shape.LinearDepth, shape.LogDepth, selfCalls);
-
-        if (selfCalls == 1)
+        // Branching recursion is only exponential when each call still gets nearly the
+        // whole input. Fibonacci recurses on n-1 and n-2 and doubles its work at every
+        // level; merge sort recurses twice on halves and is O(n log n). They are
+        // indistinguishable by call-site count alone, so the halving check is what
+        // keeps this from confidently mislabelling every divide-and-conquer algorithm.
+        if (recursion.Branches >= 2 && recursion.ShrinksByHalving)
             return new StaticEstimate(ComplexityClass.Unknown,
-                "The method calls itself once. Whether that is O(n) or O(log n) depends on how " +
-                "much the input shrinks each time, which the structure alone does not say — " +
-                "walking a list and halving a range look identical here.",
-                shape.LinearDepth, shape.LogDepth, selfCalls);
+                $"'{recursion.MethodName}' calls itself {recursion.Branches} times but splits the " +
+                "range each time, which is divide and conquer rather than a branching search. " +
+                "The result depends on the cost of combining the halves — linear combining gives " +
+                "O(n log n), constant combining gives O(n) — and the structure alone does not say which.",
+                shape.LinearDepth, shape.LogDepth, recursion.Branches);
+
+        if (recursion.Branches >= 2)
+            return new StaticEstimate(ComplexityClass.Exponential,
+                $"'{recursion.MethodName}' calls itself {recursion.Branches} times per invocation " +
+                "with no memoisation visible and no sign the input is being split, so the call " +
+                "tree doubles at every level.",
+                shape.LinearDepth, shape.LogDepth, recursion.Branches);
+
+        if (recursion.Branches == 1)
+            return new StaticEstimate(ComplexityClass.Unknown,
+                $"'{recursion.MethodName}' calls itself once. Whether that is O(n) or O(log n) " +
+                "depends on how much the input shrinks each time, which the structure alone does " +
+                "not say — walking a list and halving a range look identical here.",
+                shape.LinearDepth, shape.LogDepth, recursion.Branches);
 
         var complexityClass = (shape.LinearDepth, shape.LogDepth) switch
         {

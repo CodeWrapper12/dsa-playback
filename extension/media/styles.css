@@ -1,0 +1,191 @@
+/* Everything is expressed in VS Code's own theme variables so the panel matches the
+   editor rather than fighting it, in any theme the user has installed. */
+
+:root {
+  --gap: 12px;
+  --hot: #e06c2b;
+  --cool: #3f8fce;
+  --compare: #b05fc8;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  color: var(--vscode-foreground);
+  background: var(--vscode-editor-background);
+}
+
+#app { padding: var(--gap) 16px 32px; }
+
+.placeholder { color: var(--vscode-descriptionForeground); }
+
+/* ---- header ------------------------------------------------------------------ */
+
+.head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+.head h1 { font-size: 1.25em; margin: 0; font-weight: 600; }
+.head .entry {
+  font-family: var(--vscode-editor-font-family);
+  color: var(--vscode-descriptionForeground);
+}
+
+.verdicts { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+
+.verdict {
+  flex: 1 1 200px;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: var(--vscode-editorWidget-background);
+}
+.verdict .label {
+  font-size: 0.82em;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--vscode-descriptionForeground);
+}
+.verdict .value { font-size: 1.5em; font-weight: 600; margin: 2px 0 4px; }
+.verdict .value.unknown { color: var(--vscode-descriptionForeground); font-weight: 500; }
+.verdict .note { font-size: 0.88em; color: var(--vscode-descriptionForeground); line-height: 1.45; }
+
+.banner {
+  border-left: 3px solid var(--hot);
+  background: var(--vscode-inputValidation-warningBackground, var(--vscode-editorWidget-background));
+  padding: 10px 12px;
+  border-radius: 0 4px 4px 0;
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+.banner.error { border-left-color: var(--vscode-errorForeground); }
+.banner strong { display: block; margin-bottom: 3px; }
+
+/* ---- controls ---------------------------------------------------------------- */
+
+.controls {
+  display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end;
+  padding: 10px 12px; margin-bottom: 12px;
+  border: 1px solid var(--vscode-panel-border); border-radius: 6px;
+}
+.control { display: flex; flex-direction: column; gap: 4px; }
+.control label {
+  font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--vscode-descriptionForeground);
+}
+select, input[type="text"] {
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border, transparent);
+  padding: 4px 6px; border-radius: 3px; font-family: inherit; font-size: inherit;
+}
+input[type="text"] { min-width: 220px; font-family: var(--vscode-editor-font-family); }
+button {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border: none; padding: 6px 14px; border-radius: 3px; cursor: pointer; font: inherit;
+}
+button:hover { background: var(--vscode-button-hoverBackground); }
+button.ghost {
+  background: transparent; color: var(--vscode-foreground);
+  border: 1px solid var(--vscode-panel-border);
+}
+
+/* ---- tabs -------------------------------------------------------------------- */
+
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--vscode-panel-border); }
+.tab {
+  padding: 7px 14px; cursor: pointer; border: none; background: none;
+  color: var(--vscode-descriptionForeground); border-bottom: 2px solid transparent;
+}
+.tab.active { color: var(--vscode-foreground); border-bottom-color: var(--vscode-focusBorder); }
+.panel { padding-top: 14px; }
+
+/* ---- cost table -------------------------------------------------------------- */
+
+.code { font-family: var(--vscode-editor-font-family); font-size: var(--vscode-editor-font-size); }
+
+/* The whole listing scrolls as one block. Letting each row scroll on its own put a
+   separate scrollbar under every long line, which overlapped the row beneath it. */
+.code-scroll { overflow-x: auto; }
+
+.row {
+  display: grid;
+  grid-template-columns: 46px 128px 84px minmax(max-content, 1fr);
+  align-items: center; gap: 8px;
+  width: max-content; min-width: 100%;
+}
+.row.header {
+  font-family: var(--vscode-font-family); font-size: 0.78em;
+  text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--vscode-descriptionForeground);
+  padding-bottom: 5px; border-bottom: 1px solid var(--vscode-panel-border); margin-bottom: 3px;
+}
+.row.line { padding: 1px 0; border-radius: 3px; }
+.row.line:hover { background: var(--vscode-list-hoverBackground); }
+.row.line.dead { opacity: 0.42; }
+
+.num { text-align: right; color: var(--vscode-editorLineNumber-foreground); user-select: none; }
+
+/* The bar carries the comparison and the number carries the precision. A count alone
+   makes 60 and 3,540 look similar at a glance, which is the one thing this view exists
+   to make obvious. */
+.cost { display: flex; align-items: center; gap: 6px; }
+.bar { height: 9px; border-radius: 2px; background: var(--hot); min-width: 1px; }
+.count { font-variant-numeric: tabular-nums; font-size: 0.92em; }
+.bytes { text-align: right; font-variant-numeric: tabular-nums; font-size: 0.92em; color: var(--cool); }
+.bytes.zero { color: var(--vscode-descriptionForeground); opacity: 0.5; }
+
+.src { white-space: pre; }
+
+.expander {
+  cursor: pointer; user-select: none; color: var(--vscode-descriptionForeground);
+  font-family: var(--vscode-font-family); font-size: 0.85em;
+}
+.expander:hover { color: var(--vscode-foreground); }
+
+.substatement {
+  display: grid; grid-template-columns: 46px 128px 84px minmax(max-content, 1fr); gap: 8px;
+  padding: 1px 0; font-size: 0.9em;
+  width: max-content; min-width: 100%;
+}
+.substatement .snippet {
+  color: var(--vscode-descriptionForeground);
+  font-family: var(--vscode-editor-font-family);
+  white-space: pre;
+}
+.substatement .marker { text-align: right; color: var(--vscode-descriptionForeground); opacity: 0.65; }
+
+/* ---- chart ------------------------------------------------------------------- */
+
+.chart-wrap { overflow-x: auto; }
+svg.chart { display: block; max-width: 100%; }
+.axis { stroke: var(--vscode-panel-border); stroke-width: 1; }
+.grid { stroke: var(--vscode-panel-border); stroke-width: 1; opacity: 0.35; stroke-dasharray: 3 3; }
+.tick { fill: var(--vscode-descriptionForeground); font-size: 11px; font-family: var(--vscode-font-family); }
+.axis-title { fill: var(--vscode-descriptionForeground); font-size: 11px; font-family: var(--vscode-font-family); }
+.series { fill: none; stroke-width: 2; }
+.fitline { fill: none; stroke-width: 1.5; stroke-dasharray: 5 4; opacity: 0.75; }
+
+.legend { display: flex; gap: 16px; flex-wrap: wrap; margin: 8px 0 4px; font-size: 0.9em; }
+.legend .key { display: flex; align-items: center; gap: 6px; }
+.legend .swatch { width: 14px; height: 3px; border-radius: 2px; }
+
+/* ---- data table -------------------------------------------------------------- */
+
+table { border-collapse: collapse; width: 100%; margin-top: 12px; font-size: 0.92em; }
+th, td { text-align: right; padding: 5px 10px; border-bottom: 1px solid var(--vscode-panel-border); }
+th:first-child, td:first-child { text-align: left; }
+th { color: var(--vscode-descriptionForeground); font-weight: 500; font-size: 0.86em;
+     text-transform: uppercase; letter-spacing: 0.05em; }
+td { font-variant-numeric: tabular-nums; }
+
+.footnote {
+  margin-top: 14px; font-size: 0.87em; line-height: 1.55;
+  color: var(--vscode-descriptionForeground);
+}
+.footnote code {
+  font-family: var(--vscode-editor-font-family);
+  background: var(--vscode-textCodeBlock-background); padding: 1px 4px; border-radius: 3px;
+}
