@@ -74,7 +74,7 @@
 
     parts.push(controls(primary));
 
-    const tabs = [["cost", "Cost per line"], ["growth", "Growth"]];
+    const tabs = [["cost", "Statement cost"], ["growth", "Growth"]];
     if (response.comparison) tabs.push(["compare", "Comparison"]);
     if (!tabs.some(t => t[0] === state.tab)) state.tab = "cost";
 
@@ -155,68 +155,48 @@
     const detail = primary.detail;
     if (!detail) return '<p class="placeholder">No per-statement detail was captured.</p>';
 
-    const source = (response.source || "").split(/\r?\n/);
-    const byLine = new Map(detail.lines.map(l => [l.line, l]));
-    const statementsByLine = new Map();
-    for (const statement of detail.statements) {
-      if (!statementsByLine.has(statement.line)) statementsByLine.set(statement.line, []);
-      statementsByLine.get(statement.line).push(statement);
-    }
-
-    const maxHits = Math.max(1, ...detail.lines.map(l => l.hits));
     const largest = primary.points.length ? primary.points[primary.points.length - 1].size : null;
+    const ranked = [...detail.statements].sort((a, b) => b.hits - a.hits);
+    const maxHits = Math.max(1, ...ranked.map(s => s.hits));
+    const shown = ranked.slice(0, 40);
 
-    const rows = source.map((text, index) => {
-      const lineNumber = index + 1;
-      const cost = byLine.get(lineNumber);
-      const executed = Boolean(cost);
-
-      // A log scale keeps a line that ran once visible beside one that ran 500,000
-      // times; on a linear scale everything but the hottest line collapses to nothing.
-      const width = executed
-        ? Math.max(2, Math.round(112 * Math.log(cost.hits + 1) / Math.log(maxHits + 1)))
-        : 0;
-
-      const expandable = cost && cost.statementCount > 1;
-      const isOpen = state.expanded.has(lineNumber);
-
-      let html = `<div class="row line ${executed ? "" : "dead"}">
-        <span class="num">${lineNumber}</span>
-        <span class="cost">${executed
-          ? `<span class="bar" style="width:${width}px"></span><span class="count">${num(cost.hits)}</span>`
-          + (expandable ? ` <span class="expander" data-line="${lineNumber}">${isOpen ? "▾" : "▸"}${cost.statementCount}</span>` : "")
-          : ""}</span>
-        <span class="bytes ${executed && cost.bytesAllocated ? "" : "zero"}">${executed ? bytes(cost.bytesAllocated) : ""}</span>
-        <span class="src">${escapeHtml(text)}</span>
-      </div>`;
-
-      if (expandable && isOpen) {
-        html += statementsByLine.get(lineNumber).map(statement =>
-          `<div class="substatement">
-            <span class="marker">col ${statement.column}</span>
-            <span class="count">${num(statement.hits)}</span>
-            <span class="bytes ${statement.bytesAllocated ? "" : "zero"}">${bytes(statement.bytesAllocated)}</span>
-            <span class="snippet">${escapeHtml(statement.snippet)}</span>
-          </div>`).join("");
-      }
-
-      return html;
+    const rows = shown.map((statement, index) => {
+      // Logarithmic, so a statement that ran once stays visible beside one that ran
+      // half a million times. On a linear scale everything but the top row vanishes.
+      const width = Math.max(2, Math.round(110 * Math.log(statement.hits + 1) / Math.log(maxHits + 1)));
+      return `<tr class="hot-row" data-line="${statement.line}" title="Go to line ${statement.line}">
+        <td class="rank">${index + 1}</td>
+        <td class="hot-bar"><span class="bar" style="width:${width}px"></span></td>
+        <td>${num(statement.hits)}</td>
+        <td class="${statement.bytesAllocated ? "" : "muted"}">${bytes(statement.bytesAllocated)}</td>
+        <td class="snippet-cell">${escapeHtml(statement.snippet)}</td>
+        <td class="muted">${statement.line}:${statement.column}</td>
+      </tr>`;
     }).join("");
 
-    return `<div class="code-scroll">
-        <div class="row header">
-          <span class="num">line</span><span>executions</span>
-          <span class="bytes">memory</span><span>source</span>
-        </div>
-        <div class="code">${rows}</div>
-      </div>
+    return `<div class="banner info"><strong>The costs are on your code</strong>
+        Every executed line in ${escapeHtml(response.label || "the file")} is annotated in the
+        editor with its execution count and the memory it allocated, and shaded by how hot it is.
+        Hover a line for the per-statement breakdown. Editing the file clears the annotations,
+        because once a line moves the numbers beside it are no longer about that line.
+        Run <em>DSA Visualizer: Clear Cost Annotations</em> to remove them by hand.</div>
+
+      <table class="hot">
+        <thead><tr>
+          <th class="rank">#</th><th></th><th>executions</th>
+          <th>memory</th><th class="snippet-cell">statement</th><th>at</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+
       <div class="footnote">
-        Measured at n = ${largest === null ? "—" : num(largest)}.
-        Bars use a logarithmic scale so a line that ran once stays visible next to one that
-        ran ${num(maxHits)} times; the numbers beside them are exact.
-        A line holding more than one statement shows a count you can expand — the total is
-        a sum, and the breakdown is usually the interesting part.
-        Dimmed lines never executed.
+        Measured at n = ${largest === null ? "\u2014" : num(largest)},
+        ${num(detail.totalOperations)} statements executed in total,
+        ${bytes(detail.totalBytesAllocated)} allocated.
+        ${ranked.length > shown.length
+          ? `Showing the ${shown.length} most expensive of ${num(ranked.length)} executed statements. `
+          : ""}
+        Click a row to jump to it.
         <br>${escapeHtml(detail.memoryModel)}
       </div>`;
   }
@@ -434,6 +414,11 @@
         const line = Number(span.dataset.line);
         state.expanded.has(line) ? state.expanded.delete(line) : state.expanded.add(line);
         render();
+      }));
+
+    app.querySelectorAll(".hot-row").forEach(row =>
+      row.addEventListener("click", () => {
+        if (vscode) vscode.postMessage({ type: "reveal", line: Number(row.dataset.line) });
       }));
 
     const toggle = document.getElementById("toggle-log");

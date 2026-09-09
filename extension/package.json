@@ -19,6 +19,10 @@
       {
         "command": "dsaViz.compare",
         "title": "DSA Visualizer: Compare With Another Solution..."
+      },
+      {
+        "command": "dsaViz.clearAnnotations",
+        "title": "DSA Visualizer: Clear Cost Annotations"
       }
     ],
     "menus": {
@@ -50,6 +54,7 @@
   },
   "scripts": {
     "compile": "tsc -p ./",
+    "test": "tsc -p ./ && node --test out/test/*.test.js",
     "watch": "tsc -watch -p ./"
   },
   "devDependencies": {

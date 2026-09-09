@@ -60,6 +60,7 @@ body {
   line-height: 1.5;
 }
 .banner.error { border-left-color: var(--vscode-errorForeground); }
+.banner.info { border-left-color: var(--cool); background: var(--vscode-editorWidget-background); }
 .banner strong { display: block; margin-bottom: 3px; }
 
 /* ---- controls ---------------------------------------------------------------- */
@@ -189,3 +190,18 @@ td { font-variant-numeric: tabular-nums; }
   font-family: var(--vscode-editor-font-family);
   background: var(--vscode-textCodeBlock-background); padding: 1px 4px; border-radius: 3px;
 }
+
+/* ---- hottest statements ------------------------------------------------------- */
+
+table.hot td, table.hot th { vertical-align: middle; }
+table.hot .rank { width: 30px; color: var(--vscode-descriptionForeground); }
+table.hot .hot-bar { width: 120px; }
+table.hot .hot-bar .bar { display: block; }
+table.hot .snippet-cell {
+  text-align: left;
+  font-family: var(--vscode-editor-font-family);
+  max-width: 460px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+table.hot .muted { color: var(--vscode-descriptionForeground); }
+tr.hot-row { cursor: pointer; }
+tr.hot-row:hover { background: var(--vscode-list-hoverBackground); }

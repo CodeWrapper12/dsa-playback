@@ -25,12 +25,26 @@ Shows what each statement of a C# solution costs, and how that cost grows.
 The extension finds the engine under `engine/DsaViz.Engine/bin/Debug/net8.0/` in the
 open workspace. Set `dsaViz.enginePath` if it lives somewhere else.
 
-## The three views
+## Where the results appear
 
-**Cost per line** lays execution counts and allocated bytes over your source. Bars are
-logarithmic so a line that ran once stays visible beside one that ran half a million
-times; the numbers are exact. A line holding more than one statement shows a count you
-can expand — the line total is a sum, and the split is usually what you want to see.
+**On your code.** Every executed line is annotated in the editor itself with its
+execution count and the bytes it allocated, and shaded by how hot it is. Hovering a
+line gives the per-statement breakdown — which matters on a line like
+`if (a[j] > a[j+1]) swap;`, where the total is a sum of the test and the work.
+
+Editing the file clears the annotations. Once a line moves, the number beside it is no
+longer about that line, and a stale annotation is worse than none because it still
+looks authoritative. **DSA Visualizer: Clear Cost Annotations** removes them by hand.
+
+The shading is logarithmic. Bubble sort's inner line runs 749,625 times while its outer
+loop runs once; scaled linearly the outer loop would shade at 0.0000013 and read as
+never executed, which is the opposite of what the shading is for.
+
+## The panel
+
+**Statement cost** ranks the most expensive statements, with the count, the memory and
+where each one sits. Clicking a row jumps to it. The annotated file is the detailed
+view; this is the summary that tells you where to look.
 
 **Growth** plots statements executed against input size, with the fitted curve. The
 log-log toggle is worth reaching for: every complexity class is a straight line there

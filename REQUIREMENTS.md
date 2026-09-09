@@ -57,7 +57,7 @@ not actually been demonstrated.
 | # | Criterion | Status |
 |---|-----------|--------|
 | 1 | Single VS Code command produces a report | Built; **unverified end to end** — see below |
-| 2 | Per-statement execution count and bytes | Met, and shown in the cost view |
+| 2 | Per-statement execution count and bytes | Met — annotated on the source file itself, with a hover breakdown |
 | 2b | Inputs configured rather than coded | Met — arrangement and sizes are set in the panel and re-measured in place |
 | 3 | Chart across input sizes | Met — linear and log-log axes |
 | 4 | Measured class and static estimate, disagreement flagged | Met |
@@ -68,10 +68,12 @@ not actually been demonstrated.
 
 Criterion 1 is marked unverified deliberately. The engine's `--list-entries` and `--job`
 modes were exercised directly, the webview was rendered against real engine output and
-inspected, and the extension's TypeScript compiles clean — but the command, the method
-picker and the panel have not been run inside a VS Code Extension Host. Until someone
-presses F5 on the extension folder and uses it, that path is untested rather than
-working, and it is recorded as such.
+inspected, the annotation maths is unit tested, and both TypeScript and C# compile
+clean — but the command, the method picker, the panel and the editor annotations have
+not been run inside a VS Code Extension Host. Until someone presses F5 on the extension
+folder and uses it, that path is untested rather than working, and it is recorded as
+such. The editor annotations in particular use VS Code APIs that no test here
+exercises: only their formatting and shading maths is covered.
 
 ## Constraints
 

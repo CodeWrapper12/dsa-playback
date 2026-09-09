@@ -1,12 +1,19 @@
 import * as path from "path";
 import * as vscode from "vscode";
+import { CostDecorations } from "./decorations";
 import { EngineNotFoundError, listEntryPoints, measure } from "./engine";
 import { EntryPoint, GenerationStrategy, JobRequest, JobResponse } from "./types";
 
+let decorations: CostDecorations;
+
 export function activate(context: vscode.ExtensionContext) {
+  decorations = new CostDecorations();
+
   context.subscriptions.push(
+    decorations,
     vscode.commands.registerCommand("dsaViz.measure", () => start(context, false)),
-    vscode.commands.registerCommand("dsaViz.compare", () => start(context, true)));
+    vscode.commands.registerCommand("dsaViz.compare", () => start(context, true)),
+    vscode.commands.registerCommand("dsaViz.clearAnnotations", () => decorations.clear()));
 }
 
 export function deactivate() {}
@@ -145,7 +152,21 @@ class ReportPanel {
     void ReportPanel.current.run();
   }
 
-  private async onMessage(message: { type: string; strategy?: GenerationStrategy; sizes?: number[] }) {
+  private async onMessage(
+    message: { type: string; strategy?: GenerationStrategy; sizes?: number[]; line?: number }) {
+
+    if (message.type === "reveal" && typeof message.line === "number") {
+      // The panel lists the hottest statements; clicking one should land the cursor on
+      // it, since the annotated source is the thing the user actually works in.
+      const document = await vscode.workspace.openTextDocument(this.request.file);
+      const editor = await vscode.window.showTextDocument(document, { preview: false });
+      const line = Math.max(0, Math.min(message.line - 1, document.lineCount - 1));
+      const range = document.lineAt(line).range;
+      editor.selection = new vscode.Selection(range.start, range.start);
+      editor.revealRange(range, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+      return;
+    }
+
     if (message.type !== "rerun") return;
 
     // Re-running with a different arrangement is the main thing anyone does with this
@@ -193,6 +214,16 @@ class ReportPanel {
       const response: JobResponse = await measure(request);
       this.panel.title = response.label ? `DSA: ${response.label}` : "DSA Visualizer";
       this.panel.webview.postMessage({ type: "result", response, request });
+
+      // The costs belong on the user's own file, not on a copy of it inside a panel.
+      const detail = response.primary?.detail;
+      if (detail && response.primary?.status === "Completed") {
+        const points = response.primary.points;
+        const measuredAt = points.length ? points[points.length - 1].size : null;
+        await decorations.apply(request.file, detail, measuredAt);
+      } else {
+        decorations.clear();
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.panel.webview.postMessage({ type: "error", message });
