@@ -1,0 +1,122 @@
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using static Microsoft.CodeAnalysis.CSharp.SyntaxFactory;
+
+namespace DsaViz.Engine.Instrumentation;
+
+/// <summary>
+/// Wraps single-statement bodies in blocks, and converts expression-bodied methods
+/// into block bodies.
+///
+/// This must run before any statement is inserted. Its purpose is measurement
+/// coverage, not semantic safety: <see cref="TraceRewriter"/> only inserts inside
+/// blocks and switch sections, so it structurally cannot split a braceless body away
+/// from the statement controlling it. What it can do is miss that body entirely.
+///
+/// Without this pass, <c>for (int i = 0; i &lt; n; i++) a[i] = i;</c> has a body that
+/// lives outside any block, so it receives no tracer call and its cost silently
+/// disappears. Measured on the bubble-sort sample, skipping this pass left the program
+/// behaving identically while the inner loop line vanished from the report and the
+/// innermost line under-counted by half. A silently cheap O(n^2) is a worse outcome
+/// for this tool than a crash, because nothing looks wrong.
+///
+/// It also underwrites the execution budget. A braceless <c>while (true) i++;</c> has
+/// no instrumented statement in its body, so Tracer.Hit never runs, the budget never
+/// trips, and the loop runs forever — which is exactly what happened when this pass
+/// was disabled during testing.
+/// </summary>
+public sealed class BraceNormalizer : CSharpSyntaxRewriter
+{
+    private static StatementSyntax Blockify(StatementSyntax statement)
+        => statement is BlockSyntax ? statement : Block(statement);
+
+    public override SyntaxNode? VisitIfStatement(IfStatementSyntax node)
+    {
+        var rewritten = (IfStatementSyntax)base.VisitIfStatement(node)!;
+        rewritten = rewritten.WithStatement(Blockify(rewritten.Statement));
+
+        // `else if` chains are left alone: the else's statement is itself an if, which
+        // already got its own braces. Wrapping it would only add nesting noise.
+        if (rewritten.Else is { } elseClause && elseClause.Statement is not IfStatementSyntax)
+            rewritten = rewritten.WithElse(elseClause.WithStatement(Blockify(elseClause.Statement)));
+
+        return rewritten;
+    }
+
+    public override SyntaxNode? VisitForStatement(ForStatementSyntax node)
+    {
+        var n = (ForStatementSyntax)base.VisitForStatement(node)!;
+        return n.WithStatement(Blockify(n.Statement));
+    }
+
+    public override SyntaxNode? VisitForEachStatement(ForEachStatementSyntax node)
+    {
+        var n = (ForEachStatementSyntax)base.VisitForEachStatement(node)!;
+        return n.WithStatement(Blockify(n.Statement));
+    }
+
+    public override SyntaxNode? VisitWhileStatement(WhileStatementSyntax node)
+    {
+        var n = (WhileStatementSyntax)base.VisitWhileStatement(node)!;
+        return n.WithStatement(Blockify(n.Statement));
+    }
+
+    public override SyntaxNode? VisitDoStatement(DoStatementSyntax node)
+    {
+        var n = (DoStatementSyntax)base.VisitDoStatement(node)!;
+        return n.WithStatement(Blockify(n.Statement));
+    }
+
+    public override SyntaxNode? VisitUsingStatement(UsingStatementSyntax node)
+    {
+        var n = (UsingStatementSyntax)base.VisitUsingStatement(node)!;
+        // A nested `using (a) using (b) { }` becomes `using (a) { using (b) { } }`,
+        // which is the same program.
+        return n.WithStatement(Blockify(n.Statement));
+    }
+
+    public override SyntaxNode? VisitLockStatement(LockStatementSyntax node)
+    {
+        var n = (LockStatementSyntax)base.VisitLockStatement(node)!;
+        return n.WithStatement(Blockify(n.Statement));
+    }
+
+    public override SyntaxNode? VisitFixedStatement(FixedStatementSyntax node)
+    {
+        var n = (FixedStatementSyntax)base.VisitFixedStatement(node)!;
+        return n.WithStatement(Blockify(n.Statement));
+    }
+
+    public override SyntaxNode? VisitMethodDeclaration(MethodDeclarationSyntax node)
+    {
+        // Capture the position before rewriting, so the synthesised statement still
+        // points at where the user's expression actually lives.
+        (int Line, int Start, int Length)? origin = null;
+        if (node.ExpressionBody is { } body)
+        {
+            var span = body.Expression.Span;
+            int line = node.SyntaxTree.GetLineSpan(span).StartLinePosition.Line + 1;
+            origin = (line, span.Start, span.Length);
+        }
+
+        var rewritten = (MethodDeclarationSyntax)base.VisitMethodDeclaration(node)!;
+        if (rewritten.ExpressionBody is null) return rewritten;
+
+        bool returnsVoid = rewritten.ReturnType is PredefinedTypeSyntax predefined
+                           && predefined.Keyword.IsKind(SyntaxKind.VoidKeyword);
+
+        StatementSyntax statement = returnsVoid
+            ? ExpressionStatement(rewritten.ExpressionBody.Expression)
+            : ReturnStatement(rewritten.ExpressionBody.Expression);
+
+        if (origin is { } o)
+            statement = statement.WithAdditionalAnnotations(
+                LineAnnotations.For(o.Line, o.Start, o.Length));
+
+        return rewritten
+            .WithExpressionBody(null)
+            .WithSemicolonToken(default)
+            .WithBody(Block(statement));
+    }
+}
