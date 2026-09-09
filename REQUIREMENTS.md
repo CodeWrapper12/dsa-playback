@@ -48,6 +48,24 @@ Each is objectively checkable by someone who was not part of this conversation.
 
 Criterion 8 is the one that protects every other number in the report. If instrumentation changes what the program does, all measurements are describing a program that does not exist.
 
+## Status
+
+Verified against the engine as of M2. UNVERIFIED is used where a criterion's data
+exists but the interface that presents it does not, so nothing is claimed that has
+not actually been demonstrated.
+
+| # | Criterion | Status |
+|---|-----------|--------|
+| 1 | Single VS Code command produces a report | Not attempted (M3) |
+| 2 | Per-statement execution count and bytes | Met |
+| 2b | Inputs configured rather than coded | Met in the engine; the panel is M3 |
+| 3 | Chart across input sizes | Data met; the chart is M3 |
+| 4 | Measured class and static estimate, disagreement flagged | Met |
+| 5 | Step-through of local state | Not attempted (M4) |
+| 6 | Two solutions compared on one chart | Data met; the chart is M3 |
+| 7 | Infinite loop terminated, editor survives | Met |
+| 8 | Instrumentation does not alter behaviour | Met |
+
 ## Constraints
 
 - **C# is the primary language** — it is what the user writes DSA solutions in day to day. The C# engine is the product; Python is a possible later addition, not a near-term commitment.
