@@ -4,26 +4,27 @@ Shows what each statement of a C# solution costs, and how that cost grows.
 
 ## Running it
 
-1. Build the engine:
+Open the **repository root** in VS Code — not this folder. The extension looks for the
+engine at `engine/DsaViz.Engine/bin/Debug/net8.0/` relative to the open workspace, so
+opening `extension/` on its own leaves it unable to find the engine. (Set
+`dsaViz.enginePath` if you keep the engine somewhere else.)
 
-   ```
-   dotnet build engine/DsaViz.sln
-   ```
+```
+code /path/to/dsa-visualizer
+```
 
-2. Install the extension's dev dependencies and compile it:
+Install the extension's dev dependencies once:
 
-   ```
-   cd extension && npm install && npm run compile
-   ```
+```
+cd extension && npm install
+```
 
-3. Open the `extension` folder in VS Code and press **F5**. An Extension Development
-   Host opens.
+Then press **F5** and pick **Run DSA Visualizer**. The bundled launch configuration
+builds the engine, compiles the extension, and opens an Extension Development Host with
+the repository already loaded.
 
-4. In that window, open a C# file with a `public static` method and run
-   **DSA Visualizer: Measure Current File** from the command palette.
-
-The extension finds the engine under `engine/DsaViz.Engine/bin/Debug/net8.0/` in the
-open workspace. Set `dsaViz.enginePath` if it lives somewhere else.
+In that new window, open `samples/SortParamSample.cs` and run **DSA Visualizer: Measure
+Current File** from the command palette.
 
 ## Where the results appear
 

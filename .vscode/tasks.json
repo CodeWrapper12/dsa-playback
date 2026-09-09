@@ -1,0 +1,26 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build engine",
+      "type": "shell",
+      "command": "dotnet build DsaViz.sln",
+      "options": { "cwd": "${workspaceFolder}/engine" },
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "compile extension",
+      "type": "shell",
+      "command": "npm run compile",
+      "options": { "cwd": "${workspaceFolder}/extension" },
+      "problemMatcher": "$tsc"
+    },
+    {
+      "label": "build everything",
+      "dependsOrder": "sequence",
+      "dependsOn": ["build engine", "compile extension"],
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": []
+    }
+  ]
+}
