@@ -126,8 +126,22 @@ public sealed record TraceResult
     /// caption. The numbers are exact — verified against known object sizes — so the
     /// honest caveats are about scope, not precision.
     /// </summary>
-    public string MemoryModel =>
-        "Bytes allocated on the GC heap by the executing thread, measured per statement. Exact, with one " +
+    /// <summary>
+    /// The most memory held at once above where the run started, when the language can
+    /// measure it directly — Python's tracemalloc can. Null for C#, where the peak is
+    /// inferred from allocation, the largest single allocation and call depth.
+    /// </summary>
+    public long? PeakBytes { get; init; }
+
+    /// <summary>The language the solution is in: "csharp" or "python".</summary>
+    public string Language { get; init; } = "csharp";
+
+    public string MemoryModel => Language == "python"
+        ? "Approximate, from Python's tracemalloc: for each statement, how far traced memory rose above where it " +
+          "stood when the statement began — a temporary freed before the statement ends still counts. Python " +
+          "allocates even for some integers (any above 256), so a statement can show a few dozen bytes where C# " +
+          "would show none. The visualizer's own bookkeeping is left out."
+        : "Bytes allocated on the GC heap by the executing thread, measured per statement. Exact, with one " +
         "exception: a garbage collection set off by another thread can add up to about 8 KB to whichever " +
         "statement is running, so a small run that sees a collection is repeated and its cleanest result kept. " +
         "This counts allocation, not retention: a temporary that is immediately garbage still appears. " +

@@ -335,20 +335,7 @@ public static class Runner
             ? left.Line.CompareTo(right.Line)
             : left.Column.CompareTo(right.Column));
 
-        // Line totals are a convenience over the statement data, never a replacement
-        // for it: StatementCount is what tells the UI a total is a sum.
-        var lines = statements
-            .GroupBy(statement => statement.Line)
-            .OrderBy(group => group.Key)
-            .Select(group => new LineCost(
-                group.Key,
-                group.Sum(statement => statement.Hits),
-                group.Sum(statement => statement.BytesAllocated),
-                group.Count())
-            {
-                LibraryWork = group.Sum(statement => statement.LibraryWork)
-            })
-            .ToList();
+        var lines = LinesOf(statements);
 
         var libraryCalls = new List<LibraryCall>();
         if (snapshot is not null)
@@ -531,6 +518,24 @@ public static class Runner
         // The limit also stops a cyclic list from rendering forever.
         return "[" + string.Join(",", parts) + (parts.Count == RenderNodeLimit ? ",…" : "") + "]";
     }
+
+    /// <summary>
+    /// Line totals are a convenience over the statement data, never a replacement for it:
+    /// StatementCount is what tells the UI a total is a sum.
+    /// </summary>
+    internal static List<LineCost> LinesOf(IEnumerable<StatementCost> statements)
+        => statements
+            .GroupBy(statement => statement.Line)
+            .OrderBy(group => group.Key)
+            .Select(group => new LineCost(
+                group.Key,
+                group.Sum(statement => statement.Hits),
+                group.Sum(statement => statement.BytesAllocated),
+                group.Count())
+            {
+                LibraryWork = group.Sum(statement => statement.LibraryWork)
+            })
+            .ToList();
 
     internal static TraceResult Failure(RunStatus status, IReadOnlyList<string> errors) => new()
     {

@@ -228,7 +228,8 @@
     const ms = (options && options.animationMs) || 300;
 
     const frames = framesAt(model, index);
-    const context = { model, index, step, heap, before, ms, frames, drawn: new Set(), sizes: [] };
+    const python = !!(options && options.python);
+    const context = { model, index, step, heap, before, ms, frames, python, drawn: new Set(), sizes: [] };
 
     const parts = [
       `<div class="run" style="--anim:${ms}ms">`,
@@ -510,21 +511,33 @@
     return true;
   }
 
-  /** .NET's PriorityQueue is a four-way heap: position i's children are 4i+1 … 4i+4. */
+  /**
+   * A heap drawn level by level. .NET's PriorityQueue is a four-way heap of element and
+   * priority (entries); a Python list kept by heapq is a two-way heap of values (items).
+   * Position i's children are at arity·i+1 onwards either way.
+   */
   function heapTree(object, old) {
-    const items = object.entries || [];
+    const arity = object.arity || 4;
+    const pairs = object.entries != null;
+    const items = pairs ? object.entries : object.items || [];
     if (items.length === 0) return '<span class="muted">empty</span>';
-    const before = old ? new Set((old.entries || []).map(e => text(e.key) + "|" + text(e.value))) : null;
+    const keyOf = item => (pairs ? text(item.key) + "|" + text(item.value) : text(item));
+    const before = old ? new Set((pairs ? old.entries : old.items || []).map(keyOf)) : null;
 
     const levels = [];
-    for (let start = 0, width = 1; start < items.length; start += width, width *= 4) levels.push(items.slice(start, start + width));
+    for (let start = 0, width = 1; start < items.length; start += width, width *= arity) levels.push(items.slice(start, start + width));
 
+    const note = arity === 4
+      ? "Smallest priority at the top. .NET's PriorityQueue is a four-way heap: each element has up to four children."
+      : "Smallest at the top (heapq keeps a min-heap in the list): each element has up to two children, at 2i+1 and 2i+2.";
     return `<div class="heap-tree">${levels.map((level, depth) =>
-      `<div class="heap-level" title="level ${depth}">${level.map(entry => {
-        const isNew = before && !before.has(text(entry.key) + "|" + text(entry.value));
-        return `<span class="slot ${isNew ? "added" : ""}">${escapeHtml(text(entry.key))}<small>${escapeHtml(text(entry.value))}</small></span>`;
+      `<div class="heap-level" title="level ${depth}">${level.map(item => {
+        const isNew = before && !before.has(keyOf(item));
+        return pairs
+          ? `<span class="slot ${isNew ? "added" : ""}">${escapeHtml(text(item.key))}<small>${escapeHtml(text(item.value))}</small></span>`
+          : `<span class="slot ${isNew ? "added" : ""}">${escapeHtml(text(item))}</span>`;
       }).join("")}</div>`).join("")}
-      <div class="footnote">Smallest priority at the top. .NET's PriorityQueue is a four-way heap: each element has up to four children.</div>
+      <div class="footnote">${note}</div>
     </div>`;
   }
 
@@ -880,7 +893,9 @@
         <polyline points="${line}"/><line class="cursor" x1="${px(index)}" y1="0" x2="${px(index)}" y2="${H}"/>
       </svg>
       ${sizeList ? `<div class="entries sizes">${sizeList}</div>` : ""}
-      <div class="footnote">Bytes allocated by your code, not by the visualizer. Sizes are approximate: each structure itself, not what its elements point to.</div>
+      <div class="footnote">${context.python
+        ? "Approximate, from Python's tracemalloc: what your code allocated, not the visualizer. Python allocates even for integers above 256. Sizes are each structure itself (sys.getsizeof), not what its elements point to."
+        : "Bytes allocated by your code, not by the visualizer. Sizes are approximate: each structure itself, not what its elements point to."}</div>
     </div>`;
   }
 

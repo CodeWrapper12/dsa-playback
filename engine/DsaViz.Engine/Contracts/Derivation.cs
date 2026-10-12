@@ -48,6 +48,9 @@ public sealed record Derivation(string Summary, IReadOnlyList<int> Dominant, IRe
 /// </summary>
 public sealed record SpaceReading
 {
+    /// <summary>The most memory held at once, where it was measured directly (Python).</summary>
+    public CurveFit? Held { get; init; }
+
     public required CurveFit Allocation { get; init; }
     public required CurveFit LargestAllocation { get; init; }
     public required CurveFit CallDepth { get; init; }

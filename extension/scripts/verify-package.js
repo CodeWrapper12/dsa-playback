@@ -38,9 +38,11 @@ try {
   }
   check("no TypeScript sources, tests or dev files are shipped",
     !files.some(f => f.startsWith("src/") || f.startsWith("out/test/") || f.startsWith(".devharness/") || f.endsWith(".map")));
-  for (const sample of ["TwoSumSorted.cs", "LevelOrder.cs", "ClimbStairs.cs"]) {
-    check(`walkthrough sample ${sample} is shipped`, files.includes(`samples/csharp/${sample}`));
+  for (const sample of ["csharp/TwoSumSorted.cs", "csharp/LevelOrder.cs", "csharp/ClimbStairs.cs",
+                        "python/two_sum_sorted.py", "python/level_order.py", "python/climb_stairs.py"]) {
+    check(`walkthrough sample ${sample} is shipped`, files.includes(`samples/${sample}`));
   }
+  check("the Python runner is shipped beside the engine", files.includes("engine/python/dsaviz_py.py"));
 
   const engine = path.join(root, "engine", process.platform === "win32" ? "DsaViz.Engine.exe" : "DsaViz.Engine");
   check("the engine is bundled", fs.existsSync(engine));
@@ -66,6 +68,15 @@ try {
     steps ? `${steps.steps.length} steps` : recorded.stderr.slice(0, 300));
   check("uses the example from the code and checks its output", steps?.check?.matches === true,
     steps?.check ? `${steps.check.actual} vs ${steps.check.expected}` : "no check");
+
+  // Python is the student's own; only .NET is kept out of the environment.
+  const python = execFileSync(process.platform === "win32" ? "where" : "which", [process.platform === "win32" ? "python" : "python3"])
+    .toString().split(/\r?\n/)[0].trim();
+  const pythonSample = path.join(root, "samples", "python", "two_sum_sorted.py");
+  const pythonRun = job({ file: pythonSample, entry: "Solution.twoSum", stepSize: 8, python });
+  const pythonSteps = pythonRun.stdout ? JSON.parse(pythonRun.stdout).steps : null;
+  check("records a Python run with the bundled engine", pythonSteps?.status === "Completed" && pythonSteps.check?.matches === true,
+    pythonSteps ? `${pythonSteps.steps.length} steps` : pythonRun.stderr.slice(0, 300));
 
   const measured = job({ file: sample, entry: "Solution.TwoSum" });
   const primary = measured.stdout ? JSON.parse(measured.stdout).primary : null;

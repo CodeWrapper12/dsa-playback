@@ -210,17 +210,17 @@ student can **type their own** at any time.
 
 ## Status
 
-**Phases 1 (friendly C#) and 2 (animated run view) are done.** Phase 3 (Python) and
-Phase 4 (release) have not started.
+**Phases 1 (friendly C#), 2 (animated run view) and 3 (Python) are done.** Phase 4
+(release) has not started.
 
 | # | Status | Checked by |
 |---|---|---|
-| 1 | Met on macOS Apple silicon. The other platforms wait for Phase 4's CI. | `npm run verify-package`: unpacks the package and runs the bundled engine with no .NET on the path. Integration: *a solution outside the open folder visualizes*. |
-| 2 | Met: 39.5 MB on macOS Apple silicon, including the precompiled engine. | `npm run verify-package` |
-| 3 | Met for C#. Python is Phase 3. | Integration: *the ▶ Visualize button appears*. `EntryPointScannerTests` |
-| 4 | Met for C#: three samples. Python's are Phase 3. | Integration: *the walkthrough opens an editable copy*. The walkthrough page has not yet been looked at by hand in VS Code. |
-| 5 | Met for C#, by construction. | The extension activates on `onLanguage:csharp`, and listing methods only parses. |
-| 6–12 | Met for C#. | `ExampleFinderTests`, `StepInputTests`, `LiteralsTests`, panel tests, integration |
+| 1 | Met on macOS Apple silicon, for C# with no .NET installed and for Python with the student's own Python. The other platforms wait for Phase 4's CI. | `npm run verify-package` runs a C# and a Python sample through the unpacked engine with no .NET on the path. Integration: *a solution outside the open folder visualizes*. |
+| 2 | Met: 39.6 MB on macOS Apple silicon. | `npm run verify-package` |
+| 3 | Met for C# and Python. | Integration: *the ▶ Visualize button appears*; *a Python solution gets the buttons*. `EntryPointScannerTests`, `PythonTests.Methods_and_top_level_functions_are_listed` |
+| 4 | Met: three samples in each language. | Integration: *the walkthrough opens an editable copy*. `npm run verify-package` checks all six ship. The walkthrough page has not yet been looked at by hand in VS Code. |
+| 5 | Met, by construction. | The extension activates on `onLanguage:csharp` and `onLanguage:python`. Listing methods only parses, in either language. |
+| 6–12 | Met for C# and Python, including calls under `if __name__ == "__main__":` and a parameter without a hint taking its type from an example. | `ExampleFinderTests`, `StepInputTests`, `LiteralsTests`, `PythonTests`, panel tests, integration |
 | 13 | Met: speed from 0.25× to 4×, ← → and Space. | Panel tests: *speed changes how fast it plays*; *Space plays and pauses* |
 | 14 | Met. | Panel test: *every step of every practice structure draws* |
 | 15 | Met: pointers slide and written cells flash. A tuple swap flies both values; a swap through a temporary variable shows as two writes. | Panel tests: *swapped values fly past each other*; *a value written into a cell flashes* |
@@ -229,19 +229,25 @@ Phase 4 (release) have not started.
 | 18 | Met: the whole tree stays drawn deep in a recursive walk, with the path of calls marked. | Panel test: *a recursive tree walk always shows the whole tree* |
 | 19 | Met for edge lists and adjacency lists. | Panel test: *a graph is drawn from its edge list* |
 | 20 | Met. | Panel test: *map entries animate in* |
-| 21 | Met for C#: Stack, Queue, PriorityQueue (drawn as its four-way heap). | Panel tests: *a queue shows what joined and what left*; *a heap is drawn level by level* |
+| 21 | Met: C#'s Stack, Queue and PriorityQueue (a four-way heap); Python's deque, a list used only with append and pop() (drawn as a stack), and a list kept by heapq (drawn as a two-way heap). | Panel tests: *a queue shows what joined and what left*; *a heap is drawn level by level*; *a heapq list is drawn as a two-way heap*. `PythonTests.Structures_are_recorded_as_what_they_are_used_as` |
 | 22 | Met. | `HeapRecorderTests.Two_variables_holding_one_node_hold_the_same_id`. Sabotaged identity failed four tests. |
 | 23 | Met, including arrow-bodied recursive helpers. | `HeapRecorderTests.Every_call_returns_its_value_at_its_depth`. Panel test: *the recursion tree shows each call* |
-| 24 | Met. | `HeapRecorderTests.Each_step_carries_what_the_code_had_allocated`. Panel test: *memory shows this step* |
+| 24 | Met. Python's figures come from tracemalloc and are labelled approximate. | `HeapRecorderTests.Each_step_carries…`; `PythonTests.Recording_its_own_variables_never_shows_up…`. Panel tests: *memory shows this step*; *Python's memory figures are labelled approximate* |
 | 25 | Met. | `HeapRecorderTests.Ten_thousand_steps_are_kept_by_default`. Panel tests: *a long array is windowed*; *a capped run says so* |
 | 26 | Met. In the browser harness, stepping with one frame between steps: 1,000-element array median 3.4 ms, worst 14.9 ms; 200-node tree median 6.3 ms, worst 8.7 ms. Stepping hundreds of times with no pause at all shows the browser's own garbage-collection pauses, which real playback (≥ 175 ms between steps) does not trigger. | Browser harness, by hand |
-| 27 | Met. | `StepInputTests`. Panel test: *an exception names the line* |
-| 31 | Partly: *Show line* and *Show details*. *Install Python* is Phase 3. | Panel test: *the visualizer's own failure offers its details* |
+| 27 | Met, in both languages. | `StepInputTests`, `PythonTests.An_exception_in_the_students_code_names_its_line`. Panel test: *an exception names the line* |
+| 30 | Met. Measured class, derivation and per-line counts as for C#; hidden cost charged for `in` on a list, tuple or string, `insert`/`pop` by position, `remove`, `index`, `count`, slicing, `+=` on a string, `[…] * n`, `sorted`/`sort`, `min`/`max`/`sum`, heapq and bisect, and every comprehension's loop. Space is the peak held, measured directly with tracemalloc. The reading of the code covers loop nesting, halving loops, two-pointer loops, list scans, worklist loops and the recursion kinds, and says *unknown* with a reason otherwise. Python 3.9 to 3.13 checked; 3.8 is refused with a clear message. | `PythonTests` (32 tests), panel tests for every Python sample |
+| 31 | Met: *Show line*, *Show details*, and *Install Python* / *Select Interpreter* when Python is missing or older than 3.9. | `PythonTests.No_Python_is_reported_with_a_code…`. Panel test: *the visualizer's own failure offers its details* |
 
-Test counts: 315 engine tests, 43 panel tests, and 8 integration checks in a real
-VS Code.
+Test counts: 348 engine tests (32 of them Python), 48 panel tests, and 9 integration
+checks in a real VS Code.
 
-**Found and fixed on the way.** Memory measurement could absorb about 1.5 KB from the
+**Found and fixed in Phase 3.** Generated inputs were meant to be the same on every run
+but were not: their seed came from `HashCode.Combine`, which .NET randomises in every
+process. A solution with an early exit could measure differently from one run to the
+next. The seed is now fixed, and a test pins the values.
+
+**Found and fixed in Phase 2.** Memory measurement could absorb about 1.5 KB from the
 JIT recompiling a running loop (on-stack replacement). That bent one statement's
 largest-allocation curve, which showed up as a test failing in one order and passing in
 another. Loops are now compiled fully on their first call, and the engine ships
@@ -266,6 +272,9 @@ precompiled, so it is about twice as fast to start.
   The name must be checked for a clash on the Marketplace.
 - **Platforms: Windows x64, macOS x64 and arm64, Linux x64.** Windows and Linux on
   ARM are deferred.
-- **Python's reading of the code** covers loops and recursion only. Python's
-  dynamic typing makes C#'s symbol-based analysis of library costs impossible
-  statically, so library cost in Python is charged only as it runs.
+- **Python's reading of the code** sees list operations only on names it can tell are
+  lists — parameters hinted `List[...]` and names assigned a list. Python's dynamic
+  typing hides the rest, so library cost there is charged only as it runs.
+- **Python's budget** is one million operations, a fiftieth of C#'s: traced Python runs
+  about 220,000 operations a second, so it stops a runaway loop in about the same time.
+- **Python's space reading of the code** is not attempted. The measured peak is the answer.

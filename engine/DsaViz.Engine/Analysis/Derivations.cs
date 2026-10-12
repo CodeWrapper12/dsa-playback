@@ -139,12 +139,24 @@ public static class Derivations
         bool allocates = runs.Any(r => r.Trace.TotalBytesAllocated > 0);
         bool recurses = runs.Any(r => r.Trace.MaxRecursionDepth > 1);
 
+        // Where the peak was measured directly (Python), it is the answer for the heap, and
+        // nothing has to be inferred from allocation. A peak that barely moves across the
+        // whole range is a fixed amount, however a curve would like to fit it.
+        CurveFit? held = null;
+        if (runs.All(r => r.Trace.PeakBytes is not null))
+        {
+            var peaks = runs.Select(r => r.Trace.PeakBytes!.Value).ToList();
+            held = peaks.Max() - peaks.Min() < FixedHeldGrowth
+                ? new CurveFit(ComplexityClass.Constant, 1, Array.Empty<ClassFit>(), "Barely changes across the sizes measured.")
+                : Growth.Fit(sizes, peaks, allowIntercept: true);
+        }
+
         // Allocation that grows faster than its largest single piece is churn: buffers
         // created and dropped again. What is held at once is then bounded by the largest
         // piece, not by the total. Allocation that grows no faster than its largest piece
         // is data being kept, and the total is the space.
         bool churn = allocates && Growth.Rank(allocation.Best) > Growth.Rank(largest.Best) && largest.Best != ComplexityClass.Unknown;
-        var heap = !allocates ? ComplexityClass.Constant : churn ? largest.Best : allocation.Best;
+        var heap = held is not null ? held.Best : !allocates ? ComplexityClass.Constant : churn ? largest.Best : allocation.Best;
         var stack = recurses ? depth.Best : ComplexityClass.Constant;
         var peak = heap == ComplexityClass.Unknown || stack == ComplexityClass.Unknown
             ? ComplexityClass.Unknown
@@ -154,7 +166,18 @@ public static class Derivations
         int n = sizes[^1];
         var last = runs[^1].Trace;
 
-        if (!allocates)
+        if (held is not null)
+        {
+            long most = last.PeakBytes ?? 0;
+            lines.Add(held.Best == ComplexityClass.Constant
+                ? $"Holds only a fixed amount at once ({Bytes(most)} at most), whatever the input size — measured directly."
+                : $"Holds at most {Bytes(most)} at once at n={N(n)}, growing as {ComplexityNames.Format(held.Best)} — measured directly, " +
+                  "not inferred from what was allocated.");
+            if (allocates)
+                lines.Add($"It allocates {Bytes(last.TotalBytesAllocated)} over the run in all; Python creates objects even for " +
+                          "arithmetic on large numbers, so much of that is short-lived.");
+        }
+        else if (!allocates)
             lines.Add("Nothing allocated grows with the input.");
         else if (allocation.Best == ComplexityClass.Constant)
             lines.Add($"Allocates only a fixed amount ({Bytes(last.TotalBytesAllocated)}), whatever the input size.");
@@ -184,6 +207,7 @@ public static class Derivations
         bool disagree = peak != ComplexityClass.Unknown && staticSpace.Class != ComplexityClass.Unknown && peak != staticSpace.Class;
         return new SpaceReading
         {
+            Held = held,
             Allocation = allocation,
             LargestAllocation = largest,
             CallDepth = depth,
@@ -198,6 +222,9 @@ public static class Derivations
                 : null
         };
     }
+
+    /// <summary>A measured peak that moves less than this over the whole range of sizes is a fixed amount.</summary>
+    private const long FixedHeldGrowth = 1024;
 
     private static string N(long value) => value.ToString("N0", CultureInfo.InvariantCulture);
 

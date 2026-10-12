@@ -110,7 +110,8 @@
   /** An error, with the way to its details when it is the visualizer's own failure. */
   function errorBanner(title, error) {
     return banner(title, escapeHtml(error.message), true) +
-      (error.internal ? '<button class="ghost" id="show-log">Show details</button>' : "");
+      (error.internal ? '<button class="ghost" id="show-log">Show details</button>' : "") +
+      (error.code ? '<button id="install-python">Install Python</button>' : "");
   }
 
   /** A "Show line" button for the first message that names a line of the student's code. */
@@ -126,7 +127,7 @@
 
   function header(response) {
     const file = state.request.file || "";
-    const name = (response && response.label) || file.split(/[\\/]/).pop().replace(/\.cs$/, "") || "Solution";
+    const name = (response && response.label) || file.split(/[\\/]/).pop().replace(/\.(cs|py)$/, "") || "Solution";
     return `<div class="head">
       <h1>${escapeHtml(name)}</h1>
       <span class="entry">${escapeHtml((state.request && state.request.entry) || "")}()</span>
@@ -586,10 +587,12 @@
     const selected = trace ? trace.selectedExample : st.choice && st.choice.example;
     const draft = st.draft || {};
 
+    const python = /\.py$/i.test((state.request && state.request.file) || "");
+    const callFrom = python ? '<code>if __name__ == "__main__":</code>' : "<code>Main</code>";
     const picker = examples.length === 0
       ? `<div class="footnote">No example found in your code, so values are generated. Paste LeetCode's
            <code>Input: nums = [2,7,11,15], target = 9</code> as a comment, or call the method from
-           <code>Main</code>, and it is used automatically.</div>`
+           ${callFrom}, and it is used automatically.</div>`
       : `<div class="control"><label for="example">Example</label>
            <select id="example">
              ${examples.map((e, i) => `<option value="${i}" ${selected === i ? "selected" : ""}>${escapeHtml(e.label)}</option>`).join("")}
@@ -706,7 +709,8 @@
   function stepArea(st, index, previous) {
     if (!window.DsaRun) return '<p class="placeholder">The run view could not load.</p>';
     if (!st.model || st.model.trace !== st.trace) st.model = window.DsaRun.prepare(st.trace);
-    return window.DsaRun.render(st.model, index, previous, { animationMs: Math.min(450, stepInterval(st) * 0.7) });
+    const python = /\.py$/i.test((state.request && state.request.file) || "");
+    return window.DsaRun.render(st.model, index, previous, { animationMs: Math.min(450, stepInterval(st) * 0.7), python });
   }
 
   /** The arguments as they were passed in: arrays and strings as cells, grids as rows. */
@@ -869,6 +873,9 @@
         if (vscode) vscode.postMessage({ type: "reveal", line: Number(button.dataset.line) });
       }));
 
+    const installPython = document.getElementById("install-python");
+    if (installPython) installPython.addEventListener("click", () => { if (vscode) vscode.postMessage({ type: "installPython" }); });
+
     const showLogButton = document.getElementById("show-log");
     if (showLogButton) showLogButton.addEventListener("click", () => { if (vscode) vscode.postMessage({ type: "showLog" }); });
 
@@ -987,7 +994,7 @@
         return;
       }
       case "stepsError":
-        state.stepping = { ...st, loading: false, error: { message: message.message, internal: message.internal } };
+        state.stepping = { ...st, loading: false, error: { message: message.message, internal: message.internal, code: message.code } };
         if (state.tab === "steps") render();
         return;
       case "loading":
@@ -1000,7 +1007,7 @@
         if (state.tab !== "steps") render();
         return;
       case "error":
-        state = { ...state, measuring: false, measureError: { message: message.message, internal: message.internal } };
+        state = { ...state, measuring: false, measureError: { message: message.message, internal: message.internal, code: message.code } };
         if (state.tab !== "steps") render();
         return;
     }

@@ -513,3 +513,53 @@ test("speed changes how fast it plays", () => {
   speed.dispatchEvent(new dom.window.Event("change"));
   assert.match(document.querySelector(".run")!.getAttribute("style")!, /--anim:/);
 });
+
+// ---- Python, through the same panel --------------------------------------------------------
+
+const pythonSample = (name: string) => path.join(root, "samples/python", name);
+
+test("every step of every Python sample draws without error", () => {
+  const cases: [string, string][] = [
+    ["two_sum.py", "Solution.twoSum"], ["two_sum_sorted.py", "Solution.twoSum"], ["reverse_list.py", "Solution.reverseList"],
+    ["max_depth.py", "Solution.maxDepth"], ["level_order.py", "Solution.levelOrder"], ["climb_stairs.py", "Solution.climbStairs"],
+    ["fib.py", "fib"], ["num_islands.py", "Solution.numIslands"], ["count_components.py", "Solution.countComponents"],
+    ["kth_largest.py", "Solution.findKthLargest"], ["valid_parentheses.py", "Solution.isValid"]
+  ];
+  for (const [file, entry] of cases) {
+    const { go, count, dom } = run(pythonSample(file), entry);
+    for (let i = 0; i < count; i++) go(i);
+    for (let i = count - 1; i >= 0; i -= 5) go(i);
+    assert.match(dom.window.document.body.textContent ?? "", /Matches the expected output/, file);
+  }
+});
+
+test("a heapq list is drawn as a two-way heap and a list used as a stack as a stack", () => {
+  const heap = run(pythonSample("kth_largest.py"), "Solution.findKthLargest");
+  heap.go(heap.count - 2);
+  assert.match(heap.area().textContent ?? "", /two children, at 2i\+1 and 2i\+2/);
+
+  const stack = run(pythonSample("valid_parentheses.py"), "Solution.isValid", { values: ['"(([]"'] });
+  let sawStack = false;
+  for (let i = 0; i < stack.count; i++) { stack.go(i); sawStack ||= !!stack.area().querySelector(".lane.stack .slot"); }
+  assert.ok(sawStack, "the stack is drawn as a stack");
+});
+
+test("Python's memory figures are labelled approximate in the run view", () => {
+  const { go, area } = run(pythonSample("two_sum.py"), "Solution.twoSum");
+  go(2);
+  assert.match(area().querySelector(".memory")!.textContent!, /Approximate, from Python's tracemalloc/);
+});
+
+test("a Python file's hint names its own way of calling a function", () => {
+  const recorded = measure({ file: pythonSample("dedupe_with_list.py"), entry: "Solution.dedupe", stepSize: 4 }) as { steps: unknown };
+  const loaded = load(true);
+  (loaded.dom.window as unknown as Panel).__steps(recorded.steps, { file: pythonSample("dedupe_with_list.py"), entry: "Solution.dedupe" });
+  assert.match(loaded.dom.window.document.body.textContent ?? "", /if __name__ == "__main__":/);
+});
+
+test("a measured Python solution renders every tab", () => {
+  const { document } = exercise(measure({ file: pythonSample("dedupe_with_list.py"), entry: "Solution.dedupe", strategy: "Distinct" }), "dedupe");
+  document.querySelector<HTMLElement>('.tab[data-tab="cost"]')!.click();
+  assert.match(document.body.textContent ?? "", /in \(on a list, tuple or string\)/, "the hidden scan is named");
+  assert.match(document.body.textContent ?? "", /tracemalloc/, "Python's memory is labelled approximate");
+});

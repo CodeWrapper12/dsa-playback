@@ -202,7 +202,7 @@ public sealed class HeapRecorder : IStepObserver
                     var tuple = (ITuple)item!;
                     entries.Add(new HeapEntry(Value(tuple[0], pending), Value(tuple[1], pending)));
                 }
-                return described with { Entries = entries, Count = (int)type.GetProperty("Count")!.GetValue(value)! };
+                return described with { Entries = entries, Count = (int)type.GetProperty("Count")!.GetValue(value)!, Arity = 4 };
             }
             case "object":
                 return described with { Fields = Fields(value, type, pending) };

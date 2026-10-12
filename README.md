@@ -1,6 +1,6 @@
 # DSA Visualizer
 
-A VS Code extension that shows what each line of a C# solution costs — and why.
+A VS Code extension that shows what each line of a C# or Python solution costs — and why.
 
 Write a LeetCode-style solution, run one command, and get:
 
@@ -38,6 +38,9 @@ Visualizer**. From source it uses the engine's debug build, so build that first 
 
 ## Test it
 
+The engine tests include Python: they need a Python 3.9 or later as `python3` on the path,
+and fail without one rather than skip.
+
 ```
 dotnet test engine/DsaViz.sln
 ```
@@ -64,7 +67,8 @@ cd extension && npm run verify-package dist/dsa-visualizer-darwin-arm64.vsix
 |---|---|
 | `engine/DsaViz.Runtime` | The tracer that instrumented code calls into |
 | `engine/DsaViz.Engine` | Instrumentation, measurement, analysis, and the CLI the extension runs |
+| `engine/DsaViz.Engine/python` | The Python runner: instruments and runs Python files for the engine |
 | `engine/DsaViz.Engine.Tests` | Engine tests |
 | `extension/` | The VS Code extension and its panel |
-| `samples/` | Solutions used as test fixtures — `samples/leetcode/` is written the way LeetCode is |
+| `samples/` | Solutions used as test fixtures — `samples/leetcode/` (C#) and `samples/python/` are written the way LeetCode is |
 | `REQUIREMENTS.md` | What was asked for, what is met, and the known limitations |

@@ -56,6 +56,13 @@ public sealed record HeapObject(int Id, string Kind, string Type)
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<HeapPatch>? Patch { get; init; }
+
+    /// <summary>
+    /// For a heap: children per node. .NET's PriorityQueue is four-way and sends Entries;
+    /// a Python list kept by heapq is two-way and sends Items.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? Arity { get; init; }
 }
 
 /// <summary>A call returning: after <see cref="AfterStep"/> steps had been recorded, at this depth, with this value.</summary>

@@ -8,6 +8,20 @@ public sealed class UnsupportedSignatureException : Exception
     public UnsupportedSignatureException(string message) : base(message) { }
 }
 
+/// <summary>
+/// A parameter to supply: its name, and the .NET type its values are built as. A C#
+/// parameter's own type; for Python, the type its hint maps onto — List[int] is built as
+/// an int[] and handed over as a list. <see cref="Written"/> is how the student wrote the
+/// type, for messages.
+/// </summary>
+public sealed record SolutionParameter(string Name, Type Type)
+{
+    public string? Written { get; init; }
+
+    public static IReadOnlyList<SolutionParameter> From(ParameterInfo[] parameters)
+        => parameters.Select((p, i) => new SolutionParameter(p.Name ?? $"arg{i}", p.ParameterType)).ToList();
+}
+
 /// <summary>One parameter as the engine understands it, reported so the editor can offer only valid choices.</summary>
 public sealed record ParameterDescription(
     string Name, string Type, InputShape Shape, IReadOnlyList<GenerationStrategy> ApplicableStrategies);
@@ -43,8 +57,8 @@ public static class ParameterBinder
     };
 
     /// <summary>The int parameter that gives a graph's number of nodes, beside its edge list.</summary>
-    public static ParameterInfo? NodeCountParameter(ParameterInfo[] parameters)
-        => parameters.FirstOrDefault(p => p.ParameterType == typeof(int) && NodeCountNames.Contains(p.Name?.ToLowerInvariant()));
+    public static SolutionParameter? NodeCountParameter(IReadOnlyList<SolutionParameter> parameters)
+        => parameters.FirstOrDefault(p => p.Type == typeof(int) && NodeCountNames.Contains(p.Name.ToLowerInvariant()));
 
     public static bool IsScalar(InputShape shape)
         => shape is InputShape.IntScalar or InputShape.LongScalar or InputShape.BoolScalar;
@@ -55,19 +69,22 @@ public static class ParameterBinder
     /// is how LeetCode passes a graph, and filling it as a square matrix of random numbers
     /// would hand a graph algorithm nonsense.
     /// </summary>
-    public static InputShape? ShapeFor(ParameterInfo parameter, ParameterInfo[] all)
+    public static InputShape? ShapeFor(SolutionParameter parameter, IReadOnlyList<SolutionParameter> all)
     {
-        var type = parameter.ParameterType;
+        var type = parameter.Type;
 
         if (type == typeof(int[][]))
         {
-            bool namedAsEdges = EdgeListNames.Contains(parameter.Name?.ToLowerInvariant());
-            bool hasNodeCount = all.Any(p => p.ParameterType == typeof(int) && NodeCountNames.Contains(p.Name?.ToLowerInvariant()));
+            bool namedAsEdges = EdgeListNames.Contains(parameter.Name.ToLowerInvariant());
+            bool hasNodeCount = all.Any(p => p.Type == typeof(int) && NodeCountNames.Contains(p.Name.ToLowerInvariant()));
             return namedAsEdges && hasNodeCount ? InputShape.EdgeList : InputShape.Matrix;
         }
 
         return ShapeFor(type);
     }
+
+    public static InputShape? ShapeFor(ParameterInfo parameter, ParameterInfo[] all)
+        => ShapeFor(new SolutionParameter(parameter.Name ?? "", parameter.ParameterType), SolutionParameter.From(all));
 
     public static InputShape? ShapeFor(Type type)
     {
@@ -112,11 +129,13 @@ public static class ParameterBinder
         "int[], char[], string[], int[][], char[][], string, int, long, bool, List<int> / IList<int>, " +
         "IList<IList<int>>, and LeetCode's TreeNode and ListNode";
 
-    public static IReadOnlyList<ParameterDescription> Describe(ParameterInfo[] parameters)
+    public static IReadOnlyList<ParameterDescription> Describe(ParameterInfo[] parameters) => Describe(SolutionParameter.From(parameters));
+
+    public static IReadOnlyList<ParameterDescription> Describe(IReadOnlyList<SolutionParameter> parameters)
         => parameters.Select(p =>
         {
             var shape = ShapeFor(p, parameters) ?? throw Unsupported(p);
-            return new ParameterDescription(p.Name ?? "", FriendlyName(p.ParameterType), shape, StrategiesFor(shape));
+            return new ParameterDescription(p.Name, p.Written ?? FriendlyName(p.Type), shape, StrategiesFor(shape));
         }).ToList();
 
     /// <summary>
@@ -124,7 +143,9 @@ public static class ParameterBinder
     /// measured without the user writing anything. Everything chosen here can be changed
     /// from the editor; inference exists to make the common case zero-effort.
     /// </summary>
-    public static IReadOnlyList<InputSpec> Infer(ParameterInfo[] parameters)
+    public static IReadOnlyList<InputSpec> Infer(ParameterInfo[] parameters) => Infer(SolutionParameter.From(parameters));
+
+    public static IReadOnlyList<InputSpec> Infer(IReadOnlyList<SolutionParameter> parameters)
     {
         var shapes = parameters.Select(p => ShapeFor(p, parameters) ?? throw Unsupported(p)).ToList();
         bool hasCollection = shapes.Any(s => !IsScalar(s));
@@ -133,7 +154,7 @@ public static class ParameterBinder
         return parameters.Select((parameter, index) =>
         {
             var shape = shapes[index];
-            string name = parameter.Name?.ToLowerInvariant() ?? "";
+            string name = parameter.Name.ToLowerInvariant();
 
             if (!IsScalar(shape))
                 return new InputSpec { Shape = shape, Strategy = GenerationStrategy.Random };
@@ -161,36 +182,43 @@ public static class ParameterBinder
     /// tells the user nothing about what to change.
     /// </summary>
     public static void Validate(ParameterInfo[] parameters, IReadOnlyList<InputSpec> specs)
-    {
-        if (parameters.Length != specs.Count)
-            throw new UnsupportedSignatureException(
-                $"The method takes {parameters.Length} parameter(s) but {specs.Count} input(s) were configured.");
+        => Validate(SolutionParameter.From(parameters), specs);
 
-        for (int i = 0; i < parameters.Length; i++)
+    public static void Validate(IReadOnlyList<SolutionParameter> parameters, IReadOnlyList<InputSpec> specs)
+    {
+        if (parameters.Count != specs.Count)
+            throw new UnsupportedSignatureException(
+                $"The method takes {parameters.Count} parameter(s) but {specs.Count} input(s) were configured.");
+
+        for (int i = 0; i < parameters.Count; i++)
         {
             var expected = ShapeFor(parameters[i], parameters) ?? throw Unsupported(parameters[i]);
+            string written = parameters[i].Written ?? FriendlyName(parameters[i].Type);
 
             // An int[][] may legitimately be configured either way.
-            bool interchangeable = parameters[i].ParameterType == typeof(int[][]) &&
+            bool interchangeable = parameters[i].Type == typeof(int[][]) &&
                                    specs[i].Shape is InputShape.Matrix or InputShape.EdgeList;
 
             if (expected != specs[i].Shape && !interchangeable)
                 throw new UnsupportedSignatureException(
-                    $"Parameter '{parameters[i].Name}' is '{FriendlyName(parameters[i].ParameterType)}', " +
+                    $"Parameter '{parameters[i].Name}' is '{written}', " +
                     $"which needs shape {expected}, but {specs[i].Shape} was configured.");
 
             var allowed = StrategiesFor(specs[i].Shape);
             if (allowed.Count > 0 && !allowed.Contains(specs[i].Strategy))
                 throw new UnsupportedSignatureException(
                     $"'{specs[i].Strategy}' does not apply to parameter '{parameters[i].Name}' " +
-                    $"({FriendlyName(parameters[i].ParameterType)}). Choose one of: {string.Join(", ", allowed)}.");
+                    $"({written}). Choose one of: {string.Join(", ", allowed)}.");
         }
     }
 
     public static object?[] Bind(IReadOnlyList<InputSpec> specs, ParameterInfo[] parameters, int size)
-        => specs.Select((spec, i) => InputGenerator.Generate(spec, size, parameters[i].ParameterType)).ToArray();
+        => Bind(specs, SolutionParameter.From(parameters), size);
 
-    private static UnsupportedSignatureException Unsupported(ParameterInfo parameter) => new(
-        $"Parameter '{parameter.Name}' has type '{FriendlyName(parameter.ParameterType)}', which the engine " +
+    public static object?[] Bind(IReadOnlyList<InputSpec> specs, IReadOnlyList<SolutionParameter> parameters, int size)
+        => specs.Select((spec, i) => InputGenerator.Generate(spec, size, parameters[i].Type)).ToArray();
+
+    private static UnsupportedSignatureException Unsupported(SolutionParameter parameter) => new(
+        $"Parameter '{parameter.Name}' has type '{parameter.Written ?? FriendlyName(parameter.Type)}', which the engine " +
         $"cannot generate. Supported parameter types are: {SupportedList}.");
 }

@@ -18,7 +18,7 @@ public static class InputGenerator
     public static object? Generate(InputSpec spec, int size, Type targetType)
     {
         if (size < 0) throw new ArgumentOutOfRangeException(nameof(size));
-        var random = new Random(HashCode.Combine(spec.Seed, size));
+        var random = new Random(SeedFor(spec.Seed, size));
 
         return spec.Shape switch
         {
@@ -39,6 +39,13 @@ public static class InputGenerator
             _ => throw new NotSupportedException($"Unsupported input shape: {spec.Shape}")
         };
     }
+
+    /// <summary>
+    /// The same seed in every process. HashCode.Combine looked right here but is randomised
+    /// per process by design, so every run of the engine generated different "fixed" data:
+    /// a result could change between two measurements of the same code.
+    /// </summary>
+    public static int SeedFor(int seed, int size) => unchecked(seed * 1_000_003 + size);
 
     /// <summary>Kept for callers that only deal in built-in shapes.</summary>
     public static object? Generate(InputSpec spec, int size) => Generate(spec, size, typeof(object));

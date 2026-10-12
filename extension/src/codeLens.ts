@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
-import { EngineCancelledError, listEntryPoints } from "./engine";
+import { EngineCancelledError, EntryListError, listEntryPoints } from "./engine";
 import { log } from "./log";
+import { pythonInterpreter } from "./python";
 import { EntryPoint } from "./types";
 
 /**
@@ -13,7 +14,7 @@ export class EntryPointLenses implements vscode.CodeLensProvider {
   readonly onDidChangeCodeLenses = this.changed.event;
 
   /** Entries per document version, so moving the cursor around never re-runs the engine. */
-  private readonly cache = new Map<string, { version: number; entries: EntryPoint[] }>();
+  private readonly cache = new Map<string, { version: number; entries: EntryPoint[] | EntryListError }>();
 
   forget(uri: vscode.Uri) {
     this.cache.delete(uri.toString());
@@ -27,6 +28,16 @@ export class EntryPointLenses implements vscode.CodeLensProvider {
   async provideCodeLenses(document: vscode.TextDocument, token: vscode.CancellationToken): Promise<vscode.CodeLens[]> {
     const entries = await this.entriesFor(document, token);
     if (!entries) return [];
+
+    // No Python: one line at the top of the file that says so and fixes it, rather than
+    // buttons that would only fail when pressed.
+    if (entries instanceof EntryListError) {
+      return [new vscode.CodeLens(new vscode.Range(0, 0, 0, 0), {
+        title: `$(warning) ${entries.message} Click to install Python.`,
+        command: "dsaViz.installPython",
+        arguments: [entries.message]
+      })];
+    }
 
     return entries.flatMap(entry => {
       const line = Math.max(0, Math.min(entry.line - 1, document.lineCount - 1));
@@ -65,10 +76,17 @@ export class EntryPointLenses implements vscode.CodeLensProvider {
     const abort = new AbortController();
     const subscription = token.onCancellationRequested(() => abort.abort());
     try {
-      const entries = await listEntryPoints(document.fileName, document.getText(), abort.signal);
+      const language = document.languageId === "python" ? "python" : "csharp";
+      const python = language === "python" ? await pythonInterpreter(document.uri) : undefined;
+      const entries = await listEntryPoints(document.fileName,
+        { source: document.getText(), language, python, signal: abort.signal });
       this.cache.set(key, { version: document.version, entries });
       return entries;
     } catch (error) {
+      if (error instanceof EntryListError) {
+        this.cache.set(key, { version: document.version, entries: error });
+        return error;
+      }
       // A missing button is the right outcome while the engine cannot run, but never a
       // silent one: the reason is logged, and running a command shows it to the student.
       if (!(error instanceof EngineCancelledError)) {

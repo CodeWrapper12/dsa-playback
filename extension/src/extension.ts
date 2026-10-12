@@ -4,16 +4,22 @@ import * as vscode from "vscode";
 import { EntryPointLenses } from "./codeLens";
 import { CostDecorations } from "./decorations";
 import {
-  configureEngine, EngineCancelledError, EngineFailedError, EngineNotFoundError, listEntryPoints, measure,
+  configureEngine, EngineCancelledError, EngineFailedError, EngineNotFoundError, EntryListError, listEntryPoints, measure,
   resolveEnginePath
 } from "./engine";
 import { log, showLog } from "./log";
+import { offerPython, pythonInterpreter } from "./python";
 import { EntryPoint, InputSpec, JobRequest, JobResponse, StepTrace } from "./types";
 
 let decorations: CostDecorations;
 
-/** Samples offered by the walkthrough, shipped inside the extension under samples/csharp. */
-const SAMPLES = new Set(["TwoSumSorted.cs", "LevelOrder.cs", "ClimbStairs.cs"]);
+/** Samples offered by the walkthrough, shipped inside the extension under samples/<language>. */
+const SAMPLES = new Map([
+  ["TwoSumSorted.cs", "csharp"], ["LevelOrder.cs", "csharp"], ["ClimbStairs.cs", "csharp"],
+  ["two_sum_sorted.py", "python"], ["level_order.py", "python"], ["climb_stairs.py", "python"]
+]);
+
+const LANGUAGES = ["csharp", "python"];
 
 /**
  * What the integration tests can observe. Decorations and webviews are not readable
@@ -39,7 +45,7 @@ export function activate(context: vscode.ExtensionContext): TestApi {
 
   context.subscriptions.push(
     decorations,
-    vscode.languages.registerCodeLensProvider({ language: "csharp" }, lenses),
+    vscode.languages.registerCodeLensProvider(LANGUAGES.map(language => ({ language })), lenses),
     vscode.workspace.onDidCloseTextDocument(document => lenses.forget(document.uri)),
     vscode.workspace.onDidChangeConfiguration(change => {
       if (change.affectsConfiguration("dsaViz.enginePath")) lenses.refresh();
@@ -51,7 +57,9 @@ export function activate(context: vscode.ExtensionContext): TestApi {
     vscode.commands.registerCommand("dsaViz.compare", () => start(context, "compare")),
     vscode.commands.registerCommand("dsaViz.clearAnnotations", () => decorations.clear()),
     vscode.commands.registerCommand("dsaViz.openSample", (name: string) => openSample(context, name)),
-    vscode.commands.registerCommand("dsaViz.showLog", () => showLog()));
+    vscode.commands.registerCommand("dsaViz.showLog", () => showLog()),
+    vscode.commands.registerCommand("dsaViz.installPython", (message?: string) =>
+      offerPython(message ?? "DSA Visualizer needs Python 3.9 or later to run Python files.")));
 
   return {
     lastResponse: () => observed.response,
@@ -73,17 +81,18 @@ async function start(context: vscode.ExtensionContext, tab: Tab, uri?: vscode.Ur
     ? await vscode.workspace.openTextDocument(uri)
     : vscode.window.activeTextEditor?.document;
 
-  if (!document || document.languageId !== "csharp") {
-    vscode.window.showWarningMessage("Open a C# file first, then press ▶ Visualize above a method.");
+  if (!document || !LANGUAGES.includes(document.languageId)) {
+    vscode.window.showWarningMessage("Open a C# or Python file first, then press ▶ Visualize above a method.");
     return;
   }
+  const python = document.languageId === "python" ? await pythonInterpreter(document.uri) : undefined;
 
   // The engine reads the file from disk, so what runs must be what is on screen.
   if (document.isDirty) await document.save();
   const file = document.fileName;
 
   try {
-    const entry = entryName ?? (await pickEntryPoint(file, "Which method?"))?.qualified;
+    const entry = entryName ?? (await pickEntryPoint(file, "Which method?", python))?.qualified;
     if (!entry) return;
 
     let compareFile: string | undefined;
@@ -92,14 +101,14 @@ async function start(context: vscode.ExtensionContext, tab: Tab, uri?: vscode.Ur
     if (tab === "compare") {
       const picked = await vscode.window.showOpenDialog({
         canSelectMany: false,
-        filters: { "C# files": ["cs"] },
+        filters: { "Solutions": ["cs", "py"] },
         openLabel: "Compare against",
         title: "Pick the second solution"
       });
       if (!picked?.length) return;
 
       compareFile = picked[0].fsPath;
-      compareEntry = (await pickEntryPoint(compareFile, "Which method in the second file?"))?.qualified;
+      compareEntry = (await pickEntryPoint(compareFile, "Which method in the second file?", python))?.qualified;
       if (!compareEntry) return;
     }
 
@@ -114,7 +123,8 @@ async function start(context: vscode.ExtensionContext, tab: Tab, uri?: vscode.Ur
       sizes: configuredSizes.length > 0 ? configuredSizes : undefined,
       budget: vscode.workspace.getConfiguration("dsaViz").get<number>("budget"),
       compareFile,
-      compareEntry
+      compareEntry,
+      python
     };
 
     ReportPanel.show(context, request, tab === "steps" ? "steps" : "cost");
@@ -123,8 +133,8 @@ async function start(context: vscode.ExtensionContext, tab: Tab, uri?: vscode.Ur
   }
 }
 
-async function pickEntryPoint(file: string, title: string): Promise<EntryPoint | undefined> {
-  const entries = await listEntryPoints(file);
+async function pickEntryPoint(file: string, title: string, python?: string): Promise<EntryPoint | undefined> {
+  const entries = await listEntryPoints(file, { python });
 
   if (entries.length === 0) {
     vscode.window.showWarningMessage(`${path.basename(file)} has no public methods to visualize.`);
@@ -157,11 +167,12 @@ async function pickEntryPoint(file: string, title: string): Promise<EntryPoint |
  * it in place would mean editing files inside the extension's own installation.
  */
 async function openSample(context: vscode.ExtensionContext, name: string) {
-  if (!SAMPLES.has(name)) {
+  const language = SAMPLES.get(name);
+  if (!language) {
     log(`Unknown sample requested: ${name}`);
     return;
   }
-  const source = path.join(context.extensionPath, "samples", "csharp", name);
+  const source = path.join(context.extensionPath, "samples", language, name);
   const folder = path.join(context.globalStorageUri.fsPath, "samples");
   const target = path.join(folder, name);
 
@@ -182,6 +193,10 @@ function reportError(error: unknown) {
   observed.error = message;
   log(`Shown to the student: ${message}`);
 
+  if (error instanceof EntryListError && error.code) {
+    void offerPython(message);
+    return;
+  }
   if (error instanceof EngineNotFoundError || error instanceof EngineFailedError) {
     vscode.window.showErrorMessage(message, "Show Details").then(choice => {
       if (choice === "Show Details") showLog();
@@ -198,6 +213,7 @@ interface MeasureMessage { type: "measure" }
 interface RevealMessage { type: "reveal"; line: number }
 interface StepAtMessage { type: "stepAt"; line: number }
 interface ShowLogMessage { type: "showLog" }
+interface InstallPythonMessage { type: "installPython"; message?: string }
 
 /** Record a run: with typed values, a chosen example, and a size for anything generated. */
 interface RunMessage {
@@ -209,7 +225,7 @@ interface RunMessage {
   useSaved?: boolean;
 }
 
-type PanelMessage = RerunMessage | MeasureMessage | RevealMessage | StepAtMessage | ShowLogMessage | RunMessage;
+type PanelMessage = RerunMessage | MeasureMessage | RevealMessage | StepAtMessage | ShowLogMessage | RunMessage | InstallPythonMessage;
 
 /** What the student chose for one method, kept across restarts. */
 interface SavedInputs {
@@ -283,6 +299,7 @@ class ReportPanel {
       case "measure": await this.measure(); return;
       case "stepAt": await decorations.showStep(this.request.file, message.line); return;
       case "showLog": showLog(); return;
+      case "installPython": await offerPython(message.message ?? "DSA Visualizer needs Python 3.9 or later."); return;
       case "reveal": await this.reveal(message.line); return;
       case "rerun":
         // The panel sends back the engine's own resolved inputs with the user's edits
@@ -333,8 +350,13 @@ class ReportPanel {
       const response = await measure(request, controller.signal);
       if (controller.signal.aborted) return;
 
-      this.panel.webview.postMessage({ type: "result", response, request });
       observed.response = response;
+      if (response.errorCode) {
+        this.panel.webview.postMessage({ type: "error", message: response.errors.join(" "), code: response.errorCode });
+        void offerPython(response.errors.join(" "));
+        return;
+      }
+      this.panel.webview.postMessage({ type: "result", response, request });
 
       // The costs belong on the student's own file, not on a copy of it inside a panel.
       const detail = response.primary?.detail;
@@ -369,9 +391,16 @@ class ReportPanel {
         entry: this.request.entry,
         stepSize: size,
         values: choice.values,
-        example: choice.example
+        example: choice.example,
+        python: this.request.python
       }, controller.signal);
       if (controller.signal.aborted) return;
+
+      if (response.errorCode) {
+        this.panel.webview.postMessage({ type: "stepsError", message: response.errors.join(" "), code: response.errorCode });
+        void offerPython(response.errors.join(" "));
+        return;
+      }
 
       this.panel.webview.postMessage({ type: "steps", trace: response.steps, errors: response.errors, choice });
       observed.steps = response.steps ?? undefined;

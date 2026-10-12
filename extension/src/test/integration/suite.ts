@@ -109,6 +109,21 @@ const checks: [string, (api: TestApi) => Promise<void>][] = [
     assert.ok(steps.steps.every(s => typeof s.allocated === "number"), "every step carries the memory so far");
   }],
 
+  ["a Python solution gets the buttons and visualizes from its example", async api => {
+    const file = path.join(repository, "extension/samples/python/level_order.py");
+    const document = await vscode.workspace.openTextDocument(file);
+    await vscode.window.showTextDocument(document);
+    assert.equal(document.languageId, "python");
+    const titles = (await api.lenses(document)).map(lens => lens.command?.title);
+    assert.deepEqual(titles, ["$(play) Visualize", "$(graph) Complexity"]);
+
+    const before = api.lastSteps();
+    await vscode.commands.executeCommand("dsaViz.visualize", document.uri, "Solution.levelOrder");
+    const steps = await waitFor(() => (api.lastSteps() !== before ? api.lastSteps() : undefined), "a recorded Python run");
+    assert.equal(steps.status, "Completed");
+    assert.equal(steps.check?.matches, true);
+  }],
+
   ["the walkthrough opens an editable copy of its sample", async () => {
     await vscode.commands.executeCommand("dsaViz.openSample", "LevelOrder.cs");
     const opened = vscode.window.activeTextEditor?.document.fileName ?? "";

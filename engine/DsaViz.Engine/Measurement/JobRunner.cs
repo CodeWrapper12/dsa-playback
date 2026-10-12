@@ -17,15 +17,39 @@ public static class JobRunner
         if (!exists(request.File))
             return new JobResponse { Errors = new[] { $"File not found: {request.File}" } };
 
+        try
+        {
+            return RunJob(request, exists, read);
+        }
+        catch (Python.PythonUnavailableException ex)
+        {
+            // Nothing runs without Python, and the editor can do something about that.
+            return new JobResponse { Errors = new[] { ex.Message }, ErrorCode = ex.Code };
+        }
+        catch (Python.PythonRunFailedException ex)
+        {
+            return new JobResponse { Errors = new[] { ex.Message } };
+        }
+    }
+
+    public static bool IsPython(string file) => file.EndsWith(".py", StringComparison.OrdinalIgnoreCase);
+
+    private static JobResponse RunJob(JobRequest request, Func<string, bool> exists, Func<string, string> read)
+    {
         var errors = new List<string>();
 
         string primarySource = read(request.File);
+        Python.PythonHost? python = null;
+        Python.PythonHost PythonHost() => python ??= Python.PythonHost.Locate(request.Python);
 
         if (request.StepSize is { } stepSize)
         {
-            var steps = Stepper.Record(
-                DsaViz.Engine.Analysis.SourceAnalysis.Create(primarySource), request.Entry, request.Inputs,
-                stepSize, request.MaxSteps, request.Strategy, request.Budget, request.Values, request.Example);
+            var steps = IsPython(request.File)
+                ? Stepper.RecordPython(PythonHost(), primarySource, request.Entry, request.Inputs,
+                    stepSize, request.MaxSteps, request.Strategy, request.Budget, request.Values, request.Example)
+                : Stepper.Record(
+                    DsaViz.Engine.Analysis.SourceAnalysis.Create(primarySource), request.Entry, request.Inputs,
+                    stepSize, request.MaxSteps, request.Strategy, request.Budget, request.Values, request.Example);
             return new JobResponse
             {
                 Steps = steps,
@@ -34,8 +58,13 @@ public static class JobRunner
             };
         }
 
-        var primary = Measurer.Measure(
-            primarySource, request.Entry, request.Inputs, request.Sizes, request.Budget, request.Strategy);
+        MeasurementResult Measure(string file, string source, string entry, IReadOnlyList<InputSpec>? inputs,
+            IReadOnlyList<int>? sizes, GenerationStrategy? strategy)
+            => IsPython(file)
+                ? Measurer.MeasurePython(PythonHost(), source, entry, inputs, sizes, request.Budget, strategy)
+                : Measurer.Measure(source, entry, inputs, sizes, request.Budget, strategy);
+
+        var primary = Measure(request.File, primarySource, request.Entry, request.Inputs, request.Sizes, request.Strategy);
 
         MeasurementResult? comparison = null;
         string? comparisonSource = null;
@@ -54,12 +83,13 @@ public static class JobRunner
                 // or the gap between the curves would partly be the inputs rather than
                 // the algorithms. So the primary's resolved configuration is reused
                 // instead of being inferred again from the second signature.
-                comparison = Measurer.Measure(
+                comparison = Measure(
+                    comparePath,
                     comparisonSource,
                     request.CompareEntry ?? request.Entry,
                     primary.Inputs.Count > 0 ? primary.Inputs : request.Inputs,
                     primary.Points.Count > 0 ? primary.Points.Select(p => p.Size).ToArray() : request.Sizes,
-                    request.Budget);
+                    null);
             }
         }
 

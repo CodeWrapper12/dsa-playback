@@ -16,6 +16,10 @@
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.11.0" />
   </ItemGroup>
   <ItemGroup>
+    <!-- The Python runner ships beside the engine, in the build output and the published package. -->
+    <None Include="python/*.py" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../DsaViz.Runtime/DsaViz.Runtime.csproj" />
   </ItemGroup>
 </Project>

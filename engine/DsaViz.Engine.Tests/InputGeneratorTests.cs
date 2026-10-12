@@ -84,3 +84,17 @@ public class InputGeneratorTests
         Assert.Equal(30, text.Length);
     }
 }
+
+public class ReproducibleInputTests
+{
+    [Fact]
+    public void Generated_data_is_the_same_in_every_process()
+    {
+        // Pinned values, not a comparison of two runs: within one process a per-process
+        // seed (HashCode.Combine) agrees with itself, and only differs in the next process
+        // — which is exactly how it went unnoticed.
+        var spec = new DsaViz.Engine.Contracts.InputSpec { Shape = DsaViz.Engine.Contracts.InputShape.IntArray };
+        var values = (int[])DsaViz.Engine.Inputs.InputGenerator.Generate(spec, 6)!;
+        Assert.Equal(new[] { 981, 197, 74, 622, 512, 530 }, values);
+    }
+}

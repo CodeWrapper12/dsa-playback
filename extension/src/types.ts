@@ -172,6 +172,8 @@ export interface JobResponse {
   label: string | null;
   comparisonLabel: string | null;
   errors: string[];
+  /** Set when nothing could run for a reason the editor can help with: python-missing or python-version. */
+  errorCode?: string;
 }
 
 export interface EntryParameter { name: string; type: string; supported: boolean; }
@@ -203,6 +205,8 @@ export interface JobRequest {
   values?: (string | null)[];
   /** Which example found in the code to use; negative means none. */
   example?: number;
+  /** The Python interpreter for a Python file. */
+  python?: string;
   compareFile?: string;
   compareEntry?: string;
 }

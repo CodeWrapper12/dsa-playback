@@ -133,10 +133,30 @@ function run(executable: string, args: string[], stdin?: string, signal?: AbortS
  * The methods in a file that can be run. Given `source`, reads that text instead of the
  * file on disk, so a file with unsaved changes is listed as the student sees it.
  */
-export async function listEntryPoints(file: string, source?: string, signal?: AbortSignal): Promise<EntryPoint[]> {
-  const args = source === undefined ? ["--file", file, "--list-entries"] : ["--file", "-", "--list-entries"];
-  const output = await run(resolveEnginePath(), args, source, signal);
-  return (JSON.parse(output) as { entries: EntryPoint[] }).entries ?? [];
+/** The engine could not list a file's methods for a reason the student can fix — no Python. */
+export class EntryListError extends Error {
+  constructor(message: string, readonly code: string | undefined) { super(message); }
+}
+
+export interface ListOptions {
+  /** The file's text, when it has unsaved changes; read from disk otherwise. */
+  source?: string;
+  language?: "csharp" | "python";
+  python?: string;
+  signal?: AbortSignal;
+}
+
+/** The methods in a file that can be run, read without running anything. */
+export async function listEntryPoints(file: string, options: ListOptions = {}): Promise<EntryPoint[]> {
+  const args = ["--file", options.source === undefined ? file : "-", "--list-entries"];
+  const language = options.language ?? (file.toLowerCase().endsWith(".py") ? "python" : "csharp");
+  if (language === "python") args.push("--language", "python");
+  if (options.python) args.push("--python", options.python);
+
+  const output = await run(resolveEnginePath(), args, options.source, options.signal);
+  const answer = JSON.parse(output) as { entries?: EntryPoint[]; error?: string; errorCode?: string };
+  if (answer.error) throw new EntryListError(answer.error, answer.errorCode);
+  return answer.entries ?? [];
 }
 
 export async function measure(request: JobRequest, signal?: AbortSignal): Promise<JobResponse> {

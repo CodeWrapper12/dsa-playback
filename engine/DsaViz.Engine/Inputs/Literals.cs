@@ -330,11 +330,15 @@ public static class Literals
 
     // ---- formatting ---------------------------------------------------------------------
 
-    /// <summary>Writes a value the way LeetCode prints it, so it can be read back by <see cref="Parse"/>.</summary>
-    public static string Format(object? value)
+    /// <summary>
+    /// Writes a value the way LeetCode prints it, so it can be read back by <see cref="Parse"/>.
+    /// Shown values are capped at <see cref="FormatNodeLimit"/> elements, which also stops a
+    /// cycle; a value handed to another process must be whole, and passes no limit.
+    /// </summary>
+    public static string Format(object? value, int limit = FormatNodeLimit)
     {
         var text = new StringBuilder();
-        int budget = FormatNodeLimit;
+        int budget = limit;
         Write(value, text, ref budget);
         return text.ToString();
     }

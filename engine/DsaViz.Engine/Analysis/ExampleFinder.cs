@@ -43,11 +43,18 @@ public static class ExampleFinder
         var notes = new List<string>();
 
         var found = new List<FoundExample>();
-        found.AddRange(FromComments(root, parameterNames));
+        found.AddRange(FromCommentLines(CommentLines(root), parameterNames));
         found.AddRange(FromCalls(root, methodName, parameterNames, notes));
+        return Combine(found, notes);
+    }
 
-        // The same values found twice — an example comment and a call that copies it — are
-        // one example. The comment is kept, because it carries the expected output.
+    /// <summary>
+    /// Examples from every source, in file order. The same values found twice — an example
+    /// comment and a call that copies it — are one example; the comment is kept, because it
+    /// carries the expected output.
+    /// </summary>
+    public static ExampleSearch Combine(IEnumerable<FoundExample> found, IReadOnlyList<string> notes)
+    {
         var distinct = new List<FoundExample>();
         foreach (var example in found.OrderBy(e => e.Line))
         {
@@ -64,9 +71,14 @@ public static class ExampleFinder
 
     // ---- LeetCode example comments ----------------------------------------------------
 
-    private static IEnumerable<FoundExample> FromComments(SyntaxNode root, IReadOnlyList<string> parameterNames)
+    /// <summary>
+    /// LeetCode examples in comment lines, already stripped of their comment markers. Any
+    /// language's comments are read the same way: C# comments come from Roslyn, Python's
+    /// comments and docstrings from the Python runner.
+    /// </summary>
+    public static IEnumerable<FoundExample> FromCommentLines(
+        IReadOnlyList<(string Text, int Line)> lines, IReadOnlyList<string> parameterNames)
     {
-        var lines = CommentLines(root);
         int ordinal = 0;
 
         // "You may return the answer in any order" — LeetCode says it once, in the problem

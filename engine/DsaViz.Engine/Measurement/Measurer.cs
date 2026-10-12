@@ -1,4 +1,3 @@
-using System.Reflection;
 using DsaViz.Engine.Analysis;
 using DsaViz.Engine.Contracts;
 using DsaViz.Engine.Inputs;
@@ -44,91 +43,123 @@ public static class Measurer
         if (!outcome.Success)
             return Failed(outcome.Status, outcome.Errors, inputs ?? Array.Empty<InputSpec>());
 
-        var solution = outcome.Solution!;
+        using var target = new CSharpTarget(outcome.Solution!);
+        return MeasureTarget(target, inputs, sizes, budget, strategy,
+            () => StaticEstimator.Estimate(analysis, entryMethod),
+            () => StaticEstimator.EstimateSpace(analysis, entryMethod));
+    }
+
+    /// <summary>
+    /// A Python function, measured exactly as C# is: the same sizes, the same generated
+    /// inputs, the same fitting and explanations. Only running it happens in Python.
+    /// </summary>
+    public static MeasurementResult MeasurePython(
+        Python.PythonHost host,
+        string source,
+        string entry,
+        IReadOnlyList<InputSpec>? inputs = null,
+        IReadOnlyList<int>? sizes = null,
+        long budget = Python.PythonSolution.DefaultBudget,
+        GenerationStrategy? strategy = null)
+    {
+        var solution = Python.PythonSolution.Describe(host, source, entry);
+        if (solution.CompileError is { } error)
+            return Failed(RunStatus.CompileError, new[] { error }, inputs ?? Array.Empty<InputSpec>());
+        if (solution.EntryInfo is null)
+            return Failed(RunStatus.CompileError, new[] { $"No function named '{entry}' was found." }, inputs ?? Array.Empty<InputSpec>());
+
+        var parameters = solution.Parameters(solution.Examples());
+        using var target = solution.Target(parameters);
+        var unknown = new StaticEstimate(ComplexityClass.Unknown, "The code could not be read.", 0, 0, 0);
+        return MeasureTarget(target, inputs, sizes, budget, strategy,
+            () => solution.Description.Time ?? unknown,
+            () => solution.Description.Space ?? unknown);
+    }
+
+    private static MeasurementResult MeasureTarget(
+        IRunTarget target,
+        IReadOnlyList<InputSpec>? inputs,
+        IReadOnlyList<int>? sizes,
+        long budget,
+        GenerationStrategy? strategy,
+        Func<StaticEstimate> readTime,
+        Func<StaticEstimate> readSpace)
+    {
+        var parameters = target.Parameters;
+        IReadOnlyList<InputSpec> specs;
+        IReadOnlyList<ParameterDescription> descriptions;
+        var notes = new List<string>();
+
         try
         {
-            var parameters = solution.Parameters;
-            IReadOnlyList<InputSpec> specs;
-            IReadOnlyList<ParameterDescription> descriptions;
-            var notes = new List<string>();
-
-            try
-            {
-                descriptions = ParameterBinder.Describe(parameters);
-                specs = inputs ?? ApplyStrategy(ParameterBinder.Infer(parameters), strategy, notes);
-                ParameterBinder.Validate(parameters, specs);
-            }
-            catch (UnsupportedSignatureException ex)
-            {
-                return Failed(RunStatus.RuntimeError, new[] { ex.Message }, inputs ?? Array.Empty<InputSpec>());
-            }
-
-            var requested = sizes ?? DefaultSizes;
-            var ladder = RunLadder(solution, parameters, specs, requested, budget);
-
-            // A ladder that hit the budget or the depth limit almost immediately left too
-            // few points to say anything. Retry small — the range should fit the algorithm,
-            // not the other way round. This applies to sizes the caller chose as well:
-            // two points cannot be fitted, so honouring them would only report Unknown.
-            // After a timeout the solution is abandoned and cannot be run again.
-            // Recursion that overflows at a size this small is not a cost problem — an
-            // infinite recursion fails at every size — so retrying would only pay for
-            // unwinding a full stack a second time.
-            bool overflowedEarly = ladder.StoppedBy == RunStatus.RecursionLimitExceeded &&
-                                   ladder.StoppedAt is { } stop && stop <= SmallSizes.Max();
-
-            if (ladder.Points.Count < MinimumPointsForCurve && ladder.StoppedBy is RunStatus.BudgetExceeded
-                    or RunStatus.RecursionLimitExceeded && !overflowedEarly && !solution.Abandoned && !requested.SequenceEqual(SmallSizes))
-            {
-                var retry = RunLadder(solution, parameters, specs, SmallSizes, budget);
-                if (retry.Points.Count > ladder.Points.Count)
-                {
-                    notes.Add((sizes is null ? "The default sizes" : "The sizes requested") +
-                              " exhausted the limits almost immediately, so the measurement was retried at much smaller inputs.");
-                    ladder = retry;
-                }
-            }
-
-            if (ladder.Note is not null) notes.Add(ladder.Note);
-
-            // When nothing at all was measured, why it stopped is the error, not a footnote:
-            // "missing base case" is the one thing the user needs to read.
-            var errors = ladder.Errors;
-            if (ladder.Points.Count == 0 && ladder.Note is not null) errors = new List<string>(errors) { ladder.Note };
-
-            var empirical = CurveFitter.Fit(ladder.Points);
-            var staticEstimate = StaticEstimator.Estimate(analysis, entryMethod);
-            var derivation = Derivations.Explain(ladder.Runs, empirical);
-            var space = Derivations.Space(ladder.Runs, derivation, StaticEstimator.EstimateSpace(analysis, entryMethod));
-
-            bool disagreement =
-                empirical.Best != ComplexityClass.Unknown &&
-                staticEstimate.Class != ComplexityClass.Unknown &&
-                empirical.Best != staticEstimate.Class;
-
-            return new MeasurementResult
-            {
-                Status = ladder.Points.Count > 0 ? RunStatus.Completed : ladder.StoppedBy ?? RunStatus.RuntimeError,
-                Points = ladder.Points,
-                Empirical = empirical,
-                Static = staticEstimate,
-                Disagreement = disagreement,
-                DisagreementNote = DescribeDisagreement(disagreement, empirical, staticEstimate),
-                Detail = ladder.Detail,
-                Derivation = derivation,
-                Space = space,
-                Inputs = specs,
-                Parameters = descriptions,
-                Errors = errors,
-                SizeNote = notes.Count == 0 ? null : string.Join(" ", notes)
-            };
+            descriptions = ParameterBinder.Describe(parameters);
+            specs = inputs ?? ApplyStrategy(ParameterBinder.Infer(parameters), strategy, notes);
+            ParameterBinder.Validate(parameters, specs);
         }
-        finally
+        catch (UnsupportedSignatureException ex)
         {
-            // An abandoned solution's thread may still be running inside its assembly;
-            // unloading would pull the code out from under it.
-            if (!solution.Abandoned) solution.Dispose();
+            return Failed(RunStatus.RuntimeError, new[] { ex.Message }, inputs ?? Array.Empty<InputSpec>());
         }
+
+        var requested = sizes ?? DefaultSizes;
+        var ladder = RunLadder(target, specs, requested, budget);
+
+        // A ladder that hit the budget or the depth limit almost immediately left too
+        // few points to say anything. Retry small — the range should fit the algorithm,
+        // not the other way round. This applies to sizes the caller chose as well:
+        // two points cannot be fitted, so honouring them would only report Unknown.
+        // After a timeout a C# solution is abandoned and cannot be run again.
+        // Recursion that overflows at a size this small is not a cost problem — an
+        // infinite recursion fails at every size — so retrying would only pay for
+        // unwinding a full stack a second time.
+        bool overflowedEarly = ladder.StoppedBy == RunStatus.RecursionLimitExceeded &&
+                               ladder.StoppedAt is { } stop && stop <= SmallSizes.Max();
+
+        if (ladder.Points.Count < MinimumPointsForCurve && ladder.StoppedBy is RunStatus.BudgetExceeded
+                or RunStatus.RecursionLimitExceeded && !overflowedEarly && target.Usable && !requested.SequenceEqual(SmallSizes))
+        {
+            var retry = RunLadder(target, specs, SmallSizes, budget);
+            if (retry.Points.Count > ladder.Points.Count)
+            {
+                notes.Add((sizes is null ? "The default sizes" : "The sizes requested") +
+                          " exhausted the limits almost immediately, so the measurement was retried at much smaller inputs.");
+                ladder = retry;
+            }
+        }
+
+        if (ladder.Note is not null) notes.Add(ladder.Note);
+
+        // When nothing at all was measured, why it stopped is the error, not a footnote:
+        // "missing base case" is the one thing the user needs to read.
+        var errors = ladder.Errors;
+        if (ladder.Points.Count == 0 && ladder.Note is not null) errors = new List<string>(errors) { ladder.Note };
+
+        var empirical = CurveFitter.Fit(ladder.Points);
+        var staticEstimate = readTime();
+        var derivation = Derivations.Explain(ladder.Runs, empirical);
+        var space = Derivations.Space(ladder.Runs, derivation, readSpace());
+
+        bool disagreement =
+            empirical.Best != ComplexityClass.Unknown &&
+            staticEstimate.Class != ComplexityClass.Unknown &&
+            empirical.Best != staticEstimate.Class;
+
+        return new MeasurementResult
+        {
+            Status = ladder.Points.Count > 0 ? RunStatus.Completed : ladder.StoppedBy ?? RunStatus.RuntimeError,
+            Points = ladder.Points,
+            Empirical = empirical,
+            Static = staticEstimate,
+            Disagreement = disagreement,
+            DisagreementNote = DescribeDisagreement(disagreement, empirical, staticEstimate),
+            Detail = ladder.Detail,
+            Derivation = derivation,
+            Space = space,
+            Inputs = specs,
+            Parameters = descriptions,
+            Errors = errors,
+            SizeNote = notes.Count == 0 ? null : string.Join(" ", notes)
+        };
     }
 
     /// <summary>Applies an arrangement to every input it suits, and says which it did not.</summary>
@@ -155,10 +186,9 @@ public static class Measurer
         List<SizePoint> Points, List<MeasuredRun> Runs, TraceResult? Detail, string? Note, List<string> Errors,
         RunStatus? StoppedBy, int? StoppedAt = null);
 
-    private static Ladder RunLadder(
-        CompiledSolution solution, ParameterInfo[] parameters, IReadOnlyList<InputSpec> specs,
-        IReadOnlyList<int> sizes, long budget)
+    private static Ladder RunLadder(IRunTarget target, IReadOnlyList<InputSpec> specs, IReadOnlyList<int> sizes, long budget)
     {
+        var parameters = target.Parameters;
         var points = new List<SizePoint>();
         var runs = new List<MeasuredRun>();
         var errors = new List<string>();
@@ -178,7 +208,7 @@ public static class Measurer
 
             // Inputs are rebuilt for every attempt: a repeated run must start from the same
             // data, and many solutions sort or mark their input in place.
-            var trace = Runner.Cleanest(() => Runner.Invoke(solution, ParameterBinder.Bind(specs, parameters, size), budget));
+            var trace = target.Run(() => ParameterBinder.Bind(specs, parameters, size), budget);
 
             if (trace.Status is RunStatus.BudgetExceeded or RunStatus.RecursionLimitExceeded or RunStatus.TimedOut)
             {

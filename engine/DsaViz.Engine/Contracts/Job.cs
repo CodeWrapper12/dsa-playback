@@ -39,6 +39,9 @@ public sealed record JobRequest
     /// </summary>
     public int? Example { get; init; }
 
+    /// <summary>The Python interpreter to run Python files with: the one selected in VS Code, when there is one.</summary>
+    public string? Python { get; init; }
+
     /// <summary>A second solution to measure alongside the first, for comparison.</summary>
     public string? CompareFile { get; init; }
     public string? CompareEntry { get; init; }
@@ -60,11 +63,11 @@ public sealed record EntryPoint(
     /// <summary>The 1-based line of the method's name, where the editor puts its buttons.</summary>
     public int Line { get; init; }
 
-    /// <summary>"Solution.TwoSum" — unambiguous even when two classes share a method name.</summary>
-    public string Qualified => $"{DeclaringType}.{Name}";
+    /// <summary>"Solution.TwoSum" — unambiguous even when two classes share a method name. A top-level Python function is just its name.</summary>
+    public string Qualified => DeclaringType.Length == 0 ? Name : $"{DeclaringType}.{Name}";
 
     public string Signature =>
-        $"{DeclaringType}.{Name}({string.Join(", ", Parameters.Select(p => $"{p.Type} {p.Name}"))})";
+        $"{Qualified}({string.Join(", ", Parameters.Select(p => $"{p.Type} {p.Name}"))})";
 }
 
 public sealed record JobResponse
@@ -83,4 +86,10 @@ public sealed record JobResponse
     public string? ComparisonLabel { get; init; }
 
     public IReadOnlyList<string> Errors { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Set when nothing could run for a reason the editor can help with: <c>python-missing</c>
+    /// or <c>python-version</c>, for which it offers to install Python.
+    /// </summary>
+    public string? ErrorCode { get; init; }
 }
