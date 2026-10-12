@@ -50,10 +50,10 @@ export function activate(context: vscode.ExtensionContext): TestApi {
     vscode.workspace.onDidChangeConfiguration(change => {
       if (change.affectsConfiguration("dsaPlayback.enginePath")) lenses.refresh();
     }),
-    vscode.commands.registerCommand("dsaPlayback.visualize", (uri?: vscode.Uri, entry?: string) =>
-      start(context, "steps", uri, entry)),
-    vscode.commands.registerCommand("dsaPlayback.measure", (uri?: vscode.Uri, entry?: string) =>
-      start(context, "cost", uri, entry)),
+    vscode.commands.registerCommand("dsaPlayback.visualize", (uri?: unknown, entry?: unknown) =>
+      start(context, "steps", ...target(uri, entry))),
+    vscode.commands.registerCommand("dsaPlayback.measure", (uri?: unknown, entry?: unknown) =>
+      start(context, "cost", ...target(uri, entry))),
     vscode.commands.registerCommand("dsaPlayback.compare", () => start(context, "compare")),
     vscode.commands.registerCommand("dsaPlayback.clearAnnotations", () => decorations.clear()),
     vscode.commands.registerCommand("dsaPlayback.openSample", (name: string) => openSample(context, name)),
@@ -75,6 +75,16 @@ export function activate(context: vscode.ExtensionContext): TestApi {
 export function deactivate() {}
 
 type Tab = "steps" | "cost" | "compare";
+
+/**
+ * The file and method a command was asked about, keeping only what really is one. The
+ * buttons above a method pass both. The ▶ in the editor's title bar passes the file and
+ * then an object saying which editor group was clicked — taken as a method name, it
+ * reached the engine as "[object Object]" and every run from that button failed.
+ */
+function target(uri: unknown, entry: unknown): [vscode.Uri | undefined, string | undefined] {
+  return [uri instanceof vscode.Uri ? uri : undefined, typeof entry === "string" && entry.length > 0 ? entry : undefined];
+}
 
 async function start(context: vscode.ExtensionContext, tab: Tab, uri?: vscode.Uri, entryName?: string) {
   const document = uri

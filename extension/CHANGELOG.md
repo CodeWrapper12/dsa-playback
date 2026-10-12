@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.1
+
+- Fixed: the ▶ button in the editor's title bar failed with "The job was not valid
+  JSON". VS Code passes that button an editor group as well as the file, and it was
+  taken for the method's name. The buttons above each method were not affected.
+
 ## 1.0.0
 
 The first release.

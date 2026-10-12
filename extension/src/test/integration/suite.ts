@@ -124,6 +124,19 @@ const checks: [string, (api: TestApi) => Promise<void>][] = [
     assert.equal(steps.check?.matches, true);
   }],
 
+  ["the ▶ in the editor title bar works, though VS Code passes it an editor group, not a method", async api => {
+    const file = path.join(repository, "extension/samples/csharp/TwoSumSorted.cs");
+    const document = await vscode.workspace.openTextDocument(file);
+    await vscode.window.showTextDocument(document);
+
+    const before = api.lastSteps();
+    // Exactly what VS Code passes from an editor/title menu item: the file, then the group.
+    await vscode.commands.executeCommand("dsaPlayback.visualize", document.uri, { groupId: 1 });
+    const steps = await waitFor(() => (api.lastSteps() !== before ? api.lastSteps() : undefined), "a run from the title bar");
+    assert.equal(steps.status, "Completed");
+    assert.equal(steps.check?.matches, true);
+  }],
+
   ["the walkthrough opens an editable copy of its sample", async () => {
     await vscode.commands.executeCommand("dsaPlayback.openSample", "LevelOrder.cs");
     const opened = vscode.window.activeTextEditor?.document.fileName ?? "";
