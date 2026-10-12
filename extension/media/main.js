@@ -110,7 +110,8 @@
   /** An error, with the way to its details when it is the visualizer's own failure. */
   function errorBanner(title, error) {
     return banner(title, escapeHtml(error.message), true) +
-      (error.internal ? '<button class="ghost" id="show-log">Show details</button>' : "") +
+      (error.internal ? '<button class="ghost" id="show-log">Show details</button>' +
+        '<button class="ghost" id="report-problem">Report a problem</button>' : "") +
       (error.code ? '<button id="install-python">Install Python</button>' : "");
   }
 
@@ -138,19 +139,86 @@
     return `<div class="banner ${isError ? "error" : ""}"><strong>${escapeHtml(title)}</strong>${body}</div>`;
   }
 
-  function card(label, value, note) {
+  function card(label, value, plain, note) {
     return `<div class="verdict">
       <div class="label">${label}</div>
       <div class="value ${value === "unknown" ? "unknown" : ""}">${value}</div>
+      <div class="plain">${escapeHtml(plain)}</div>
       <div class="note">${escapeHtml(note)}</div>
     </div>`;
   }
 
+  // ---- plain words -----------------------------------------------------------------
+
+  // Each class said without notation, as what happens when the input doubles: the one
+  // question a student can check against their own intuition.
+  const PLAIN_TIME = {
+    Constant: "The size of the input makes no difference: it takes about the same time however large the input is",
+    Logarithmic: "Doubling the input adds only about one more step",
+    Linear: "When the input doubles, this takes about twice as long",
+    Linearithmic: "When the input doubles, this takes a little more than twice as long",
+    Quadratic: "When the input doubles, this takes about four times as long",
+    Cubic: "When the input doubles, this takes about eight times as long",
+    Exponential: "Each extra item roughly doubles the time, so only small inputs finish"
+  };
+
+  const PLAIN_SPACE = {
+    Constant: "It holds about the same amount of memory however large the input is",
+    Logarithmic: "Doubling the input needs only a little more memory",
+    Linear: "It holds about twice as much when the input doubles",
+    Linearithmic: "It holds a little more than twice as much when the input doubles",
+    Quadratic: "It holds about four times as much when the input doubles",
+    Cubic: "It holds about eight times as much when the input doubles",
+    Exponential: "Each extra item roughly doubles the memory it holds"
+  };
+
+  // An unknown verdict says why, which depends on where it came from.
+  const PLAIN_UNKNOWN = {
+    measured: what => `The runs did not settle into a clear pattern, so how the ${what} grows could not be said.`,
+    code: what => `Reading the code alone could not tell how the ${what} grows; the measured reading is the one to trust.`
+  };
+
+  // How often a line runs, for each way its count can grow.
+  const PLAIN_RUNS = {
+    Constant: "a fixed number of times",
+    Logarithmic: "once each time what is left of the input is halved",
+    Linear: "once for every item",
+    Linearithmic: "once for every item at each level of halving",
+    Quadratic: "once for every pair of items",
+    Cubic: "once for every three items taken together",
+    Exponential: "again and again, branching at every call"
+  };
+
+  /**
+   * The time verdict without notation. Given the method's derivation, it also says which
+   * line causes it — the statement that dominates, with the same class as the verdict.
+   */
+  function plainTime(cls, derivation, source = "measured") {
+    const sentence = PLAIN_TIME[cls];
+    if (!sentence) return PLAIN_UNKNOWN[source]("time");
+    const statements = (derivation && derivation.statements) || [];
+    const dominant = ((derivation && derivation.dominant) || [])
+      .map(id => statements.find(s => s.id === id))
+      .find(s => s && s.cost === cls);
+    if (!dominant || cls === "Constant" || !PLAIN_RUNS[dominant.runs]) return sentence + ".";
+
+    const runs = `line ${dominant.line} runs ${PLAIN_RUNS[dominant.runs]}`;
+    // A line can cost more than it runs when each run calls into a library that does
+    // its own loop — a List's Contains scanning the list.
+    return dominant.runs === cls
+      ? `${sentence}, because ${runs}.`
+      : `${sentence}, because ${runs}, and each time it calls a library method that does more work as the input grows.`;
+  }
+
+  const plainSpace = (cls, source = "measured") => PLAIN_SPACE[cls] ? PLAIN_SPACE[cls] + "." : PLAIN_UNKNOWN[source]("memory");
+
   function verdicts(primary) {
     const label = value => CLASS_LABEL[value] || value;
     const parts = [`<div class="verdicts">
-      ${card("Time — measured", label(primary.empirical.best), primary.empirical.explanation)}
-      ${card("Time — read from the code", label(primary.static.class), primary.static.reasoning)}
+      ${card("Time — measured", label(primary.empirical.best),
+        plainTime(primary.empirical.best, primary.derivation), primary.empirical.explanation)}
+      ${card("Time — read from the code", label(primary.static.class),
+        plainTime(primary.static.class, null, "code"), primary.static.reasoning)}
     </div>`];
 
     // Space gets the same two readings as time: what the run actually did, and what the
@@ -159,8 +227,8 @@
     const space = primary.space;
     if (space) {
       parts.push(`<div class="verdicts">
-        ${card("Space — measured", label(space.likelyPeak), space.summary)}
-        ${card("Space — read from the code", label(space.static.class), space.static.reasoning)}
+        ${card("Space — measured", label(space.likelyPeak), plainSpace(space.likelyPeak), space.summary)}
+        ${card("Space — read from the code", label(space.static.class), plainSpace(space.static.class, "code"), space.static.reasoning)}
       </div>`);
     }
     return parts.join("");
@@ -627,8 +695,54 @@
           <input type="text" id="step-size" class="narrow" value="${(trace && trace.size) || st.size || 8}">` : ""}
         <button id="record">▶ Run</button>
         ${typedSomething ? '<button class="ghost" id="use-code">Use values from code</button>' : ""}
+        ${examples.length > 0 ? `<button class="ghost" id="run-examples" ${st.examples && st.examples.loading ? "disabled" : ""}>Run all examples</button>` : ""}
       </div>
+      ${examplesList(st, selected)}
       ${((trace && trace.exampleNotes) || []).map(n => `<div class="input-note">${escapeHtml(n)}</div>`).join("")}
+    </div>`;
+  }
+
+  /**
+   * Every example's result, one row each, from "Run all examples". A row opens that
+   * example in the run view.
+   */
+  function examplesList(st, selected) {
+    const examples = st.examples;
+    if (!examples) return "";
+    if (examples.loading) return '<p class="placeholder">Running every example…</p>';
+    if (examples.error) return errorBanner("The examples could not be run", examples.error);
+
+    const report = examples.report;
+    if (report.status !== "Completed") {
+      return banner(report.status === "CompileError" ? "Your code does not compile" : "The examples could not be run",
+        (report.errors || []).map(escapeHtml).join("<br>"), true) + showLineButton(report.errors, null);
+    }
+
+    const runs = report.runs;
+    const passed = runs.filter(run => run.matches === true).length;
+    const checked = runs.filter(run => run.matches !== null || run.status !== "Completed").length;
+    const summary = checked === 0
+      ? "None of the examples gives an expected output to check against."
+      : `${passed} of ${checked} example${checked === 1 ? "" : "s"} match${checked === 1 ? "es" : ""} the expected output.`;
+
+    const rows = runs.map(run => {
+      const failed = run.status !== "Completed";
+      const mark = failed || run.matches === false ? '<span class="mark fail" aria-label="does not match">✗</span>'
+        : run.matches ? '<span class="mark pass" aria-label="matches">✓</span>'
+        : '<span class="mark none" aria-label="nothing to compare">–</span>';
+      const expected = run.expected === null ? '<span class="muted">not given</span>'
+        : `<code>${escapeHtml(run.expected)}</code>${run.anyOrder ? ' <span class="muted">any order</span>' : ""}`;
+      const actual = failed ? `<span class="input-error">${escapeHtml(run.error || run.status)}</span>`
+        : run.actual === null ? '<span class="muted">nothing returned</span>'
+        : `<code>${escapeHtml(run.actual)}</code>`;
+      return `<tr class="example-row ${run.index === selected ? "current" : ""}" tabindex="0" data-example="${run.index}"
+                 title="Watch ${escapeHtml(run.label)} run">
+        <td>${mark}</td><td>${escapeHtml(run.label)}</td><td>${expected}</td><td>${actual}</td></tr>`;
+    }).join("");
+
+    return `<div class="example-results">
+      <div class="summary">${escapeHtml(summary)}</div>
+      <table><thead><tr><th></th><th>Example</th><th>Expected</th><th>Got</th></tr></thead><tbody>${rows}</tbody></table>
     </div>`;
   }
 
@@ -881,6 +995,9 @@
     const installPython = document.getElementById("install-python");
     if (installPython) installPython.addEventListener("click", () => { if (vscode) vscode.postMessage({ type: "installPython" }); });
 
+    const reportButton = document.getElementById("report-problem");
+    if (reportButton) reportButton.addEventListener("click", () => { if (vscode) vscode.postMessage({ type: "reportProblem" }); });
+
     const showLogButton = document.getElementById("show-log");
     if (showLogButton) showLogButton.addEventListener("click", () => { if (vscode) vscode.postMessage({ type: "showLog" }); });
 
@@ -917,6 +1034,22 @@
     if (example) example.addEventListener("change", () =>
       // Choosing an example means using its values, so anything typed is set aside.
       requestRun({ example: Number(example.value), size: currentSize() }));
+
+    const runExamples = document.getElementById("run-examples");
+    if (runExamples) runExamples.addEventListener("click", () => {
+      state.stepping = { ...(state.stepping || {}), examples: { loading: true } };
+      render();
+      if (vscode) vscode.postMessage({ type: "runExamples" });
+    });
+
+    // A row opens its example in the run view, from the keyboard too.
+    app.querySelectorAll(".example-row").forEach(row => {
+      const open = () => requestRun({ example: Number(row.dataset.example), size: currentSize() });
+      row.addEventListener("click", open);
+      row.addEventListener("keydown", event => {
+        if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(); }
+      });
+    });
 
     const useCode = document.getElementById("use-code");
     if (useCode) useCode.addEventListener("click", () =>
@@ -999,6 +1132,14 @@
         state.stepping = { ...st, loading: false, error: { message: message.message, internal: message.internal, code: message.code } };
         if (state.tab === "steps") render();
         return;
+      case "examples":
+        state.stepping = { ...st, examples: { report: message.report } };
+        if (state.tab === "steps") render();
+        return;
+      case "examplesError":
+        state.stepping = { ...st, examples: { error: { message: message.message, internal: message.internal, code: message.code } } };
+        if (state.tab === "steps") render();
+        return;
       case "loading":
         state = { ...state, response: null, measuring: true, measureError: null };
         if (state.tab !== "steps") render();
@@ -1022,6 +1163,9 @@
     state.stepping = { size: trace.size, trace, index: 0, loading: false, error: null, draft: {} };
     render();
   };
+
+  // Test entry point: the plain-words sentences, for every class.
+  window.__plain = { time: plainTime, space: plainSpace, classes: Object.keys(CLASS_LABEL) };
 
   // Development and test entry point: move to a step as the transport would.
   window.__goto = index => setStep(index);

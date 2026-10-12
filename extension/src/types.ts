@@ -167,6 +167,8 @@ export interface JobResponse {
   primary: MeasurementResult | null;
   comparison: MeasurementResult | null;
   steps: StepTrace | null;
+  /** Set when every example was asked for. */
+  examples?: ExampleReport | null;
   source: string | null;
   comparisonSource: string | null;
   label: string | null;
@@ -185,8 +187,10 @@ export interface EntryPoint {
   measurable: boolean;
   /** 1-based line of the method's name. */
   line: number;
-  /** Why it cannot be measured, in a sentence the user can act on. */
+  /** Why it cannot be run, in a sentence the user can act on. */
   reason: string | null;
+  /** Every parameter can be generated, so growth can be measured; otherwise it runs only on examples. */
+  generatable: boolean;
   /** "Solution.TwoSum" — unambiguous even when classes share a method name. */
   qualified: string;
   signature: string;
@@ -205,6 +209,8 @@ export interface JobRequest {
   values?: (string | null)[];
   /** Which example found in the code to use; negative means none. */
   example?: number;
+  /** Run every example found in the code instead of recording one run. */
+  allExamples?: boolean;
   /** The Python interpreter for a Python file. */
   python?: string;
   compareFile?: string;
@@ -322,4 +328,24 @@ export interface OutputCheck {
   actual: string;
   matches: boolean;
   anyOrder: boolean;
+}
+
+/** One example's result from "Run all examples". `matches` is null when there is nothing to compare. */
+export interface ExampleRun {
+  index: number;
+  label: string;
+  line: number;
+  status: RunStatus;
+  expected: string | null;
+  actual: string | null;
+  matches: boolean | null;
+  anyOrder: boolean;
+  error: string | null;
+  errorLine: number | null;
+}
+
+export interface ExampleReport {
+  status: RunStatus;
+  runs: ExampleRun[];
+  errors: string[];
 }

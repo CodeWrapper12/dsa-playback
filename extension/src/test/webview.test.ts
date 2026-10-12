@@ -230,6 +230,31 @@ test("choosing another example runs it, setting typed values aside", () => {
   assert.deepEqual(posted.find(m => m.type === "run"), { type: "run", example: 1 });
 });
 
+test("run all examples lists each result, and a row opens that example", () => {
+  const file = sample("TwoSumExamples.cs");
+  const recorded = measure({ file, entry: "Solution.TwoSum", stepSize: 8 }) as { steps: unknown };
+  const { dom, document, posted, errors, text } = showRun(recorded.steps);
+
+  document.getElementById("run-examples")!.click();
+  assert.deepEqual(posted.at(-1), { type: "runExamples" });
+  assert.match(text(), /Running every example/);
+
+  const answer = measure({ file, entry: "Solution.TwoSum", allExamples: true }) as { examples: unknown };
+  dom.window.postMessage({ type: "examples", report: answer.examples }, "*");
+  return new Promise<void>(resolve => setTimeout(() => {
+    assert.deepEqual(errors, []);
+    const rows = Array.from(document.querySelectorAll<HTMLElement>(".example-row"));
+    assert.deepEqual(rows.map(r => r.querySelector(".mark")!.textContent), ["✓", "✗", "✗"]);
+    assert.match(rows[1].textContent!, /\[2,1\][\s\S]*\[1,2\]/);
+    assert.match(rows[2].textContent!, /Your code threw IndexOutOfRangeException/);
+    assert.match(text(), /1 of 3 examples match the expected output/);
+
+    rows[1].click();
+    assert.deepEqual(posted.at(-1), { type: "run", example: 1 });
+    resolve();
+  }, 0));
+});
+
 test("an input that cannot be read is marked under its own box, and nothing runs", () => {
   const recorded = measure({
     file: walkthrough("TwoSumSorted.cs"), entry: "Solution.TwoSum", stepSize: 8, values: ["[2,7,", null]
@@ -580,4 +605,61 @@ test("rows that go to a line can be reached and used from the keyboard", () => {
   assert.equal(row.getAttribute("tabindex"), "0");
   row.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Enter" }));
   assert.equal(posted.filter(m => m.type === "reveal").length, 1);
+});
+
+// ---- plain words ---------------------------------------------------------------------
+
+type Plain = {
+  time(cls: string, derivation: unknown, source?: string): string;
+  space(cls: string, source?: string): string;
+  classes: string[];
+};
+
+const NOTATION = /O\(|n²|n³|2ⁿ|log n|·|\bn\b/;
+
+test("every complexity class has a plain sentence for time and for space, with no notation", () => {
+  const plain = (load().dom.window as unknown as { __plain: Plain }).__plain;
+  assert.deepEqual([...plain.classes],
+    ["Constant", "Logarithmic", "Linear", "Linearithmic", "Quadratic", "Cubic", "Exponential", "Unknown"]);
+
+  const seen = new Set<string>();
+  for (const cls of plain.classes) {
+    for (const sentence of [plain.time(cls, null), plain.time(cls, null, "code"), plain.space(cls), plain.space(cls, "code")]) {
+      assert.ok(sentence.length > 20, `${cls}: "${sentence}"`);
+      assert.doesNotMatch(sentence, NOTATION, `${cls}: "${sentence}"`);
+      assert.match(sentence, /\.$/, `${cls}: "${sentence}"`);
+      seen.add(sentence);
+    }
+  }
+  // Each class says something different: the same sentence for two would teach nothing.
+  assert.equal(seen.size, 7 * 2 + 4, "distinct sentences");
+  assert.equal(plain.time("Quadratic", null), "When the input doubles, this takes about four times as long.");
+  assert.equal(plain.time("Logarithmic", null), "Doubling the input adds only about one more step.");
+  assert.equal(plain.space("Linear"), "It holds about twice as much when the input doubles.");
+});
+
+test("the measured time says which line causes it", () => {
+  const { document } = exercise(measure({ file: sample("SortParamSample.cs"), entry: "SortParamSample.Sort" }), "Sort");
+  document.querySelector<HTMLElement>('.tab[data-tab="cost"]')!.click();
+  const sentences = Array.from(document.querySelectorAll(".verdict .plain")).map(p => p.textContent);
+  assert.equal(sentences.length, 4, "time and space, measured and read from the code");
+  assert.equal(sentences[0],
+    "When the input doubles, this takes about four times as long, because line 10 runs once for every pair of items.");
+});
+
+test("a line that costs more than it runs blames the library call inside it", () => {
+  const { document } = exercise(measure({ file: sample("leetcode/DedupeWithList.cs"), entry: "Solution.CountDistinct" }), "CountDistinct");
+  document.querySelector<HTMLElement>('.tab[data-tab="cost"]')!.click();
+  assert.equal(document.querySelector(".verdict .plain")!.textContent,
+    "When the input doubles, this takes about four times as long, because line 8 runs once for every item, " +
+    "and each time it calls a library method that does more work as the input grows.");
+});
+
+test("a measured Python solution gets the same plain sentences", () => {
+  const { document } = exercise(measure({ file: pythonSample("dedupe_with_list.py"), entry: "Solution.dedupe", strategy: "Distinct" }), "dedupe");
+  document.querySelector<HTMLElement>('.tab[data-tab="cost"]')!.click();
+  const sentences = Array.from(document.querySelectorAll(".verdict .plain")).map(p => p.textContent ?? "");
+  assert.equal(sentences.length, 4);
+  assert.match(sentences[0], /^When the input doubles, this takes about four times as long, because line \d+ runs/);
+  for (const sentence of sentences) assert.doesNotMatch(sentence, NOTATION, sentence);
 });

@@ -32,3 +32,27 @@ public sealed record FoundExample(
 
 /// <summary>Everything found, plus calls that were seen but could not be used at all.</summary>
 public sealed record ExampleSearch(IReadOnlyList<FoundExample> Examples, IReadOnlyList<string> Notes);
+
+/// <summary>
+/// One example run for the "Run all examples" list: what it gave back against what its
+/// comment expected. <see cref="Matches"/> is null when there is nothing to compare —
+/// no Output, an Output in prose, or a run that did not finish.
+/// </summary>
+public sealed record ExampleRun(int Index, string Label, int Line, RunStatus Status)
+{
+    public string? Expected { get; init; }
+    public string? Actual { get; init; }
+    public bool? Matches { get; init; }
+    public bool AnyOrder { get; init; }
+
+    /// <summary>Why it did not finish, or which value could not be read, in plain words.</summary>
+    public string? Error { get; init; }
+    public int? ErrorLine { get; init; }
+}
+
+/// <summary>Every example in a file, run one after another.</summary>
+public sealed record ExampleReport(RunStatus Status, IReadOnlyList<ExampleRun> Runs)
+{
+    /// <summary>Why nothing ran: the code does not compile, or the method was not found.</summary>
+    public IReadOnlyList<string> Errors { get; init; } = Array.Empty<string>();
+}

@@ -1,12 +1,16 @@
-# DSA Playback
+# DSA Playback — Algorithm Visualizer & Big-O Explainer
 
 Watch your data-structures-and-algorithms code run, one step at a time — and see why it
 has the complexity it has. For C# and Python, written the way LeetCode writes it.
 
-![A linked list reversed in Python: the arrows rewire one by one, labelled by previous, head and nxt](images/reverse.gif)
+- **Runs on your machine.** Nothing to set up for C#: the engine is inside the
+  extension. For Python, the Python you already have is used (3.9 or later).
+- **No sign-in.** No account, and nothing is collected about you.
+- **Your code never leaves your computer.**
+- **Explains *why* a solution is O(n²), line by line** — *"When the input doubles, this
+  takes about four times as long, because line 10 runs once for every pair of items."*
 
-Nothing to set up for C#: the engine is inside the extension. For Python, the Python you
-already have is used (3.9 or later). Either way, your code never leaves your machine.
+![A linked list reversed in Python: the arrows rewire one by one, labelled by previous, head and nxt](images/reverse.gif)
 
 ## Watch it run
 
@@ -63,8 +67,9 @@ if __name__ == "__main__":
     print(Solution().twoSum([2, 7, 11, 15], 9))
 ```
 
-Several examples? Pick one from the list. No example? Values are generated for you at a
-size you choose. Want something else? Type it in LeetCode's format —
+Several examples? Pick one from the list, or press **Run all examples** to check every
+one at once — each gets a ✓ or ✗, and clicking it plays that example. No example?
+Values are generated for you at a size you choose. Want something else? Type it in LeetCode's format —
 `[2,7,11,15]`, `"abcabcbb"`, `[[1,0],[0,1]]`, or a tree as `[3,9,20,null,null,15,7]` —
 and press Enter.
 
@@ -75,6 +80,8 @@ and press Enter.
 
 **Complexity** shows:
 
+- the answer in plain words first — *"When the input doubles, this takes about four
+  times as long"* — then the notation
 - how often each line ran and the memory it allocated, written beside the line
 - the line that sets the method's class, and how many times it runs (*≈ 0.5·n² times*)
 - work hidden inside library calls — `List.Contains` in C#, or `x in some_list` in
@@ -88,6 +95,16 @@ and press Enter.
   plays up to that line, and **Show line** takes you there.
 - An endless loop or a missing base case is stopped and explained, never left hanging.
 - A typed value that cannot be read is marked under its own box, with the position.
+- A method taking a type that cannot be generated — a `double`, a `List<string>` —
+  runs on the values in its example. Without an example, it says to add one.
+- The visualizer itself fails: **Report a Problem** opens a GitHub issue filled in with
+  the versions and the recent log, for you to read before sending. Your code is never
+  included.
+
+## Questions
+
+Ask in [Discussions](https://github.com/CodeWrapper12/dsa-playback/discussions). If
+DSA Playback helps you, a rating helps other students find it.
 
 ## Get started
 

@@ -51,13 +51,17 @@ export class EntryPointLenses implements vscode.CodeLensProvider {
       }
 
       const target = [document.uri, entry.qualified];
+      const visualize = new vscode.CodeLens(range, {
+        title: "$(play) Visualize",
+        tooltip: `Watch ${entry.name} run, one step at a time`,
+        command: "dsaPlayback.visualize",
+        arguments: target
+      });
+      // Measuring growth needs generated inputs; a method that runs only on its
+      // examples gets no button that could only fail.
+      if (!entry.generatable) return [visualize];
       return [
-        new vscode.CodeLens(range, {
-          title: "$(play) Visualize",
-          tooltip: `Watch ${entry.name} run, one step at a time`,
-          command: "dsaPlayback.visualize",
-          arguments: target
-        }),
+        visualize,
         new vscode.CodeLens(range, {
           title: "$(graph) Complexity",
           tooltip: `How ${entry.name}'s time and memory grow with the input`,

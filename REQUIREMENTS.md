@@ -56,11 +56,14 @@ author practising in C# remains a user.
 
 ## Non-goals
 
-- Java, C++, JavaScript or any other language.
+- JavaScript or other languages beyond those planned below. **Changed in v3:** C++, Rust
+  and Java are now planned, in that order (Phase 7).
 - A debugger: no breakpoints, watch expressions or editing values mid-run. The run view
   replays a recorded run.
 - Accounts, hosting, sharing, classrooms or progress tracking. Everything runs locally.
-- Telemetry or analytics of any kind.
+- Telemetry or analytics of any kind. Code never leaves the machine **by default**.
+  **Changed in v3:** an optional AI explanation of each step, off by default, may send
+  the code to the student's own Copilot when they turn it on (Phase 6).
 - A problem catalogue. Students bring their own problems.
 - VS Code for the web (vscode.dev). The engines need a native process.
 - Bundling Python. Students who write Python already have it (see Open questions).
@@ -238,6 +241,8 @@ taken on the Marketplace.
 | 25 | Met. | `HeapRecorderTests.Ten_thousand_steps_are_kept_by_default`. Panel tests: *a long array is windowed*; *a capped run says so* |
 | 26 | Met. In the browser harness, stepping with one frame between steps: 1,000-element array median 3.4 ms, worst 14.9 ms; 200-node tree median 6.3 ms, worst 8.7 ms. Stepping hundreds of times with no pause at all shows the browser's own garbage-collection pauses, which real playback (≥ 175 ms between steps) does not trigger. | Browser harness, by hand |
 | 27 | Met, in both languages. | `StepInputTests`, `PythonTests.An_exception_in_the_students_code_names_its_line`. Panel test: *an exception names the line* |
+| 28 | Met: the v1 C# tests run unchanged in the engine suite. | Engine test suite (359 tests) |
+| 29 | Not met in v2 — missed, and carried into v3 as criterion 35, where it is met. | See 35 |
 | 30 | Met. Measured class, derivation and per-line counts as for C#; hidden cost charged for `in` on a list, tuple or string, `insert`/`pop` by position, `remove`, `index`, `count`, slicing, `+=` on a string, `[…] * n`, `sorted`/`sort`, `min`/`max`/`sum`, heapq and bisect, and every comprehension's loop. Space is the peak held, measured directly with tracemalloc. The reading of the code covers loop nesting, halving loops, two-pointer loops, list scans, worklist loops and the recursion kinds, and says *unknown* with a reason otherwise. Python 3.9 to 3.13 checked; 3.8 is refused with a clear message. | `PythonTests` (32 tests), panel tests for every Python sample |
 | 31 | Met: *Show line*, *Show details*, and *Install Python* / *Select Interpreter* when Python is missing or older than 3.9. | `PythonTests.No_Python_is_reported_with_a_code…`. Panel test: *the visualizer's own failure offers its details* |
 | 32 | Met: accents tuned per theme kind and checked at 4.5:1 or better against each default background; high-contrast themes outline every shape; every control is reachable by Tab with a visible focus ring, and keeps focus while stepping. | `contrast.test.ts` (4 themes). Panel tests: *a keyboard user keeps focus*; *rows that go to a line can be used from the keyboard*. Light and high-contrast checked by hand in the browser harness. |
@@ -285,3 +290,101 @@ precompiled, so it is about twice as fast to start.
 - **Python's recursion limit** is 3,000 calls, not C#'s 20,000. With tracemalloc running,
   CPython's recursion slows with the square of its depth, so a runaway recursion has to
   be stopped early to be stopped quickly.
+
+
+---
+
+# v3 — after release
+
+DSA Playback 1.0 is published. What holds it back now is not features but being found
+and trusted: installs and reviews decide where it appears in Marketplace search, and it
+has neither yet. One promised item was also missed: criterion 29, plain words.
+
+## Phase 5 — found and trusted (planned in detail)
+
+34. **Listing written for search.** The display name is
+    *"DSA Playback — Algorithm Visualizer & Big-O Explainer"*. The keywords grow to the
+    Marketplace's maximum of 30 and include *algorithm visualizer*, *time complexity*,
+    *space complexity*, *recursion tree*, *linked list* and *step by step*. The README's
+    first lines say:
+    - it runs on your machine
+    - there is no sign-in
+    - your code never leaves your computer
+    - it explains *why* a solution is O(n²), line by line
+
+    No competitor is named. Checked by `verify-package`.
+35. **Plain words (criterion 29, missed in v2).** Every time and space verdict, for C#
+    and Python, is followed by a sentence with no notation, for example:
+    - *"When the input doubles, this takes about four times as long, because line 10
+      runs once for every pair of items."*
+    - *"Doubling the input adds about one more step."*
+    - *"It holds about twice as much when the input doubles."*
+
+    Every complexity class has its sentence, and each is tested.
+36. **One rating prompt.** After five successful runs, one notification asks for a
+    rating, with three choices:
+    - *Rate* opens the review page, and the prompt is never shown again.
+    - *Later* asks again after twenty more runs.
+    - *Don't ask again* stops it for good.
+
+    Counted locally. Nothing is sent anywhere until the student clicks *Rate*.
+37. **Report a problem.** The command *DSA Playback: Report a Problem*, and a button on
+    every "the visualizer stopped" message, opens a new GitHub issue pre-filled with:
+    - the extension and VS Code versions
+    - the operating system and the language
+    - the last 50 log lines, with the home folder shown as `~`
+
+    The student reads it in GitHub's own form before submitting. Their source code is
+    never included.
+38. **Questions have a home.** GitHub Discussions is turned on, and the listing's `qna`
+    points there.
+39. **C# runs whenever the example supplies the values.** A method taking a type the
+    engine cannot generate (`double`, `char`, `List<string>`, `IList<IList<string>>`…)
+    is offered and runs when an example comment or a call gives every value. Without an
+    example, it says to add one. Python already behaves this way.
+40. **Run all examples.** A *Run all examples* button in the Run tab:
+    - runs every example found in the file
+    - lists each with its expected and actual output and ✓ or ✗ (in any order where
+      the problem allows it), and the error where one occurred
+    - opens the run view on a row when it is clicked
+
+    Tested with a file whose second example fails.
+41. **The walkthrough is checked by hand** inside VS Code, in a light and a dark theme.
+    This is the publisher's own check, not an automated one.
+
+Released as 1.1.0 through the existing release workflow.
+
+### Phase 5 status
+
+| # | Status | Checked by |
+|---|---|---|
+| 34 | Met in the package: the name, 30 keywords, and the README's opening four promises. No other product is named. | `verify-package`: *the name says what it is*, *30 keywords*, *the README opens with…*, *no other product is named* |
+| 35 | Met, for C# and Python: a sentence under every verdict card, and the measured time names the line that causes it. | Panel tests: *every complexity class has a plain sentence…*, *the measured time says which line causes it*, *a line that costs more than it runs blames the library call*, *a measured Python solution gets the same plain sentences* |
+| 36 | Met: after 5 successful runs; Later asks again after 20; closing counts as Later; counted in VS Code's own storage. | `rating.test.ts` (6 tests) |
+| 37 | Met: a command, a button on the visualizer's own failures (notification and panel), versions, system, language, last 50 log lines with the home folder as `~`, shortened to fit an address. Opened with VS Code's string form of `openExternal`, because a `vscode.Uri` re-encodes the `&` between title and body. | `report.test.ts` (5 tests); integration: *a problem report carries the versions…* |
+| 38 | Partly: `qna` points at Discussions. Turning Discussions on is a repository setting the publisher switches on. | `verify-package`: *questions go to Discussions* |
+| 39 | Met: `double`, `char`, and arrays and lists of them, nested, run when an example or call gives the value; without one, the reason says to add one. Such a method gets ▶ Visualize but no Complexity button. | `ScannerAgreementTests` (5 new), `StepInputTests.A_method_taking_types_that_cannot_be_generated…`; integration: *a method taking a double runs from its example* |
+| 40 | Met, for C# and Python, against `samples/TwoSumExamples.cs`, whose second example fails and third throws. | `StepInputTests.Every_example_is_run…`, `PythonTests.Every_example_is_run…`; panel test: *run all examples lists each result*; integration: *Run all examples lists every example's result* |
+| 41 | Open: the publisher's own check. | By hand |
+
+## Phase 6 — reach (outline; planned in detail when it starts)
+
+- Files opened through the official LeetCode extension visualize, including their
+  examples when it is set to put the description in a comment.
+- Windows on ARM and Linux on ARM packages.
+- LeetCode design problems — a class and a list of calls, as in LRU Cache.
+- An optional AI explanation of each step through VS Code's language-model API, using
+  the student's own Copilot. It is off by default, and the setting says plainly that
+  turning it on sends the code to Copilot.
+
+## Phase 7 — new languages (outline)
+
+C++, then Rust, then Java. Each needs the student's own compiler: g++ or clang, rustc,
+or a JDK.
+
+The planned approach for C++ and Rust shares most of its code:
+- **Complexity** comes from the compiler's own line counting (clang's and rustc's coverage
+  instrumentation counts every line exactly), plus a counting memory allocator.
+- **The run view** is recorded through a debugger.
+
+Java uses its own debugging interface. Each language is planned and approved separately.

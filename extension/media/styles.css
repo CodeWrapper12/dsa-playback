@@ -97,6 +97,7 @@ body {
 }
 .verdict .value { font-size: 1.5em; font-weight: 600; margin: 2px 0 4px; }
 .verdict .value.unknown { color: var(--vscode-descriptionForeground); font-weight: 500; }
+.verdict .plain { line-height: 1.45; margin-bottom: 6px; }
 .verdict .note { font-size: 0.88em; color: var(--vscode-descriptionForeground); line-height: 1.45; }
 
 .banner {
@@ -398,7 +399,24 @@ details.arguments summary { cursor: pointer; color: var(--vscode-descriptionFore
 .check.pass { border-left-color: var(--vscode-testing-iconPassed, #3fa34d); }
 .check.fail { border-left-color: var(--vscode-testing-iconFailed, var(--vscode-errorForeground)); }
 
-button.show-line, #show-log { margin: -4px 0 12px; }
+button.show-line, #show-log, #report-problem { margin: -4px 0 12px; }
+
+/* ---- every example's result ------------------------------------------------------ */
+
+.example-results { margin: 10px 0 14px; }
+.example-results .summary { font-size: 0.92em; }
+.example-results table { margin-top: 6px; }
+.example-results td, .example-results th { text-align: left; vertical-align: top; }
+.example-results td:first-child { width: 22px; }
+.example-results code { font-family: var(--vscode-editor-font-family); overflow-wrap: anywhere; }
+.example-results .muted { color: var(--vscode-descriptionForeground); }
+tr.example-row { cursor: pointer; }
+tr.example-row:hover { background: var(--vscode-list-hoverBackground); }
+tr.example-row.current { background: var(--vscode-list-inactiveSelectionBackground); }
+.mark { font-weight: 700; }
+.mark.pass { color: var(--vscode-testing-iconPassed, #3fa34d); }
+.mark.fail { color: var(--vscode-testing-iconFailed, var(--vscode-errorForeground)); }
+.mark.none { color: var(--vscode-descriptionForeground); }
 
 /* ---- animated run view ---------------------------------------------------------- */
 

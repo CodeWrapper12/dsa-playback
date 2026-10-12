@@ -36,30 +36,101 @@ public static class Stepper
             var parameters = SolutionParameter.From(solution.Parameters);
             var search = ExampleFinder.Find(analysis.Tree.GetRoot(), entryMethod, parameters.Select(p => p.Name).ToList());
 
-            return RecordWith(parameters, search, inputs, size, maxSteps, strategy, values, example, MethodsOf(analysis), arguments =>
-            {
-                var recorder = new HeapRecorder(solution.Statements);
-                var trace = Runner.Invoke(solution, arguments, budget, recording: new StepRecording(recorder, maxSteps));
-
-                var errors = trace.Errors.ToList();
-                if (trace.RecorderFailure is not null)
-                {
-                    // The run is unaffected; only the recording stopped. Said plainly, with the
-                    // details left for the log rather than shown as if the code had failed.
-                    Console.Error.WriteLine($"Step recorder failed: {trace.RecorderFailure}");
-                    errors.Add($"The recording stopped after {recorder.Steps.Count} steps because of a problem in the visualizer. " +
-                               "Your code itself ran to the end.");
-                }
-
-                return new RecordedRun(trace.Status, recorder.Steps, recorder.Returns, solution.Statements, trace.StepsTruncated,
-                    recorder.Steps.Count > 0 ? trace.TotalBytesAllocated : 0, errors, trace.ErrorLine,
-                    trace.Status == RunStatus.Completed ? Literals.Format(trace.ReturnObject) : null);
-            });
+            return RecordWith(parameters, search, inputs, size, maxSteps, strategy, values, example, MethodsOf(analysis),
+                CSharpRun(solution, budget, maxSteps));
         }
         finally
         {
             if (!solution.Abandoned) solution.Dispose();
         }
+    }
+
+    /// <summary>
+    /// Runs every example in a C# file against one build. Each run records a single step:
+    /// only its result is wanted, and recording the rest would cost time for nothing.
+    /// </summary>
+    public static ExampleReport RunExamples(SourceAnalysis analysis, string entryMethod, long budget = Runner.DefaultBudget)
+    {
+        var outcome = Runner.Compile(analysis, entryMethod, instrument: true, stepping: true);
+        if (!outcome.Success) return new ExampleReport(outcome.Status, Array.Empty<ExampleRun>()) { Errors = outcome.Errors };
+
+        var solution = outcome.Solution!;
+        try
+        {
+            var parameters = SolutionParameter.From(solution.Parameters);
+            var search = ExampleFinder.Find(analysis.Tree.GetRoot(), entryMethod, parameters.Select(p => p.Name).ToList());
+            var methods = MethodsOf(analysis);
+            var run = CSharpRun(solution, budget, ResultOnlySteps);
+
+            // A run that timed out leaves this build unusable, so later examples are
+            // reported as not run rather than as failures of the student's code.
+            return RunEach(search, index => solution.Abandoned
+                ? null
+                : RecordWith(parameters, search, null, DefaultSize, ResultOnlySteps, null, null, index, methods, run));
+        }
+        finally
+        {
+            if (!solution.Abandoned) solution.Dispose();
+        }
+    }
+
+    /// <summary>A run of the compiled C# solution, recording at most <paramref name="maxSteps"/> steps.</summary>
+    private static Func<object?[], RecordedRun> CSharpRun(CompiledSolution solution, long budget, int maxSteps)
+        => arguments =>
+        {
+            var recorder = new HeapRecorder(solution.Statements);
+            var trace = Runner.Invoke(solution, arguments, budget, recording: new StepRecording(recorder, maxSteps));
+
+            var errors = trace.Errors.ToList();
+            if (trace.RecorderFailure is not null)
+            {
+                // The run is unaffected; only the recording stopped. Said plainly, with the
+                // details left for the log rather than shown as if the code had failed.
+                Console.Error.WriteLine($"Step recorder failed: {trace.RecorderFailure}");
+                errors.Add($"The recording stopped after {recorder.Steps.Count} steps because of a problem in the visualizer. " +
+                           "Your code itself ran to the end.");
+            }
+
+            return new RecordedRun(trace.Status, recorder.Steps, recorder.Returns, solution.Statements, trace.StepsTruncated,
+                recorder.Steps.Count > 0 ? trace.TotalBytesAllocated : 0, errors, trace.ErrorLine,
+                trace.Status == RunStatus.Completed ? Literals.Format(trace.ReturnObject) : null);
+        };
+
+    /// <summary>
+    /// Steps kept per run when only the result matters. Recording stops there; the run
+    /// itself goes on to the end.
+    /// </summary>
+    private const int ResultOnlySteps = 1;
+
+    /// <summary>
+    /// Each example's result, in file order. <paramref name="record"/> returns null for an
+    /// example that could not be run at all.
+    /// </summary>
+    private static ExampleReport RunEach(ExampleSearch search, Func<int, StepTrace?> record)
+    {
+        var runs = search.Examples.Select((example, index) =>
+        {
+            var row = new ExampleRun(index, example.Label, example.Line, RunStatus.Completed)
+            {
+                Expected = example.Expected,
+                AnyOrder = example.AnyOrder
+            };
+
+            if (record(index) is not { } trace)
+                return row with { Status = RunStatus.TimedOut, Error = "Not run: an earlier example ran out of time." };
+
+            bool finished = trace.Status == RunStatus.Completed;
+            return row with
+            {
+                Status = trace.Status,
+                Actual = trace.ReturnValue,
+                Matches = trace.Check?.Matches,
+                Error = finished ? null : string.Join(" ", trace.Errors),
+                ErrorLine = trace.ErrorLine
+            };
+        }).ToList();
+
+        return new ExampleReport(RunStatus.Completed, runs);
     }
 
     /// <summary>A Python function's recorded run, through the same inputs, examples and checks as C#.</summary>
@@ -77,12 +148,40 @@ public static class Stepper
     {
         var solution = Python.PythonSolution.Describe(host, source, entry);
         if (solution.CompileError is { } error) return Failed(RunStatus.CompileError, new[] { error }, size);
-        if (solution.EntryInfo is null) return Failed(RunStatus.CompileError, new[] { $"No function named '{entry}' was found." }, size);
+        if (solution.EntryInfo is null) return Failed(RunStatus.CompileError, new[] { NoFunction(entry) }, size);
 
         var search = solution.Examples();
         var parameters = solution.Parameters(search);
 
-        return RecordWith(parameters, search, inputs, size, maxSteps, strategy, values, example, solution.Description.Methods, arguments =>
+        return RecordWith(parameters, search, inputs, size, maxSteps, strategy, values, example, solution.Description.Methods,
+            PythonRun(host, solution, source, entry, parameters, budget, maxSteps));
+    }
+
+    /// <summary>Runs every example in a Python file, each recording a single step.</summary>
+    public static ExampleReport RunExamplesPython(Python.PythonHost host, string source, string entry,
+        long budget = Python.PythonSolution.DefaultBudget)
+    {
+        var solution = Python.PythonSolution.Describe(host, source, entry);
+        if (solution.CompileError is { } error)
+            return new ExampleReport(RunStatus.CompileError, Array.Empty<ExampleRun>()) { Errors = new[] { error } };
+        if (solution.EntryInfo is null)
+            return new ExampleReport(RunStatus.CompileError, Array.Empty<ExampleRun>()) { Errors = new[] { NoFunction(entry) } };
+
+        var search = solution.Examples();
+        var parameters = solution.Parameters(search);
+        var run = PythonRun(host, solution, source, entry, parameters, budget, ResultOnlySteps);
+
+        // Each Python run is its own process, so a timeout leaves nothing behind to skip.
+        return RunEach(search, index => RecordWith(parameters, search, null, DefaultSize, ResultOnlySteps, null, null, index,
+            solution.Description.Methods, run));
+    }
+
+    private static string NoFunction(string entry) => $"No function named '{entry}' was found.";
+
+    /// <summary>A run of the Python function, recording at most <paramref name="maxSteps"/> steps.</summary>
+    private static Func<object?[], RecordedRun> PythonRun(Python.PythonHost host, Python.PythonSolution solution,
+        string source, string entry, IReadOnlyList<SolutionParameter> parameters, long budget, int maxSteps)
+        => arguments =>
         {
             Python.PythonSteps run;
             try
@@ -108,8 +207,7 @@ public static class Stepper
 
             return new RecordedRun(run.Status, run.Steps, run.Returns, run.Statements, run.Truncated, run.TotalAllocated,
                 run.Errors, run.ErrorLine, run.ReturnValue);
-        });
-    }
+        };
 
     /// <summary>What one recorded run produced, whichever language ran it.</summary>
     private sealed record RecordedRun(

@@ -368,6 +368,43 @@ public class PythonTests
         }
     }
 
+    [Fact]
+    public void Every_example_is_run_and_each_is_checked_on_its_own()
+    {
+        string file = Write(""""
+            from typing import List
+
+            class Solution:
+                def twoSum(self, nums: List[int], target: int) -> List[int]:
+                    """
+                    Example 1:
+                    Input: nums = [2,7,11,15], target = 9
+                    Output: [0,1]
+
+                    Example 2:
+                    Input: nums = [3,2,4], target = 6
+                    Output: [2,1]
+
+                    Example 3:
+                    Input: nums = [], target = 1
+                    Output: []
+                    """
+                    seen = {}
+                    for i, x in enumerate(nums):
+                        if target - x in seen:
+                            return [seen[target - x], i]
+                        seen[x] = i
+                    return [nums[0]]
+            """");
+
+        var report = Job(new JobRequest { File = file, Entry = "Solution.twoSum", AllExamples = true }).Examples!;
+
+        Assert.Equal(new bool?[] { true, false, null }, report.Runs.Select(r => r.Matches));
+        Assert.Equal("[1,2]", report.Runs[1].Actual);
+        Assert.Equal(RunStatus.RuntimeError, report.Runs[2].Status);
+        Assert.StartsWith("Your code threw IndexError", report.Runs[2].Error);
+    }
+
     private static string? Which(string name)
         => (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator)
             .Select(d => Path.Combine(d, name)).FirstOrDefault(File.Exists);

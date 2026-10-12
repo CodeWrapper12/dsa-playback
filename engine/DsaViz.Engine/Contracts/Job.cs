@@ -39,6 +39,12 @@ public sealed record JobRequest
     /// </summary>
     public int? Example { get; init; }
 
+    /// <summary>
+    /// Run every example found in the code and report each result against its expected
+    /// output, instead of recording one run to step through.
+    /// </summary>
+    public bool AllExamples { get; init; }
+
     /// <summary>The Python interpreter to run Python files with: the one selected in VS Code, when there is one.</summary>
     public string? Python { get; init; }
 
@@ -60,6 +66,12 @@ public sealed record EntryPoint(
 
     public bool Measurable => Reason is null;
 
+    /// <summary>
+    /// Every parameter can be generated, so the method's growth can be measured. A method
+    /// that runs only on an example's values can be visualized but not measured.
+    /// </summary>
+    public bool Generatable { get; init; } = true;
+
     /// <summary>The 1-based line of the method's name, where the editor puts its buttons.</summary>
     public int Line { get; init; }
 
@@ -77,6 +89,9 @@ public sealed record JobResponse
 
     /// <summary>Set when the request asked for a step-through rather than a measurement.</summary>
     public StepTrace? Steps { get; init; }
+
+    /// <summary>Set when the request asked for every example to be run.</summary>
+    public ExampleReport? Examples { get; init; }
 
     /// <summary>Source text, so the view can lay costs over the code without re-reading it.</summary>
     public string? Source { get; init; }

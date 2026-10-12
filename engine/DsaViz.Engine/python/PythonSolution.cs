@@ -122,11 +122,11 @@ public sealed class PythonSolution
             var parameters = ParametersOf(entry, examples);
             string? reason = entry.Reason is { } own && !own.StartsWith("Parameter '") ? own : null;
 
+            var generatable = parameters.Select(p => ParameterBinder.ShapeFor(p, parameters) is not null).ToList();
             var listed = entry.Parameters.Select((p, i) =>
             {
                 bool given = examples.Examples.Any(e => e.Values[i] is not null);
-                bool generatable = ParameterBinder.ShapeFor(parameters[i], parameters) is not null;
-                return new EntryParameter(p.Name, p.Type.Length > 0 ? p.Type : "(no hint)", given || generatable);
+                return new EntryParameter(p.Name, p.Type.Length > 0 ? p.Type : "(no hint)", given || generatable[i]);
             }).ToList();
 
             if (reason is null && listed.FirstOrDefault(p => !p.Supported) is { } unsupported)
@@ -138,7 +138,12 @@ public sealed class PythonSolution
                       "Give it a value in an example comment or a call, and it is used.";
             }
 
-            return new EntryPoint(entry.DeclaringType, entry.Name, listed) { Reason = reason, Line = entry.Line };
+            return new EntryPoint(entry.DeclaringType, entry.Name, listed)
+            {
+                Reason = reason,
+                Line = entry.Line,
+                Generatable = generatable.All(g => g)
+            };
         })
         .OrderByDescending(e => e.Measurable)
         .ThenBy(e => e.Line)

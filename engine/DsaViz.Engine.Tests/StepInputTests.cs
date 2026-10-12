@@ -195,4 +195,83 @@ public class StepInputTests
         Assert.Equal(4, result.ErrorLine);
         Assert.StartsWith("Your code threw NullReferenceException at line 4", result.Errors.Single());
     }
+
+    [Fact]
+    public void Every_example_is_run_and_each_is_checked_on_its_own()
+    {
+        // Example 2's comment expects [2,1] but the code returns [1,2]; Example 3 throws.
+        // Neither stops the others from being run and reported.
+        string source = TwoSum.Replace("return new int[0];", "return new[] { nums[0] };")
+            .Replace("// Output: [2,1]", "// Output: [2,1]\n//\n// Example 3:\n// Input: nums = [], target = 1\n// Output: []");
+
+        var report = Stepper.RunExamples(SourceAnalysis.Create(source), "Solution.TwoSum");
+
+        Assert.Equal(RunStatus.Completed, report.Status);
+        Assert.Collection(report.Runs,
+            first =>
+            {
+                Assert.Equal(("Example 1", RunStatus.Completed, "[0,1]", "[0,1]", (bool?)true),
+                    (first.Label, first.Status, first.Expected, first.Actual, first.Matches));
+            },
+            second =>
+            {
+                Assert.Equal((RunStatus.Completed, "[2,1]", "[1,2]", (bool?)false),
+                    (second.Status, second.Expected, second.Actual, second.Matches));
+            },
+            third =>
+            {
+                Assert.Equal(RunStatus.RuntimeError, third.Status);
+                Assert.Null(third.Matches);
+                Assert.StartsWith("Your code threw IndexOutOfRangeException", third.Error);
+                Assert.NotNull(third.ErrorLine);
+            });
+    }
+
+    [Fact]
+    public void Running_every_example_of_code_that_does_not_compile_says_why()
+    {
+        var report = Stepper.RunExamples(SourceAnalysis.Create(TwoSum.Replace("return new int[0];", "return nope;")), "Solution.TwoSum");
+
+        Assert.Equal(RunStatus.CompileError, report.Status);
+        Assert.Empty(report.Runs);
+        Assert.NotEmpty(report.Errors);
+    }
+
+    [Fact]
+    public void A_method_taking_types_that_cannot_be_generated_runs_on_its_example()
+    {
+        const string source = """
+            using System.Collections.Generic;
+            public class Solution
+            {
+                // Example 1:
+                // Input: prices = [1.5,2.5], words = [["a"],["b","c"]], c = "b"
+                // Output: 2
+                public int Count(double[] prices, IList<IList<string>> words, char c)
+                {
+                    int found = 0;
+                    foreach (var group in words) foreach (var w in group) if (w[0] == c) found++;
+                    return found + (int)(prices[0] + prices[1]) - 3;
+                }
+            }
+            """;
+
+        var trace = Stepper.Record(SourceAnalysis.Create(source), "Solution.Count");
+
+        Assert.Equal(RunStatus.Completed, trace.Status);
+        Assert.Equal(new[] { "double[]", "IList<IList<string>>", "char" }, trace.Inputs.Select(i => i.Type));
+        Assert.All(trace.Inputs, i => Assert.Equal(InputSource.Example, i.Source));
+        Assert.True(trace.Check!.Matches, $"returned {trace.ReturnValue}");
+        Assert.NotEmpty(trace.Steps);
+    }
+
+    [Fact]
+    public void Without_an_example_such_a_method_asks_for_the_value()
+    {
+        var trace = Stepper.Record(SourceAnalysis.Create(
+            "public class Solution { public double Half(double x) => x / 2; }"), "Solution.Half");
+
+        Assert.Equal(RunStatus.InvalidInput, trace.Status);
+        Assert.Contains("Type a value for 'x'", trace.Errors.Single());
+    }
 }

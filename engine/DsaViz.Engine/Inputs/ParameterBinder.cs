@@ -116,6 +116,7 @@ public static class ParameterBinder
         if (type == typeof(bool)) return "bool";
         if (type == typeof(string)) return "string";
         if (type == typeof(char)) return "char";
+        if (type == typeof(double)) return "double";
         if (type.IsArray) return FriendlyName(type.GetElementType()!) + "[]";
         if (type.IsGenericType)
         {

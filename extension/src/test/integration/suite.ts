@@ -137,6 +137,49 @@ const checks: [string, (api: TestApi) => Promise<void>][] = [
     assert.equal(steps.check?.matches, true);
   }],
 
+  ["a method taking a double runs from its example, with Visualize but no Complexity button", async api => {
+    const folder = fs.mkdtempSync(path.join(os.tmpdir(), "dsaviz-example-only-"));
+    const file = path.join(folder, "Average.cs");
+    fs.writeFileSync(file, [
+      "public class Solution",
+      "{",
+      "    // Input: nums = [1.5,2.5], scale = 2.0",
+      "    // Output: 4.0",
+      "    public double Average(double[] nums, double scale) => (nums[0] + nums[1]) / 2 * scale;",
+      "}"
+    ].join("\n"));
+
+    const document = await vscode.workspace.openTextDocument(file);
+    await vscode.window.showTextDocument(document);
+    assert.deepEqual((await api.lenses(document)).map(lens => lens.command?.title), ["$(play) Visualize"]);
+
+    const before = api.lastSteps();
+    await vscode.commands.executeCommand("dsaPlayback.visualize", vscode.Uri.file(file), "Solution.Average");
+    const steps = await waitFor(() => (api.lastSteps() !== before ? api.lastSteps() : undefined), "a recorded run");
+    assert.equal(steps.status, "Completed");
+    assert.equal(steps.check?.matches, true, `returned ${steps.returnValue}`);
+  }],
+
+  ["Run all examples lists every example's result", async api => {
+    await vscode.commands.executeCommand("dsaPlayback.visualize",
+      vscode.Uri.file(path.join(repository, "samples/TwoSumExamples.cs")), "Solution.TwoSum");
+    await waitFor(() => api.lastSteps(), "a recorded run");
+
+    await api.sendPanelMessage({ type: "runExamples" });
+    const report = await waitFor(() => api.lastExamples(), "every example's result");
+    assert.deepEqual(report.runs.map(run => run.matches), [true, false, null]);
+    assert.equal(report.runs[2].status, "RuntimeError");
+  }],
+
+  ["a problem report carries the versions and the recent log, never the home folder", async api => {
+    const url = new URL(api.problemReportUrl());
+    const body = url.searchParams.get("body") ?? "";
+    assert.equal(url.origin + url.pathname, "https://github.com/CodeWrapper12/dsa-playback/issues/new");
+    assert.match(body, /DSA Playback \d+\.\d+\.\d+/);
+    assert.match(body, /engine --job -/, "the log lines of the runs above");
+    assert.ok(!body.includes(os.homedir()), "the home folder is never included");
+  }],
+
   ["the walkthrough opens an editable copy of its sample", async () => {
     await vscode.commands.executeCommand("dsaPlayback.openSample", "LevelOrder.cs");
     const opened = vscode.window.activeTextEditor?.document.fileName ?? "";

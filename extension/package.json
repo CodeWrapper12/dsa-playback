@@ -1,8 +1,8 @@
 {
   "name": "dsa-playback",
-  "displayName": "DSA Playback",
-  "description": "Watch your C# or Python solution run step by step \u2014 pointers sliding, lists rewiring, trees filling \u2014 and see why it has the complexity it has. Built for learning data structures and algorithms.",
-  "version": "1.0.1",
+  "displayName": "DSA Playback \u2014 Algorithm Visualizer & Big-O Explainer",
+  "description": "Watch your C# or Python solution run step by step \u2014 pointers sliding, lists rewiring, trees filling \u2014 and see in plain words why it is O(n\u00b2). Runs on your machine, no sign-in. Built for learning data structures and algorithms.",
+  "version": "1.1.0",
   "publisher": "codewrapper12",
   "license": "MIT",
   "icon": "images/icon.png",
@@ -19,6 +19,7 @@
   "bugs": {
     "url": "https://github.com/CodeWrapper12/dsa-playback/issues"
   },
+  "qna": "https://github.com/CodeWrapper12/dsa-playback/discussions",
   "homepage": "https://github.com/CodeWrapper12/dsa-playback#readme",
   "keywords": [
     "dsa",
@@ -26,12 +27,31 @@
     "data structures",
     "leetcode",
     "big o",
+    "time complexity",
+    "space complexity",
     "complexity",
+    "algorithm visualizer",
     "visualizer",
+    "visualization",
     "step through",
+    "step by step",
+    "recursion tree",
+    "recursion",
+    "linked list",
+    "binary tree",
+    "graph",
+    "bfs",
+    "dfs",
+    "dynamic programming",
+    "sorting",
+    "two pointers",
     "python",
     "c#",
-    "education"
+    "csharp",
+    "education",
+    "students",
+    "coding interview",
+    "debugger"
   ],
   "engines": {
     "vscode": "^1.85.0"
@@ -73,6 +93,11 @@
       {
         "command": "dsaPlayback.showLog",
         "title": "Show Log",
+        "category": "DSA Playback"
+      },
+      {
+        "command": "dsaPlayback.reportProblem",
+        "title": "Report a Problem",
         "category": "DSA Playback"
       },
       {

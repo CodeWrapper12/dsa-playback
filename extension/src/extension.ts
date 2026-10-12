@@ -1,4 +1,5 @@
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
 import { EntryPointLenses } from "./codeLens";
@@ -7,11 +8,20 @@ import {
   configureEngine, EngineCancelledError, EngineFailedError, EngineNotFoundError, EntryListError, listEntryPoints, measure,
   resolveEnginePath
 } from "./engine";
-import { log, showLog } from "./log";
+import { log, recentLog, showLog } from "./log";
 import { offerPython, pythonInterpreter } from "./python";
-import { EntryPoint, InputSpec, JobRequest, JobResponse, StepTrace } from "./types";
+import { RatingPrompt, RatingState } from "./rating";
+import { issueUrl } from "./report";
+import { EntryPoint, ExampleReport, InputSpec, JobRequest, JobResponse, StepTrace } from "./types";
 
 let decorations: CostDecorations;
+let rating: RatingPrompt;
+
+/** The language of the file last run, for problem reports. */
+let lastLanguage: string | undefined;
+
+const RATING_KEY = "dsaPlayback.rating";
+const EXTENSION_ID = "codewrapper12.dsa-playback";
 
 /** Samples offered by the walkthrough, shipped inside the extension under samples/<language>. */
 const SAMPLES = new Map([
@@ -30,18 +40,27 @@ export interface TestApi {
   lastResponse(): JobResponse | undefined;
   lastSteps(): StepTrace | undefined;
   lastError(): string | undefined;
+  lastExamples(): ExampleReport | undefined;
   linesDecoratedIn(uri: vscode.Uri): number;
+  /** The address "Report a Problem" opens, without opening it. */
+  problemReportUrl(): string;
   sendPanelMessage(message: unknown): Promise<void>;
   lenses(document: vscode.TextDocument): Promise<vscode.CodeLens[]>;
   enginePath(): string;
 }
 
-const observed: { response?: JobResponse; steps?: StepTrace; error?: string } = {};
+const observed: { response?: JobResponse; steps?: StepTrace; error?: string; examples?: ExampleReport } = {};
 
 export function activate(context: vscode.ExtensionContext): TestApi {
   configureEngine(context.extensionPath, context.extensionMode !== vscode.ExtensionMode.Production);
   decorations = new CostDecorations();
   const lenses = new EntryPointLenses();
+  rating = new RatingPrompt({
+    read: () => context.globalState.get<RatingState>(RATING_KEY),
+    write: state => context.globalState.update(RATING_KEY, state),
+    ask: (message, ...choices) => vscode.window.showInformationMessage(message, ...choices),
+    openReviews: () => void vscode.env.openExternal(vscode.Uri.parse(reviewsUrl()))
+  });
 
   context.subscriptions.push(
     decorations,
@@ -58,6 +77,7 @@ export function activate(context: vscode.ExtensionContext): TestApi {
     vscode.commands.registerCommand("dsaPlayback.clearAnnotations", () => decorations.clear()),
     vscode.commands.registerCommand("dsaPlayback.openSample", (name: string) => openSample(context, name)),
     vscode.commands.registerCommand("dsaPlayback.showLog", () => showLog()),
+    vscode.commands.registerCommand("dsaPlayback.reportProblem", () => reportProblem(context)),
     vscode.commands.registerCommand("dsaPlayback.installPython", (message?: string) =>
       offerPython(message ?? "DSA Playback needs Python 3.9 or later to run Python files.")));
 
@@ -65,7 +85,9 @@ export function activate(context: vscode.ExtensionContext): TestApi {
     lastResponse: () => observed.response,
     lastSteps: () => observed.steps,
     lastError: () => observed.error,
+    lastExamples: () => observed.examples,
     linesDecoratedIn: uri => decorations.linesDecoratedIn(uri),
+    problemReportUrl: () => problemReportUrl(context),
     sendPanelMessage: async message => { await ReportPanel.deliver(message); },
     lenses: document => lenses.provideCodeLenses(document, new vscode.CancellationTokenSource().token),
     enginePath: () => resolveEnginePath()
@@ -96,6 +118,7 @@ async function start(context: vscode.ExtensionContext, tab: Tab, uri?: vscode.Ur
     return;
   }
   const python = document.languageId === "python" ? await pythonInterpreter(document.uri) : undefined;
+  lastLanguage = document.languageId;
 
   // The engine reads the file from disk, so what runs must be what is on screen.
   if (document.isDirty) await document.save();
@@ -197,6 +220,40 @@ async function openSample(context: vscode.ExtensionContext, name: string) {
   }
 }
 
+/**
+ * Where a rating is left: the Marketplace for VS Code itself, Open VSX for editors that
+ * install from there (VSCodium, Cursor and others).
+ */
+function reviewsUrl(): string {
+  return vscode.env.uriScheme === "vscode" || vscode.env.uriScheme === "vscode-insiders"
+    ? `https://marketplace.visualstudio.com/items?itemName=${EXTENSION_ID}&ssr=false#review-details`
+    : "https://open-vsx.org/extension/codewrapper12/dsa-playback/reviews";
+}
+
+function problemReportUrl(context: vscode.ExtensionContext): string {
+  return issueUrl({
+    extensionVersion: String(context.extension.packageJSON.version),
+    vscodeVersion: vscode.version,
+    os: `${process.platform} ${os.release()} ${process.arch}`,
+    language: lastLanguage ?? vscode.window.activeTextEditor?.document.languageId ?? "none",
+    log: recentLog()
+  }, os.homedir());
+}
+
+/**
+ * Opens a new GitHub issue filled in with what is needed to diagnose a problem. Nothing
+ * is sent from here: the student reads it in GitHub's own form and decides.
+ */
+async function reportProblem(context: vscode.ExtensionContext) {
+  const url = problemReportUrl(context);
+  log("Opened a problem report in the browser.");
+  // Given a vscode.Uri, VS Code re-encodes the query, turning the & and = between the
+  // title and the body into %26 and %3D, and GitHub then sees one long title. Its
+  // extension host also takes the address as a string and hands that on untouched
+  // (openUri in VS Code's extHostWindow), so the string is what is passed.
+  await vscode.env.openExternal(url as unknown as vscode.Uri);
+}
+
 function reportError(error: unknown) {
   if (error instanceof EngineCancelledError) return;
   const message = error instanceof Error ? error.message : String(error);
@@ -208,8 +265,9 @@ function reportError(error: unknown) {
     return;
   }
   if (error instanceof EngineNotFoundError || error instanceof EngineFailedError) {
-    vscode.window.showErrorMessage(message, "Show Details").then(choice => {
+    vscode.window.showErrorMessage(message, "Show Details", "Report a Problem").then(choice => {
       if (choice === "Show Details") showLog();
+      if (choice === "Report a Problem") void vscode.commands.executeCommand("dsaPlayback.reportProblem");
     });
     return;
   }
@@ -224,6 +282,8 @@ interface RevealMessage { type: "reveal"; line: number }
 interface StepAtMessage { type: "stepAt"; line: number }
 interface ShowLogMessage { type: "showLog" }
 interface InstallPythonMessage { type: "installPython"; message?: string }
+interface RunExamplesMessage { type: "runExamples" }
+interface ReportProblemMessage { type: "reportProblem" }
 
 /** Record a run: with typed values, a chosen example, and a size for anything generated. */
 interface RunMessage {
@@ -235,7 +295,8 @@ interface RunMessage {
   useSaved?: boolean;
 }
 
-type PanelMessage = RerunMessage | MeasureMessage | RevealMessage | StepAtMessage | ShowLogMessage | RunMessage | InstallPythonMessage;
+type PanelMessage = RerunMessage | MeasureMessage | RevealMessage | StepAtMessage | ShowLogMessage | RunMessage
+  | InstallPythonMessage | RunExamplesMessage | ReportProblemMessage;
 
 /** What the student chose for one method, kept across restarts. */
 interface SavedInputs {
@@ -253,6 +314,7 @@ class ReportPanel {
   private readonly disposables: vscode.Disposable[] = [];
   private measuring: AbortController | undefined;
   private recording: AbortController | undefined;
+  private checkingExamples: AbortController | undefined;
 
   private constructor(
     private readonly panel: vscode.WebviewPanel,
@@ -307,8 +369,10 @@ class ReportPanel {
         return;
       }
       case "measure": await this.measure(); return;
+      case "runExamples": await this.runExamples(); return;
       case "stepAt": await decorations.showStep(this.request.file, message.line); return;
       case "showLog": showLog(); return;
+      case "reportProblem": await vscode.commands.executeCommand("dsaPlayback.reportProblem"); return;
       case "installPython": await offerPython(message.message ?? "DSA Playback needs Python 3.9 or later."); return;
       case "reveal": await this.reveal(message.line); return;
       case "rerun":
@@ -367,6 +431,7 @@ class ReportPanel {
         return;
       }
       this.panel.webview.postMessage({ type: "result", response, request });
+      if (response.primary?.status === "Completed") void rating.succeeded();
 
       // The costs belong on the student's own file, not on a copy of it inside a panel.
       const detail = response.primary?.detail;
@@ -414,6 +479,7 @@ class ReportPanel {
 
       this.panel.webview.postMessage({ type: "steps", trace: response.steps, errors: response.errors, choice });
       observed.steps = response.steps ?? undefined;
+      if (response.steps?.status === "Completed") void rating.succeeded();
     } catch (error) {
       this.fail("stepsError", error);
     } finally {
@@ -421,7 +487,38 @@ class ReportPanel {
     }
   }
 
-  private fail(type: "error" | "stepsError", error: unknown) {
+  /** Runs every example in the file and lists each result against its expected output. */
+  private async runExamples() {
+    this.checkingExamples?.abort();
+    const controller = new AbortController();
+    this.checkingExamples = controller;
+
+    try {
+      const response = await measure({
+        file: this.request.file,
+        entry: this.request.entry,
+        allExamples: true,
+        budget: this.request.budget,
+        python: this.request.python
+      }, controller.signal);
+      if (controller.signal.aborted) return;
+
+      if (response.errorCode || !response.examples) {
+        const message = response.errors.join(" ") || "The engine returned no results.";
+        this.panel.webview.postMessage({ type: "examplesError", message, code: response.errorCode });
+        if (response.errorCode) void offerPython(message);
+        return;
+      }
+      observed.examples = response.examples;
+      this.panel.webview.postMessage({ type: "examples", report: response.examples });
+    } catch (error) {
+      this.fail("examplesError", error);
+    } finally {
+      if (this.checkingExamples === controller) this.checkingExamples = undefined;
+    }
+  }
+
+  private fail(type: "error" | "stepsError" | "examplesError", error: unknown) {
     if (error instanceof EngineCancelledError) return;
     const message = error instanceof Error ? error.message : String(error);
     const internal = error instanceof EngineFailedError || error instanceof EngineNotFoundError;
@@ -459,6 +556,7 @@ class ReportPanel {
   private dispose() {
     this.measuring?.abort();
     this.recording?.abort();
+    this.checkingExamples?.abort();
     decorations.clearStep();
     ReportPanel.current = undefined;
     this.panel.dispose();

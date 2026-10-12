@@ -42,6 +42,19 @@ public static class JobRunner
         Python.PythonHost? python = null;
         Python.PythonHost PythonHost() => python ??= Python.PythonHost.Locate(request.Python);
 
+        if (request.AllExamples)
+        {
+            var report = IsPython(request.File)
+                ? Stepper.RunExamplesPython(PythonHost(), primarySource, request.Entry, request.Budget)
+                : Stepper.RunExamples(DsaViz.Engine.Analysis.SourceAnalysis.Create(primarySource), request.Entry, request.Budget);
+            return new JobResponse
+            {
+                Examples = report,
+                Source = primarySource,
+                Label = Path.GetFileNameWithoutExtension(request.File)
+            };
+        }
+
         if (request.StepSize is { } stepSize)
         {
             var steps = IsPython(request.File)

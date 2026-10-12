@@ -6,6 +6,11 @@ namespace DsaViz.Engine.Measurement;
 
 public static class Measurer
 {
+    /// <summary>Said beside a parameter that cannot be generated, when growth is asked for.</summary>
+    public const string NotGeneratedNote =
+        "Complexity is measured by running the method on inputs made at many sizes, so it needs every parameter " +
+        "to be one that can be generated. You can still press Visualize to watch it run on your example.";
+
     /// <summary>
     /// Spans two orders of magnitude and includes 10, 100 and 1000 so the default run
     /// satisfies the stated acceptance criterion, with enough intermediate points that
@@ -98,7 +103,9 @@ public static class Measurer
         }
         catch (UnsupportedSignatureException ex)
         {
-            return Failed(RunStatus.RuntimeError, new[] { ex.Message }, inputs ?? Array.Empty<InputSpec>());
+            // Measuring growth needs inputs made at many sizes; an example gives just one.
+            return Failed(RunStatus.RuntimeError,
+                new[] { ex.Message, NotGeneratedNote }, inputs ?? Array.Empty<InputSpec>());
         }
 
         var requested = sizes ?? DefaultSizes;

@@ -60,6 +60,22 @@ try {
   check("every README image links to a file in the repository", images.length > 0 && broken.length === 0,
     broken.length ? broken.join(", ") : `${images.length} images`);
 
+  // The listing is what search reads: the name, the keywords, and the README's opening.
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+  check("the name says what it is", manifest.displayName === "DSA Playback \u2014 Algorithm Visualizer & Big-O Explainer",
+    manifest.displayName);
+  const wanted = ["algorithm visualizer", "time complexity", "space complexity", "recursion tree", "linked list", "step by step"];
+  check("30 keywords, including the ones students search for",
+    manifest.keywords.length === 30 && new Set(manifest.keywords).size === 30 && wanted.every(k => manifest.keywords.includes(k)),
+    `${manifest.keywords.length} keywords`);
+  check("questions go to Discussions", manifest.qna === "https://github.com/CodeWrapper12/dsa-playback/discussions");
+  const opening = readme.split("![")[0];
+  const promises = ["Runs on your machine", "No sign-in", "Your code never leaves your computer", "line by line"];
+  check("the README opens with running locally, no sign-in, privacy and the why",
+    promises.every(p => opening.includes(p)), promises.filter(p => !opening.includes(p)).join(", "));
+  const competitors = ["algolens", "python tutor", "pythontutor", "visualgo", "algorithm visualizer pro"];
+  check("no other product is named", !competitors.some(name => readme.toLowerCase().includes(name)));
+
   const engine = path.join(root, "engine", process.platform === "win32" ? "DsaViz.Engine.exe" : "DsaViz.Engine");
   check("the engine is bundled", fs.existsSync(engine));
 

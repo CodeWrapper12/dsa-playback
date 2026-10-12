@@ -30,8 +30,10 @@ public class ScannerAgreementTests
             try { ParameterBinder.Describe(solution.Parameters); engineAccepts = true; }
             catch (UnsupportedSignatureException) { engineAccepts = false; }
 
-            Assert.True(engineAccepts == entry.Measurable,
-                $"{entry.Signature}: picker says {(entry.Measurable ? "measurable" : "not measurable")}, engine says the opposite");
+            // A method that runs only on an example's values is offered but not measured.
+            bool pickerMeasures = entry.Measurable && entry.Generatable;
+            Assert.True(engineAccepts == pickerMeasures,
+                $"{entry.Signature}: picker says {(pickerMeasures ? "measurable" : "not measurable")}, engine says the opposite");
         }
     }
 
@@ -53,5 +55,72 @@ public class ScannerAgreementTests
 
         Assert.False(entry.Measurable);
         Assert.Contains("parameterless constructor", entry.Reason);
+    }
+
+    [Fact]
+    public void A_type_that_cannot_be_generated_runs_when_an_example_gives_it()
+    {
+        var entry = Assert.Single(EntryPointScanner.Scan(
+            """
+            using System.Collections.Generic;
+            public class Solution
+            {
+                // Input: prices = [1.5,2.0], words = [["a"],["b","c"]], c = "x", k = 2
+                public double Go(double[] prices, IList<IList<string>> words, char c, int k) => 0;
+            }
+            """));
+
+        Assert.True(entry.Measurable, entry.Reason);
+        Assert.False(entry.Generatable);
+        Assert.All(entry.Parameters, p => Assert.True(p.Supported, p.Name));
+    }
+
+    [Fact]
+    public void A_call_with_literal_arguments_also_gives_the_values()
+    {
+        var entry = EntryPointScanner.Scan(
+            """
+            public class Solution
+            {
+                public static double Half(double x) => x / 2;
+                public static void Main() { Half(3.5); }
+            }
+            """).Single(e => e.Name == "Half");
+
+        Assert.True(entry.Measurable, entry.Reason);
+    }
+
+    [Fact]
+    public void Without_an_example_it_says_to_add_one()
+    {
+        var entry = Assert.Single(EntryPointScanner.Scan(
+            "public class Solution { public double Half(double x) => x / 2; }"));
+
+        Assert.False(entry.Measurable);
+        Assert.Contains("Give it a value in an example comment or a call", entry.Reason);
+    }
+
+    [Fact]
+    public void A_type_no_example_can_spell_is_still_refused()
+    {
+        var entry = Assert.Single(EntryPointScanner.Scan(
+            """
+            using System.Collections.Generic;
+            public class Solution
+            {
+                // Input: counts = {"a": 1}
+                public int Go(Dictionary<string, int> counts) => 0;
+            }
+            """));
+
+        Assert.False(entry.Measurable);
+        Assert.Contains("neither generate nor read from an example", entry.Reason);
+    }
+
+    [Fact]
+    public void Generatable_methods_are_marked_so()
+    {
+        var entry = Assert.Single(EntryPointScanner.Scan(Samples.Read("leetcode/MaxDepth.cs")));
+        Assert.True(entry.Generatable);
     }
 }

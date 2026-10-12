@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { REPORTED_LOG_LINES } from "./report";
 
 /**
  * The "DSA Playback" output channel. Everything a failure needs to be diagnosed later
@@ -8,9 +9,20 @@ import * as vscode from "vscode";
  */
 let channel: vscode.OutputChannel | undefined;
 
+/** The latest lines, for "Report a Problem". An output channel cannot be read back. */
+const recent: string[] = [];
+
 export function log(message: string) {
   channel ??= vscode.window.createOutputChannel("DSA Playback");
-  channel.appendLine(`[${new Date().toISOString()}] ${message}`);
+  const entry = `[${new Date().toISOString()}] ${message}`;
+  channel.appendLine(entry);
+
+  recent.push(...entry.split(/\r?\n/));
+  if (recent.length > REPORTED_LOG_LINES) recent.splice(0, recent.length - REPORTED_LOG_LINES);
+}
+
+export function recentLog(): string[] {
+  return [...recent];
 }
 
 export function showLog() {
