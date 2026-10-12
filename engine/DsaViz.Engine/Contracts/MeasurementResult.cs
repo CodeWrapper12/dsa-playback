@@ -22,6 +22,12 @@ public sealed record MeasurementResult
     /// <summary>Per-statement detail from the largest size that completed.</summary>
     public TraceResult? Detail { get; init; }
 
+    /// <summary>Why it is the class it is: which statements dominate, and by what formula.</summary>
+    public Derivation? Derivation { get; init; }
+
+    /// <summary>Space: allocation, largest single allocation, call depth, and the reading from the code.</summary>
+    public SpaceReading? Space { get; init; }
+
     /// <summary>The input configuration actually used, inferred or supplied.</summary>
     public required IReadOnlyList<InputSpec> Inputs { get; init; }
 

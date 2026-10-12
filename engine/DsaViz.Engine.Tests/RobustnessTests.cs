@@ -28,21 +28,36 @@ public class RobustnessTests
     }
 
     [Fact]
+    public void Runaway_recursion_fails_fast_and_says_why()
+    {
+        // Infinite recursion fails at every size, so it is reported once, quickly, with
+        // the reason as the error rather than buried in a note.
+        var stopwatch = Stopwatch.StartNew();
+        var result = DsaViz.Engine.Measurement.Measurer.Measure(
+            "public class Solution { public int Go(int n) { return Go(n + 1) + 1; } }", "Solution.Go");
+        stopwatch.Stop();
+
+        Assert.Equal(RunStatus.RecursionLimitExceeded, result.Status);
+        Assert.Contains(result.Errors, e => e.Contains("base case"));
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(6), $"took {stopwatch.Elapsed.TotalSeconds:F1}s");
+    }
+
+    [Fact]
     public void Legitimately_deep_recursion_still_runs()
     {
-        // 50,000 frames overflows the default 1 MB stack; runs get a much larger one.
+        // 15,000 instrumented frames overflows the default 1 MB stack; runs get a much larger one.
         var result = Runner.Run(
             """
             public static class Deep
             {
                 private static int Depth(int n) => n == 0 ? 0 : 1 + Depth(n - 1);
-                public static object Solve() => Depth(50_000);
+                public static object Solve() => Depth(15_000);
             }
             """, "Solve");
 
         Assert.Equal(RunStatus.Completed, result.Status);
-        Assert.Equal("50000", result.ReturnValue);
-        Assert.True(result.MaxRecursionDepth > 50_000);
+        Assert.Equal("15000", result.ReturnValue);
+        Assert.True(result.MaxRecursionDepth > 15_000);
     }
 
     [Fact]
@@ -138,7 +153,7 @@ public class RobustnessTests
         {
             CultureInfo.CurrentCulture = new CultureInfo("en-IN");
             Assert.Contains("50,000,000", new ExecutionBudgetExceededException(50_000_000).Message);
-            Assert.Contains("100,000", new RecursionLimitExceededException(100_000).Message);
+            Assert.Contains("20,000", new RecursionLimitExceededException(20_000).Message);
         }
         finally { CultureInfo.CurrentCulture = previous; }
     }

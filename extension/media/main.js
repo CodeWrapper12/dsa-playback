@@ -57,7 +57,10 @@
 
     const primary = response.primary;
     if (!primary || primary.status !== "Completed") {
+      // The engine puts the reason in the errors when nothing was measured; the size note
+      // is a fallback so an explanation can never be reduced to "no result".
       const problems = [...(response.errors || []), ...((primary && primary.errors) || [])];
+      if (problems.length === 0 && primary && primary.sizeNote) problems.push(primary.sizeNote);
       app.innerHTML = header(response) + banner(
         "Nothing could be measured",
         problems.length ? problems.map(escapeHtml).join("<br>") : "The engine returned no result.",
@@ -68,7 +71,10 @@
     const parts = [header(response), verdicts(primary)];
 
     if (primary.disagreement && primary.disagreementNote) {
-      parts.push(banner("The code and the measurement disagree", escapeHtml(primary.disagreementNote)));
+      parts.push(banner("Time: the code and the measurement disagree", escapeHtml(primary.disagreementNote)));
+    }
+    if (primary.space && primary.space.disagreement && primary.space.disagreementNote) {
+      parts.push(banner("Space: the code and the measurement disagree", escapeHtml(primary.space.disagreementNote)));
     }
     if (primary.sizeNote) parts.push(banner("Sizes adjusted", escapeHtml(primary.sizeNote)));
     if (primary.errors && primary.errors.length) {
@@ -106,25 +112,32 @@
     return `<div class="banner ${isError ? "error" : ""}"><strong>${escapeHtml(title)}</strong>${body}</div>`;
   }
 
-  function verdicts(primary) {
-    const measured = primary.empirical;
-    const estimate = primary.static;
-
-    const measuredValue = CLASS_LABEL[measured.best] || measured.best;
-    const staticValue = CLASS_LABEL[estimate.class] || estimate.class;
-
-    return `<div class="verdicts">
-      <div class="verdict">
-        <div class="label">Measured</div>
-        <div class="value ${measured.best === "Unknown" ? "unknown" : ""}">${measuredValue}</div>
-        <div class="note">${escapeHtml(measured.explanation)}</div>
-      </div>
-      <div class="verdict">
-        <div class="label">Read from the code</div>
-        <div class="value ${estimate.class === "Unknown" ? "unknown" : ""}">${staticValue}</div>
-        <div class="note">${escapeHtml(estimate.reasoning)}</div>
-      </div>
+  function card(label, value, note) {
+    return `<div class="verdict">
+      <div class="label">${label}</div>
+      <div class="value ${value === "unknown" ? "unknown" : ""}">${value}</div>
+      <div class="note">${escapeHtml(note)}</div>
     </div>`;
+  }
+
+  function verdicts(primary) {
+    const label = value => CLASS_LABEL[value] || value;
+    const parts = [`<div class="verdicts">
+      ${card("Time — measured", label(primary.empirical.best), primary.empirical.explanation)}
+      ${card("Time — read from the code", label(primary.static.class), primary.static.reasoning)}
+    </div>`];
+
+    // Space gets the same two readings as time: what the run actually did, and what the
+    // code says it should do. The original request asked how memory is allocated;
+    // this is that answer, at the same prominence as the time answer.
+    const space = primary.space;
+    if (space) {
+      parts.push(`<div class="verdicts">
+        ${card("Space — measured", label(space.likelyPeak), space.summary)}
+        ${card("Space — read from the code", label(space.static.class), space.static.reasoning)}
+      </div>`);
+    }
+    return parts.join("");
   }
 
   function controls(primary) {
@@ -188,6 +201,9 @@
     const shown = ranked.slice(0, 40);
     const anyLibraryWork = ranked.some(s => s.libraryWork > 0);
 
+    const growthById = new Map(((primary.derivation && primary.derivation.statements) || []).map(g => [g.id, g]));
+    const dominant = new Set((primary.derivation && primary.derivation.dominant) || []);
+
     const rows = shown.map((statement, index) => {
       // Logarithmic, so a statement that ran once stays visible beside one that cost
       // half a million. On a linear scale everything but the top row vanishes.
@@ -198,6 +214,7 @@
         <td>${num(statement.hits)}</td>
         ${anyLibraryWork ? `<td class="${statement.libraryWork ? "hidden-work" : "muted"}">${statement.libraryWork ? "+" + num(statement.libraryWork) : "—"}</td>` : ""}
         <td class="${statement.bytesAllocated ? "" : "muted"}">${bytes(statement.bytesAllocated)}</td>
+        <td class="growth ${dominant.has(statement.id) ? "dominant" : ""}">${growthCell(growthById.get(statement.id))}</td>
         <td class="snippet-cell">${escapeHtml(statement.snippet)}</td>
         <td class="muted">${statement.line}:${statement.column}</td>
       </tr>`;
@@ -219,7 +236,12 @@
         </tr>`).join("")}</tbody>
       </table>`;
 
-    return `<div class="banner info"><strong>The costs are on your code</strong>
+    const why = primary.derivation
+      ? `<div class="derivation"><div class="label">Derivation</div>
+           <p>${formatInlineCode(primary.derivation.summary)}</p></div>`
+      : "";
+
+    return `${why}<div class="banner info"><strong>The costs are on your code</strong>
         Every executed line in ${escapeHtml(response.label || "the file")} is annotated in the
         editor with how often it ran, any work hidden inside library calls it made, and the
         memory it allocated. Hover a line for the breakdown. Editing the file clears the
@@ -229,7 +251,7 @@
         <thead><tr>
           <th class="rank">#</th><th></th><th>executions</th>
           ${anyLibraryWork ? "<th>library work</th>" : ""}
-          <th>memory</th><th class="snippet-cell">statement</th><th>at</th>
+          <th>memory</th><th>grows as</th><th class="snippet-cell">statement</th><th>at</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
@@ -245,9 +267,29 @@
       </div>`;
   }
 
+  /** The statement's own class and formula; the dominant ones are what set the method's class. */
+  function growthCell(growth) {
+    if (!growth) return '<span class="muted">—</span>';
+    const label = CLASS_LABEL[growth.cost];
+    if (!label) return '<span class="muted">irregular</span>';
+    const title = [
+      growth.runsFormula ? `runs ${growth.runsFormula} times` : null,
+      growth.cost !== growth.runs && growth.costFormula ? `costs ${growth.costFormula}` : null,
+      growth.because,
+      growth.memoryFormula ? `allocates ${growth.memoryFormula} in total` : null
+    ].filter(Boolean).join("; ");
+    return `<span title="${escapeHtml(title)}">${label}</span>` +
+      (growth.costFormula ? ` <span class="formula">${escapeHtml(growth.costFormula)}</span>` : "");
+  }
+
+  /** `code` in the derivation's prose becomes inline code, everything else stays escaped. */
+  function formatInlineCode(text) {
+    return escapeHtml(text).replace(/`([^`]+)`/g, "<code>$1</code>");
+  }
+
   // ---- charts ------------------------------------------------------------------
 
-  function chart(series, useLog) {
+  function chart(series, useLog, axisTitle = "operations") {
     const width = 760, height = 380;
     const left = 76, right = 20, top = 18, bottom = 46;
     const plotWidth = width - left - right;
@@ -291,11 +333,11 @@
     parts.push(`<line class="axis" x1="${left}" y1="${top + plotHeight}" x2="${left + plotWidth}" y2="${top + plotHeight}"/>`);
     parts.push(`<line class="axis" x1="${left}" y1="${top}" x2="${left}" y2="${top + plotHeight}"/>`);
     parts.push(`<text class="axis-title" x="${left + plotWidth / 2}" y="${height - 8}" text-anchor="middle">input size n</text>`);
-    parts.push(`<text class="axis-title" x="14" y="${top + plotHeight / 2}" text-anchor="middle" transform="rotate(-90 14 ${top + plotHeight / 2})">operations</text>`);
+    parts.push(`<text class="axis-title" x="14" y="${top + plotHeight / 2}" text-anchor="middle" transform="rotate(-90 14 ${top + plotHeight / 2})">${escapeHtml(axisTitle)}</text>`);
 
     for (const one of series) {
       if (one.fit) {
-        const curve = fitCurve(one.fit, one.points);
+        const curve = fitCurve(one.fit, one.points, one.intercept);
         if (curve.length) {
           parts.push(`<polyline class="fitline" stroke="${one.color}" points="${
             curve.map(p => `${px(p.size)},${py(p.operations)}`).join(" ")}"/>`);
@@ -324,11 +366,20 @@
   }
 
   /** Samples the fitted curve densely so a quadratic reads as a curve, not a chord. */
-  function fitCurve(fit, points) {
+  function fitCurve(fit, points, intercept) {
     if (!fit || fit.best === "Unknown" || points.length === 0) return [];
 
-    const top = fit.ranked && fit.ranked[0];
+    const top = (fit.ranked || []).find(f => f.class === fit.best);
     if (!top) return [];
+
+    // Call depth is fitted with an intercept (log n + 1 cannot pass through zero), and
+    // the engine reports only the slope, so the offset is recovered from the points.
+    let offset = 0;
+    if (intercept && BASIS[fit.best]) {
+      const meanY = points.reduce((sum, p) => sum + p.operations, 0) / points.length;
+      const meanB = points.reduce((sum, p) => sum + BASIS[fit.best](p.size), 0) / points.length;
+      offset = meanY - top.coefficient * meanB;
+    }
 
     const first = points[0].size;
     const last = points[points.length - 1].size;
@@ -348,7 +399,7 @@
       } else {
         const basis = BASIS[fit.best];
         if (!basis) return [];
-        value = top.coefficient * basis(size);
+        value = offset + top.coefficient * basis(size);
       }
 
       if (!isFinite(value)) return [];
@@ -358,19 +409,49 @@
     return samples;
   }
 
+  // Time, memory, and stack depth are plotted the same way, so the same chart answers
+  // "how does it grow" for all three.
+  const METRICS = {
+    time: { label: "Time", axis: "operations", value: p => p.operations, fit: r => r.empirical, intercept: false },
+    memory: { label: "Memory allocated", axis: "bytes allocated", value: p => p.bytesAllocated,
+      fit: r => r.space && r.space.allocation, intercept: false },
+    depth: { label: "Call depth", axis: "call depth", value: p => p.maxRecursionDepth,
+      fit: r => r.space && r.space.callDepth, intercept: true }
+  };
+
+  function metricBar(results) {
+    const available = Object.keys(METRICS).filter(key =>
+      key === "time" || results.some(r => r.points.some(p => METRICS[key].value(p) > (key === "depth" ? 1 : 0))));
+    if (!available.includes(state.metric)) state.metric = "time";
+    if (available.length < 2) return "";
+    return `<div class="metrics">${available.map(key =>
+      `<button class="metric ${state.metric === key ? "active" : ""}" data-metric="${key}">${METRICS[key].label}</button>`).join("")}</div>`;
+  }
+
+  function seriesFor(result, label, color) {
+    const metric = METRICS[state.metric || "time"];
+    return {
+      label, color,
+      points: result.points.map(p => ({ size: p.size, operations: metric.value(p), bytesAllocated: p.bytesAllocated })),
+      fit: metric.fit(result),
+      intercept: metric.intercept
+    };
+  }
+
   function growthPanel(primary) {
     const useLog = state.log === true;
-    const series = [{
-      label: "measured", color: "var(--hot)", points: primary.points, fit: primary.empirical
-    }];
+    const bar = metricBar([primary]);
+    const metric = METRICS[state.metric || "time"];
+    const series = [seriesFor(primary, "measured", "var(--hot)")];
+    const fitted = series[0].fit;
 
-    return `<div class="legend">
+    return `${bar}<div class="legend">
         <span class="key"><span class="swatch" style="background:var(--hot)"></span>measured</span>
         <span class="key"><span class="swatch" style="background:var(--hot);opacity:.6"></span>fitted ${
-          CLASS_LABEL[primary.empirical.best] || primary.empirical.best}</span>
+          fitted ? (CLASS_LABEL[fitted.best] || fitted.best) : "—"}</span>
         <button class="ghost" id="toggle-log">${useLog ? "Linear axes" : "Log-log axes"}</button>
       </div>
-      ${chart(series, useLog)}
+      ${chart(series, useLog, metric.axis)}
       ${pointsTable([{ label: "measured", result: primary }])}
       <div class="footnote">
         On log-log axes every complexity class is a straight line and the slope is the
@@ -391,10 +472,13 @@
     }
 
     const useLog = state.log === true;
+    const bar = metricBar([primary, other]);
+    const metric = METRICS[state.metric || "time"];
     const series = [
-      { label: response.label, color: "var(--hot)", points: primary.points, fit: primary.empirical },
-      { label: response.comparisonLabel, color: "var(--compare)", points: other.points, fit: other.empirical }
+      seriesFor(primary, response.label, "var(--hot)"),
+      seriesFor(other, response.comparisonLabel, "var(--compare)")
     ];
+    const classOf = one => one.fit ? (CLASS_LABEL[one.fit.best] || one.fit.best) : "—";
 
     const at = result => {
       const last = result.points[result.points.length - 1];
@@ -406,14 +490,14 @@
         + (b.operations === 0 ? "" : `${(a.operations / b.operations).toFixed(1)}×.`)
       : "";
 
-    return `<div class="legend">
+    return `${bar}<div class="legend">
         <span class="key"><span class="swatch" style="background:var(--hot)"></span>${
-          escapeHtml(response.label || "A")} — ${CLASS_LABEL[primary.empirical.best]}</span>
+          escapeHtml(response.label || "A")} — ${classOf(series[0])}</span>
         <span class="key"><span class="swatch" style="background:var(--compare)"></span>${
-          escapeHtml(response.comparisonLabel || "B")} — ${CLASS_LABEL[other.empirical.best]}</span>
+          escapeHtml(response.comparisonLabel || "B")} — ${classOf(series[1])}</span>
         <button class="ghost" id="toggle-log">${useLog ? "Linear axes" : "Log-log axes"}</button>
       </div>
-      ${chart(series, useLog)}
+      ${chart(series, useLog, metric.axis)}
       ${pointsTable([
         { label: response.label, result: primary },
         { label: response.comparisonLabel, result: other }])}
@@ -474,6 +558,9 @@
       row.addEventListener("click", () => {
         if (vscode) vscode.postMessage({ type: "reveal", line: Number(row.dataset.line) });
       }));
+
+    app.querySelectorAll(".metric").forEach(button =>
+      button.addEventListener("click", () => { state.metric = button.dataset.metric; render(); }));
 
     const toggle = document.getElementById("toggle-log");
     if (toggle) toggle.addEventListener("click", () => { state.log = !state.log; render(); });

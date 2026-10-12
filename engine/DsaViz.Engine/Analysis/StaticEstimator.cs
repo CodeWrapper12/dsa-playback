@@ -19,7 +19,7 @@ namespace DsaViz.Engine.Analysis;
 /// Calls are resolved through the semantic model, never by name, so overloads, local
 /// functions, and same-named methods on different types are told apart.
 /// </summary>
-public static class StaticEstimator
+public static partial class StaticEstimator
 {
     private sealed record Shape(int Linear, int Log);
 
@@ -35,35 +35,8 @@ public static class StaticEstimator
 
     public static StaticEstimate Estimate(SourceAnalysis analysis, string entryMethod)
     {
-        var model = analysis.Model;
-        var root = analysis.Tree.GetRoot();
-        var bodies = new Dictionary<IMethodSymbol, SyntaxNode>(SymbolEqualityComparer.Default);
-
-        foreach (var method in root.DescendantNodes().OfType<MethodDeclarationSyntax>())
-            if (model.GetDeclaredSymbol(method) is { } symbol && BodyOf(method.Body, method.ExpressionBody) is { } body)
-                bodies[symbol] = body;
-
-        foreach (var function in root.DescendantNodes().OfType<LocalFunctionStatementSyntax>())
-            if (model.GetDeclaredSymbol(function) is IMethodSymbol symbol && BodyOf(function.Body, function.ExpressionBody) is { } body)
-                bodies[symbol] = body;
-
-        string? typeName = null;
-        string methodName = entryMethod;
-        int dot = entryMethod.LastIndexOf('.');
-        if (dot > 0) { typeName = entryMethod[..dot]; methodName = entryMethod[(dot + 1)..]; }
-
-        var entries = bodies.Keys
-            .Where(s => s.MethodKind == MethodKind.Ordinary && s.Name == methodName &&
-                        (typeName is null || s.ContainingType?.Name == typeName))
-            .ToList();
-
-        if (entries.Count == 0)
-            return new StaticEstimate(ComplexityClass.Unknown, $"No method named '{entryMethod}' was found to analyse.", 0, 0, 0);
-        if (entries.Count > 1)
-            return new StaticEstimate(ComplexityClass.Unknown, $"'{entryMethod}' is ambiguous; name it as Type.Method.", 0, 0, 0);
-
-        var context = new Context { Model = model, Costs = analysis.CostCalls, Bodies = bodies };
-        var entry = entries[0];
+        var (context, entry, problem) = Prepare(analysis, entryMethod);
+        if (problem is not null) return new StaticEstimate(ComplexityClass.Unknown, problem, 0, 0, 0);
 
         // Recursion is looked for across everything the entry reaches, not just the entry
         // itself. MergeSort.Sort does not call itself — it calls SortRange, which does —
@@ -93,6 +66,36 @@ public static class StaticEstimator
         return estimate;
 
         static string loopsText(Shape s) => $"depth {s.Linear}";
+    }
+
+    private static (Context Context, IMethodSymbol Entry, string? Problem) Prepare(SourceAnalysis analysis, string entryMethod)
+    {
+        var model = analysis.Model;
+        var root = analysis.Tree.GetRoot();
+        var bodies = new Dictionary<IMethodSymbol, SyntaxNode>(SymbolEqualityComparer.Default);
+
+        foreach (var method in root.DescendantNodes().OfType<MethodDeclarationSyntax>())
+            if (model.GetDeclaredSymbol(method) is { } symbol && BodyOf(method.Body, method.ExpressionBody) is { } body)
+                bodies[symbol] = body;
+
+        foreach (var function in root.DescendantNodes().OfType<LocalFunctionStatementSyntax>())
+            if (model.GetDeclaredSymbol(function) is IMethodSymbol symbol && BodyOf(function.Body, function.ExpressionBody) is { } body)
+                bodies[symbol] = body;
+
+        string? typeName = null;
+        string methodName = entryMethod;
+        int dot = entryMethod.LastIndexOf('.');
+        if (dot > 0) { typeName = entryMethod[..dot]; methodName = entryMethod[(dot + 1)..]; }
+
+        var entries = bodies.Keys
+            .Where(s => s.MethodKind == MethodKind.Ordinary && s.Name == methodName &&
+                        (typeName is null || s.ContainingType?.Name == typeName))
+            .ToList();
+
+        var context = new Context { Model = model, Costs = analysis.CostCalls, Bodies = bodies };
+        if (entries.Count == 0) return (context, null!, $"No method named '{entryMethod}' was found to analyse.");
+        if (entries.Count > 1) return (context, null!, $"'{entryMethod}' is ambiguous; name it as Type.Method.");
+        return (context, entries[0], null);
     }
 
     private static SyntaxNode? BodyOf(BlockSyntax? block, ArrowExpressionClauseSyntax? arrow)

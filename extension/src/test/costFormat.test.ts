@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { annotationText, formatBytes, formatCount, heatIntensity } from "../costFormat";
+import { annotationText, classLabel, fastest, formatBytes, formatCount, heatIntensity } from "../costFormat";
 
 test("counts are grouped so long numbers stay readable", () => {
   assert.equal(formatCount(749625), "749,625");
@@ -53,4 +53,16 @@ test("a statement that never ran gets no shading", () => {
 
 test("a single-statement measurement does not divide by zero", () => {
   assert.equal(heatIntensity(1, 1), 1);
+});
+
+test("a line's own class sits beside its count", () => {
+  assert.equal(annotationText(499500, 0, 0, "O(n²)"), "499,500×  O(n²)");
+  assert.equal(annotationText(1000, 0, 499500, "O(n²)"), "1,000×  O(n²)   ·   +499,500 library work");
+});
+
+test("a line holding several statements grows as its fastest one", () => {
+  assert.equal(fastest(["Linear", "Quadratic", "Constant"]), "Quadratic");
+  assert.equal(fastest(["Unknown"]), undefined);
+  assert.equal(classLabel("Linearithmic"), "O(n log n)");
+  assert.equal(classLabel("Unknown"), undefined);
 });

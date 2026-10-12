@@ -105,6 +105,41 @@ export interface StaticEstimate {
   recursiveSelfCalls: number;
 }
 
+/** How one statement's cost grows with n, fitted from its own counts. */
+export interface StatementGrowth {
+  id: number;
+  line: number;
+  column: number;
+  snippet: string;
+  runs: ComplexityClass;
+  runsFormula: string | null;
+  cost: ComplexityClass;
+  costFormula: string | null;
+  memory: ComplexityClass;
+  memoryFormula: string | null;
+  largestAllocation: ComplexityClass;
+  because: string | null;
+  costs: number[];
+}
+
+/** Why the method is the class it is: which statements dominate, and by what formula. */
+export interface Derivation {
+  summary: string;
+  dominant: number[];
+  statements: StatementGrowth[];
+}
+
+export interface SpaceReading {
+  allocation: CurveFit;
+  largestAllocation: CurveFit;
+  callDepth: CurveFit;
+  likelyPeak: ComplexityClass;
+  summary: string;
+  static: StaticEstimate;
+  disagreement: boolean;
+  disagreementNote: string | null;
+}
+
 export interface MeasurementResult {
   status: RunStatus;
   points: SizePoint[];
@@ -113,6 +148,8 @@ export interface MeasurementResult {
   disagreement: boolean;
   disagreementNote: string | null;
   detail: TraceResult | null;
+  derivation: Derivation | null;
+  space: SpaceReading | null;
   inputs: InputSpec[];
   parameters: ParameterDescription[];
   errors: string[];

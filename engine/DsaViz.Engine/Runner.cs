@@ -271,6 +271,7 @@ public static class Runner
         var hits = snapshot?.Hits ?? Array.Empty<long>();
         var bytes = snapshot?.Bytes ?? Array.Empty<long>();
         var work = snapshot?.LibraryWork ?? Array.Empty<long>();
+        var largest = snapshot?.LargestAllocation ?? Array.Empty<long>();
 
         var statements = new List<StatementCost>();
         for (int id = 0; id < hits.Length && id < solution.Statements.Count; id++)
@@ -280,7 +281,8 @@ public static class Runner
             statements.Add(new StatementCost(
                 info.Id, info.Line, info.Column, info.Length, info.Snippet, hits[id], bytes[id])
             {
-                LibraryWork = work[id]
+                LibraryWork = work[id],
+                LargestAllocation = id < largest.Length ? largest[id] : 0
             });
         }
 

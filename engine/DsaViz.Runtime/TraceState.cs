@@ -32,7 +32,8 @@ public sealed class RecursionLimitExceededException : Exception
 
     public RecursionLimitExceededException(int limit)
         : base($"Recursion went deeper than {limit.ToString("N0", CultureInfo.InvariantCulture)} calls. " +
-               "That almost always means a missing or unreachable base case.")
+               "That usually means a missing or unreachable base case — or an input large enough that this " +
+               "recursion should be rewritten as a loop.")
         => Limit = limit;
 }
 
@@ -76,7 +77,11 @@ public sealed record TraceSnapshot(
     long[] SiteCalls,
     long[] SiteUnits,
     long TotalOperations,
-    int MaxDepth);
+    int MaxDepth)
+{
+    /// <summary>The most any single execution of each statement allocated.</summary>
+    public long[] LargestAllocation { get; init; } = Array.Empty<long>();
+}
 
 /// <summary>
 /// Per-statement execution counts, allocation, library work and call depth for one run.
@@ -91,7 +96,13 @@ public sealed record TraceSnapshot(
 /// </summary>
 public sealed class TraceState
 {
-    public const int DefaultDepthLimit = 100_000;
+    /// <summary>
+    /// Deep enough for legitimate recursion well beyond the default sizes — a skewed tree
+    /// at n = 1,000 recurses 1,001 deep — and shallow enough to fail fast. Stopping runaway
+    /// recursion means unwinding every frame, and .NET records stack-trace data per frame as
+    /// it does: at 100,000 frames that took about eight seconds per failure.
+    /// </summary>
+    public const int DefaultDepthLimit = 20_000;
 
     /// <summary>The slot's value outside a run: every call is a no-op.</summary>
     public static readonly TraceState Inactive = new(active: false, revoked: false);
@@ -104,6 +115,7 @@ public sealed class TraceState
 
     private long[] _hits = Array.Empty<long>();
     private long[] _bytes = Array.Empty<long>();
+    private long[] _largestAllocation = Array.Empty<long>();
     private long[] _libraryWork = Array.Empty<long>();
     private long[] _siteCalls = Array.Empty<long>();
     private long[] _siteUnits = Array.Empty<long>();
@@ -142,6 +154,7 @@ public sealed class TraceState
         {
             _hits = new long[statementCount],
             _bytes = new long[statementCount],
+            _largestAllocation = new long[statementCount],
             _libraryWork = new long[statementCount],
             _siteCalls = new long[siteCount],
             _siteUnits = new long[siteCount],
@@ -260,13 +273,27 @@ public sealed class TraceState
 
     public TraceSnapshot Snapshot() => new(
         (long[])_hits.Clone(), (long[])_bytes.Clone(), (long[])_libraryWork.Clone(),
-        (long[])_siteCalls.Clone(), (long[])_siteUnits.Clone(), _totalOperations, _maxDepth);
+        (long[])_siteCalls.Clone(), (long[])_siteUnits.Clone(), _totalOperations, _maxDepth)
+    {
+        LargestAllocation = (long[])_largestAllocation.Clone()
+    };
 
+    /// <summary>
+    /// Charges what was allocated since the last flush to the pending statement, and
+    /// records the largest single amount. The largest single allocation is what separates
+    /// two programs with the same total: one that builds an n-element structure once, and
+    /// one that throws away an n-element buffer on every pass. Same peak, very different
+    /// total — and the difference is the "hoist it out of the loop" lesson.
+    /// </summary>
     private void FlushAllocation()
     {
         long now = GC.GetAllocatedBytesForCurrentThread();
         if ((uint)_pendingStatement < (uint)_bytes.Length)
-            _bytes[_pendingStatement] += now - _allocatedAtLastHit;
+        {
+            long delta = now - _allocatedAtLastHit;
+            _bytes[_pendingStatement] += delta;
+            if (delta > _largestAllocation[_pendingStatement]) _largestAllocation[_pendingStatement] = delta;
+        }
         _allocatedAtLastHit = now;
     }
 

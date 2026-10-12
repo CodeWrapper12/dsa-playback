@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
-import { annotationText, formatBytes, formatCount, heatIntensity } from "./costFormat";
-import { LibraryCall, StatementCost, TraceResult } from "./types";
+import { annotationText, classLabel, fastest, formatBytes, formatCount, heatIntensity } from "./costFormat";
+import { Derivation, LibraryCall, StatementCost, StatementGrowth, TraceResult } from "./types";
 
 const HOT = "rgba(224, 108, 43, 0.85)";
 
@@ -40,7 +40,7 @@ export class CostDecorations {
     });
   }
 
-  async apply(file: string, detail: TraceResult, measuredAt: number | null): Promise<void> {
+  async apply(file: string, detail: TraceResult, measuredAt: number | null, derivation?: Derivation | null): Promise<void> {
     const document = await vscode.workspace.openTextDocument(file);
     const editor = await vscode.window.showTextDocument(document, {
       preserveFocus: true,
@@ -52,6 +52,13 @@ export class CostDecorations {
       const bucket = statementsByLine.get(statement.line);
       if (bucket) bucket.push(statement);
       else statementsByLine.set(statement.line, [statement]);
+    }
+
+    const growthByLine = new Map<number, StatementGrowth[]>();
+    for (const growth of derivation?.statements ?? []) {
+      const bucket = growthByLine.get(growth.line);
+      if (bucket) bucket.push(growth);
+      else growthByLine.set(growth.line, [growth]);
     }
 
     const callsByLine = new Map<number, LibraryCall[]>();
@@ -80,9 +87,14 @@ export class CostDecorations {
 
       costs.push({
         range,
-        renderOptions: { after: { contentText: annotationText(line.hits, line.bytesAllocated, line.libraryWork ?? 0) } },
+        renderOptions: {
+          after: {
+            contentText: annotationText(line.hits, line.bytesAllocated, line.libraryWork ?? 0,
+              classLabel(fastest((growthByLine.get(line.line) ?? []).map(g => g.cost)) ?? ""))
+          }
+        },
         hoverMessage: this.hover(line.line, statementsByLine.get(line.line) ?? [],
-          callsByLine.get(line.line) ?? [], measuredAt, detail)
+          callsByLine.get(line.line) ?? [], growthByLine.get(line.line) ?? [], measuredAt, detail)
       });
 
       const intensity = heatIntensity(costOf(line), maxCost);
@@ -104,6 +116,7 @@ export class CostDecorations {
     line: number,
     statements: StatementCost[],
     calls: LibraryCall[],
+    growth: StatementGrowth[],
     measuredAt: number | null,
     detail: TraceResult): vscode.MarkdownString {
 
@@ -126,6 +139,17 @@ export class CostDecorations {
       const bytes = formatBytes(statements[0].bytesAllocated);
       if (bytes) markdown.appendMarkdown(`, ${bytes} allocated`);
       markdown.appendMarkdown("\n");
+    }
+
+    if (growth.length > 0) {
+      // The per-statement derivation: how often it runs, what it costs, what it allocates.
+      markdown.appendMarkdown("\n**How this line grows**\n\n");
+      for (const g of growth) {
+        const runs = g.runsFormula ? `runs ${g.runsFormula} times` : "run count does not fit a standard curve";
+        const cost = g.cost !== g.runs && g.costFormula ? `, costs ${g.costFormula}` : "";
+        const memory = g.memoryFormula ? `, allocates ${g.memoryFormula} in total` : "";
+        markdown.appendMarkdown(`- \`${g.snippet.replace(/`/g, "'")}\` ${runs}${cost}${memory}\n`);
+      }
     }
 
     if (calls.length > 0) {

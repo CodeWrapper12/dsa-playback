@@ -210,7 +210,7 @@ class ReportPanel {
       if (detail && response.primary?.status === "Completed") {
         const points = response.primary.points;
         const measuredAt = points.length ? points[points.length - 1].size : null;
-        await decorations.apply(request.file, detail, measuredAt);
+        await decorations.apply(request.file, detail, measuredAt, response.primary.derivation);
       } else {
         decorations.clear();
       }

@@ -226,3 +226,30 @@ label.inline {
 }
 td.hidden-work { color: var(--hot); font-weight: 600; }
 h3 { font-size: 1em; margin: 22px 0 4px; font-weight: 600; }
+
+/* ---- derivation, growth column, metrics -------------------------------------------- */
+
+.derivation {
+  border: 1px solid var(--vscode-panel-border); border-left: 3px solid var(--hot);
+  border-radius: 0 6px 6px 0; padding: 10px 14px; margin-bottom: 12px;
+  background: var(--vscode-editorWidget-background);
+}
+.derivation .label {
+  font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--vscode-descriptionForeground); margin-bottom: 4px;
+}
+.derivation p { margin: 0; line-height: 1.55; }
+.derivation code, .footnote code {
+  font-family: var(--vscode-editor-font-family);
+  background: var(--vscode-textCodeBlock-background); padding: 1px 4px; border-radius: 3px;
+}
+td.growth { white-space: nowrap; }
+td.growth.dominant { color: var(--hot); font-weight: 600; }
+td.growth .formula { color: var(--vscode-descriptionForeground); font-weight: 400; font-size: 0.9em; }
+
+.metrics { display: flex; gap: 4px; margin-bottom: 6px; }
+.metric {
+  background: transparent; color: var(--vscode-descriptionForeground);
+  border: 1px solid var(--vscode-panel-border); padding: 4px 10px;
+}
+.metric.active { color: var(--vscode-foreground); border-color: var(--vscode-focusBorder); }

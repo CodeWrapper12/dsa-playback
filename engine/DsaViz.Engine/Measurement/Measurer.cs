@@ -71,8 +71,14 @@ public static class Measurer
             // not the other way round. This applies to sizes the caller chose as well:
             // two points cannot be fitted, so honouring them would only report Unknown.
             // After a timeout the solution is abandoned and cannot be run again.
+            // Recursion that overflows at a size this small is not a cost problem — an
+            // infinite recursion fails at every size — so retrying would only pay for
+            // unwinding a full stack a second time.
+            bool overflowedEarly = ladder.StoppedBy == RunStatus.RecursionLimitExceeded &&
+                                   ladder.StoppedAt is { } stop && stop <= SmallSizes.Max();
+
             if (ladder.Points.Count < MinimumPointsForCurve && ladder.StoppedBy is RunStatus.BudgetExceeded
-                    or RunStatus.RecursionLimitExceeded && !solution.Abandoned && !requested.SequenceEqual(SmallSizes))
+                    or RunStatus.RecursionLimitExceeded && !overflowedEarly && !solution.Abandoned && !requested.SequenceEqual(SmallSizes))
             {
                 var retry = RunLadder(solution, parameters, specs, SmallSizes, budget);
                 if (retry.Points.Count > ladder.Points.Count)
@@ -85,8 +91,15 @@ public static class Measurer
 
             if (ladder.Note is not null) notes.Add(ladder.Note);
 
+            // When nothing at all was measured, why it stopped is the error, not a footnote:
+            // "missing base case" is the one thing the user needs to read.
+            var errors = ladder.Errors;
+            if (ladder.Points.Count == 0 && ladder.Note is not null) errors = new List<string>(errors) { ladder.Note };
+
             var empirical = CurveFitter.Fit(ladder.Points);
             var staticEstimate = StaticEstimator.Estimate(analysis, entryMethod);
+            var derivation = Derivations.Explain(ladder.Runs, empirical);
+            var space = Derivations.Space(ladder.Runs, derivation, StaticEstimator.EstimateSpace(analysis, entryMethod));
 
             bool disagreement =
                 empirical.Best != ComplexityClass.Unknown &&
@@ -102,9 +115,11 @@ public static class Measurer
                 Disagreement = disagreement,
                 DisagreementNote = DescribeDisagreement(disagreement, empirical, staticEstimate),
                 Detail = ladder.Detail,
+                Derivation = derivation,
+                Space = space,
                 Inputs = specs,
                 Parameters = descriptions,
-                Errors = ladder.Errors,
+                Errors = errors,
                 SizeNote = notes.Count == 0 ? null : string.Join(" ", notes)
             };
         }
@@ -137,13 +152,15 @@ public static class Measurer
     }
 
     private sealed record Ladder(
-        List<SizePoint> Points, TraceResult? Detail, string? Note, List<string> Errors, RunStatus? StoppedBy);
+        List<SizePoint> Points, List<MeasuredRun> Runs, TraceResult? Detail, string? Note, List<string> Errors,
+        RunStatus? StoppedBy, int? StoppedAt = null);
 
     private static Ladder RunLadder(
         CompiledSolution solution, ParameterInfo[] parameters, IReadOnlyList<InputSpec> specs,
         IReadOnlyList<int> sizes, long budget)
     {
         var points = new List<SizePoint>();
+        var runs = new List<MeasuredRun>();
         var errors = new List<string>();
         TraceResult? detail = null;
 
@@ -166,9 +183,11 @@ public static class Measurer
             {
                 // Larger sizes can only cost more, so there is nothing to learn by going
                 // further up the ladder — and after a timeout the solution is abandoned.
-                return new Ladder(points, detail,
-                    $"Stopped at n={size}: {trace.Errors.FirstOrDefault()} Points below this size are still valid.",
-                    errors, trace.Status);
+                return new Ladder(points, runs, detail,
+                    points.Count == 0
+                        ? $"Stopped at n={size}: {trace.Errors.FirstOrDefault()}"
+                        : $"Stopped at n={size}: {trace.Errors.FirstOrDefault()} Points below this size are still valid.",
+                    errors, trace.Status, size);
             }
 
             if (trace.Status != RunStatus.Completed)
@@ -183,10 +202,11 @@ public static class Measurer
                 LibraryWork = trace.TotalOperations - trace.TotalStatements,
                 MaxRecursionDepth = trace.MaxRecursionDepth
             });
+            runs.Add(new MeasuredRun(size, trace));
             detail = trace;   // keep the largest completed run for the per-statement view
         }
 
-        return new Ladder(points, detail, null, errors, null);
+        return new Ladder(points, runs, detail, null, errors, null);
     }
 
     private static string? DescribeDisagreement(bool disagreement, CurveFit empirical, StaticEstimate estimate)

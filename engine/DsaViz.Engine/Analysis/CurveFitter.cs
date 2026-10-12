@@ -34,7 +34,14 @@ public static class CurveFitter
         // exponential. It is detected separately, by base, below.
     };
 
-    public static CurveFit Fit(IReadOnlyList<SizePoint> points)
+    /// <param name="allowIntercept">
+    /// Operation counts are fitted through the origin: complexity classes describe growth
+    /// up from zero work, and an intercept would let a wrong shape fake a good fit. Space
+    /// readings are different — a balanced tree's call depth is log n plus one, and a
+    /// curve forced through zero cannot fit 5, 6, 7 … 11 at all. Those are fitted with an
+    /// intercept, so the constant is absorbed and the growth is what gets classified.
+    /// </param>
+    public static CurveFit Fit(IReadOnlyList<SizePoint> points, bool allowIntercept = false)
     {
         if (points.Count < MinimumPoints)
             return new CurveFit(ComplexityClass.Unknown, 0, Array.Empty<ClassFit>(),
@@ -67,15 +74,29 @@ public static class CurveFitter
             if (basisValues.Any(v => double.IsNaN(v) || double.IsInfinity(v) || v > 1e300))
                 continue;
 
-            double denominator = basisValues.Sum(v => v * v);
-            if (denominator == 0) continue;
+            double coefficient, intercept = 0;
+            if (allowIntercept)
+            {
+                // A constant basis explains none of the variance once an intercept exists.
+                if (complexityClass == ComplexityClass.Constant) continue;
+                double meanBasis = basisValues.Average();
+                double variance = basisValues.Sum(b => (b - meanBasis) * (b - meanBasis));
+                if (variance == 0) continue;
+                coefficient = basisValues.Zip(observed, (b, y) => (b - meanBasis) * (y - mean)).Sum() / variance;
+                intercept = mean - coefficient * meanBasis;
+            }
+            else
+            {
+                double denominator = basisValues.Sum(v => v * v);
+                if (denominator == 0) continue;
+                coefficient = basisValues.Zip(observed, (b, y) => b * y).Sum() / denominator;
+            }
 
-            // Least squares through the origin: complexity classes describe growth up
-            // from zero work, so an intercept would let a wrong shape fake a good fit.
-            double coefficient = basisValues.Zip(observed, (b, y) => b * y).Sum() / denominator;
+            // A shrinking curve is not a complexity class.
+            if (coefficient <= 0 && complexityClass != ComplexityClass.Constant) continue;
 
             double residualSumOfSquares = basisValues
-                .Zip(observed, (b, y) => (y - coefficient * b) * (y - coefficient * b))
+                .Zip(observed, (b, y) => (y - intercept - coefficient * b) * (y - intercept - coefficient * b))
                 .Sum();
 
             fits.Add(new ClassFit(complexityClass, 1.0 - residualSumOfSquares / totalSumOfSquares, coefficient));

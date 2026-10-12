@@ -42,6 +42,9 @@ public sealed record StatementCost(
     /// its own would hide exactly that.
     /// </summary>
     public long LibraryWork { get; init; }
+
+    /// <summary>The most a single execution of this statement allocated.</summary>
+    public long LargestAllocation { get; init; }
 }
 
 /// <summary>Where a costed library call sits, and what it is.</summary>
