@@ -34,11 +34,20 @@ public class PythonTests
         return response;
     }
 
+    // A missing result says why, rather than failing later on a null.
     private static StepTrace Record(string file, string entry, string?[]? values = null, int? example = null, int size = 8)
-        => Job(new JobRequest { File = file, Entry = entry, StepSize = size, Values = values, Example = example }).Steps!;
+    {
+        var response = Job(new JobRequest { File = file, Entry = entry, StepSize = size, Values = values, Example = example });
+        Assert.True(response.Steps is not null, "No recording: " + string.Join("; ", response.Errors));
+        return response.Steps!;
+    }
 
     private static MeasurementResult Measure(string file, string entry, int[]? sizes = null, GenerationStrategy? strategy = null)
-        => Job(new JobRequest { File = file, Entry = entry, Sizes = sizes, Strategy = strategy }).Primary!;
+    {
+        var response = Job(new JobRequest { File = file, Entry = entry, Sizes = sizes, Strategy = strategy });
+        Assert.True(response.Primary is not null, "No measurement: " + string.Join("; ", response.Errors));
+        return response.Primary!;
+    }
 
     private static IReadOnlyList<EntryPoint> Entries(string source)
         => PythonSolution.Entries(PythonSolution.Describe(PythonHost.Locate(), source, "").Description);

@@ -1,0 +1,5 @@
+# Every checkout is byte-identical, on every OS: samples are parsed for line numbers and
+# tests match exact text, and Windows' CRLF conversion would change both.
+* text=auto eol=lf
+*.png binary
+*.gif binary

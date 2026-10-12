@@ -1,7 +1,7 @@
 {
   "name": "dsa-playback",
   "displayName": "DSA Playback",
-  "description": "Watch your C# or Python solution run step by step \u2014 pointers sliding, lists rewiring, trees filling \u2014 and see why it has the complexity it has. Built for learning data structures and algorithms.",
+  "description": "Watch your C# or Python solution run step by step — pointers sliding, lists rewiring, trees filling — and see why it has the complexity it has. Built for learning data structures and algorithms.",
   "version": "1.0.0",
   "publisher": "codewrapper12",
   "license": "MIT",
@@ -115,7 +115,7 @@
         "dsaPlayback.enginePath": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Only for development: a different `DsaViz.Engine` executable to use. Leave empty \u2014 the extension uses the engine bundled inside it."
+          "markdownDescription": "Only for development: a different `DsaViz.Engine` executable to use. Leave empty — the extension uses the engine bundled inside it."
         },
         "dsaPlayback.sizes": {
           "type": "array",
@@ -123,7 +123,7 @@
             "type": "integer"
           },
           "default": [],
-          "markdownDescription": "Input sizes to measure. Leave empty to let the engine choose: it starts at `10, 25, 50, 100, 250, 500, 1000` and drops to small sizes on its own when an algorithm is too expensive for them \u2014 which is the only way an exponential solution gets a curve at all."
+          "markdownDescription": "Input sizes to measure. Leave empty to let the engine choose: it starts at `10, 25, 50, 100, 250, 500, 1000` and drops to small sizes on its own when an algorithm is too expensive for them — which is the only way an exponential solution gets a curve at all."
         },
         "dsaPlayback.timeoutSeconds": {
           "type": "integer",
@@ -152,7 +152,7 @@
           {
             "id": "twoPointers",
             "title": "Watch two pointers move",
-            "description": "Open a two-pointer solution, then press **\u25b6 Visualize** above `TwoSum`.\n[Open Two Sum II in C#](command:dsaPlayback.openSample?%5B%22TwoSumSorted.cs%22%5D) \u00b7 [in Python](command:dsaPlayback.openSample?%5B%22two_sum_sorted.py%22%5D)",
+            "description": "Open a two-pointer solution, then press **▶ Visualize** above `TwoSum`.\n[Open Two Sum II in C#](command:dsaPlayback.openSample?%5B%22TwoSumSorted.cs%22%5D) · [in Python](command:dsaPlayback.openSample?%5B%22two_sum_sorted.py%22%5D)",
             "media": {
               "markdown": "walkthrough/visualize.md"
             },
@@ -163,7 +163,7 @@
           {
             "id": "bfs",
             "title": "Try your own input on a tree",
-            "description": "Open a breadth-first search, press **\u25b6 Visualize**, then type a different tree in the box.\n[Open Level Order Traversal in C#](command:dsaPlayback.openSample?%5B%22LevelOrder.cs%22%5D) \u00b7 [in Python](command:dsaPlayback.openSample?%5B%22level_order.py%22%5D)",
+            "description": "Open a breadth-first search, press **▶ Visualize**, then type a different tree in the box.\n[Open Level Order Traversal in C#](command:dsaPlayback.openSample?%5B%22LevelOrder.cs%22%5D) · [in Python](command:dsaPlayback.openSample?%5B%22level_order.py%22%5D)",
             "media": {
               "markdown": "walkthrough/inputs.md"
             },
@@ -174,7 +174,7 @@
           {
             "id": "complexity",
             "title": "See why it's O(n)",
-            "description": "Open a memoised dynamic-programming solution and press **Complexity**.\n[Open Climbing Stairs in C#](command:dsaPlayback.openSample?%5B%22ClimbStairs.cs%22%5D) \u00b7 [in Python](command:dsaPlayback.openSample?%5B%22climb_stairs.py%22%5D)",
+            "description": "Open a memoised dynamic-programming solution and press **Complexity**.\n[Open Climbing Stairs in C#](command:dsaPlayback.openSample?%5B%22ClimbStairs.cs%22%5D) · [in Python](command:dsaPlayback.openSample?%5B%22climb_stairs.py%22%5D)",
             "media": {
               "markdown": "walkthrough/complexity.md"
             },
@@ -198,7 +198,7 @@
     "@types/jsdom": "^21.1.7",
     "@types/node": "^20.11.0",
     "@types/vscode": "^1.85.0",
-    "@vscode/test-electron": "^2.5.2",
+    "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "^3.9.2",
     "jsdom": "^24.1.3",
     "ovsx": "^0.10.12",

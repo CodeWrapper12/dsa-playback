@@ -292,13 +292,13 @@ public static class Stepper
         => analysis.Tree.GetRoot().DescendantNodes()
             .Select(node => node switch
             {
-                Microsoft.CodeAnalysis.CSharp.Syntax.MethodDeclarationSyntax m => (m.Identifier.Text, m.ParameterList),
-                Microsoft.CodeAnalysis.CSharp.Syntax.LocalFunctionStatementSyntax f => (f.Identifier.Text, f.ParameterList),
-                _ => (Name: (string?)null, Parameters: (Microsoft.CodeAnalysis.CSharp.Syntax.ParameterListSyntax?)null)
+                Microsoft.CodeAnalysis.CSharp.Syntax.MethodDeclarationSyntax m => (Name: m.Identifier.Text, List: m.ParameterList),
+                Microsoft.CodeAnalysis.CSharp.Syntax.LocalFunctionStatementSyntax f => (Name: f.Identifier.Text, List: f.ParameterList),
+                _ => (Name: (string?)null, List: (Microsoft.CodeAnalysis.CSharp.Syntax.ParameterListSyntax?)null)
             })
-            .Where(m => m.Item1 is not null)
-            .GroupBy(m => m.Item1!)
-            .Select(g => new Contracts.MethodParameters(g.Key, g.First().Item2!.Parameters.Select(p => p.Identifier.Text).ToList()))
+            .Where(m => m.Name is not null)
+            .GroupBy(m => m.Name!)
+            .Select(g => new Contracts.MethodParameters(g.Key, g.First().List!.Parameters.Select(p => p.Identifier.Text).ToList()))
             .ToList();
 
     /// <summary>The input that is a graph, when the signature has one: drawn as nodes and edges.</summary>

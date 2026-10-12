@@ -214,7 +214,6 @@ public sealed class HeapRecorder : IStepObserver
                 if (value is not ICollection) return described;
 
                 var items = new List<HeapValue>();
-                int count = 0;
                 foreach (var item in (IEnumerable)value)
                 {
                     if (items.Count >= MaxItems) break;

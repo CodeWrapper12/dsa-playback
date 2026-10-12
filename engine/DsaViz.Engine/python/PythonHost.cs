@@ -100,7 +100,10 @@ public sealed class PythonHost
             RedirectStandardError = true,
             UseShellExecute = false,
             StandardOutputEncoding = Encoding.UTF8,
-            StandardErrorEncoding = Encoding.UTF8
+            StandardErrorEncoding = Encoding.UTF8,
+            // Without this, Windows writes the request in the console's code page, and any
+            // character outside it — a "—" or "▶" in a comment — reaches Python garbled.
+            StandardInputEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false)
         };
         // -I: isolated mode. The student's working folder, PYTHONPATH and user site
         // packages stay out of the runner's own imports, so a file named json.py beside
@@ -130,8 +133,13 @@ public sealed class PythonHost
             // Nothing on stdout is the runner itself failing: its stack trace is for the
             // log, and the student is told it is not their code.
             Console.Error.WriteLine($"Python runner failed (exit {process.ExitCode}): {errors.Result}");
+            // The last line of Python's traceback names the exception without the stack:
+            // the one thing a bug report needs, and nothing a student has to wade through.
+            string last = errors.Result.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .LastOrDefault() ?? "";
             throw new PythonRunFailedException(
-                $"The Python runner stopped unexpectedly (exit code {process.ExitCode}). This is a bug in the visualizer, not in your code.");
+                $"The Python runner stopped unexpectedly (exit code {process.ExitCode}{(last.Length > 0 ? $": {last}" : "")}). " +
+                "This is a bug in the visualizer, not in your code.");
         }
 
         var answer = JsonSerializer.Deserialize<T>(text, Json)
