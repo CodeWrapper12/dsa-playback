@@ -14,7 +14,7 @@ namespace DsaViz.Engine.Measurement;
 public static class Stepper
 {
     public const int DefaultSize = 8;
-    public const int DefaultMaxSteps = 2_000;
+    public const int DefaultMaxSteps = 10_000;
 
     public static StepTrace Record(
         SourceAnalysis analysis,
@@ -80,28 +80,35 @@ public static class Stepper
             // and the point of showing the arguments is to show where it started.
             var shownArguments = parameters.Select((p, i) => Variable(p.Name ?? $"arg{i}", ValueCapture.Capture(arguments[i]))).ToList();
 
-            var trace = Runner.Invoke(solution, arguments, budget, recordSteps: maxSteps);
-            var statements = solution.Statements;
-
-            var steps = trace.RecordedSteps.Select((step, stepIndex) =>
-            {
-                var info = statements[step.StatementId];
-                var variables = info.Variables.Select((name, i) => Variable(name, step.Values[i])).ToList();
-                return new ExecutionStep(stepIndex, info.Id, info.Line, info.Column, step.Depth, info.Method, variables);
-            }).ToList();
+            var recorder = new HeapRecorder(solution.Statements);
+            var trace = Runner.Invoke(solution, arguments, budget, recording: new StepRecording(recorder, maxSteps));
 
             string? returned = trace.Status == RunStatus.Completed ? Literals.Format(trace.ReturnObject) : null;
+
+            var errors = trace.Errors.ToList();
+            if (trace.RecorderFailure is not null)
+            {
+                // The run is unaffected; only the recording stopped. Said plainly, with the
+                // details left for the log rather than shown as if the code had failed.
+                Console.Error.WriteLine($"Step recorder failed: {trace.RecorderFailure}");
+                errors.Add($"The recording stopped after {recorder.Steps.Count} steps because of a problem in the visualizer. " +
+                           "Your code itself ran to the end.");
+            }
 
             return found with
             {
                 Status = trace.Status,
-                Steps = steps,
-                Statements = statements,
+                Steps = recorder.Steps,
+                Returns = recorder.Returns,
+                TotalAllocated = recorder.Steps.Count > 0 ? trace.TotalBytesAllocated : 0,
+                Methods = MethodsOf(analysis),
+                Graph = GraphOf(parameters),
+                Statements = solution.Statements,
                 Truncated = trace.StepsTruncated,
                 MaxSteps = maxSteps,
                 Arguments = shownArguments,
                 ReturnValue = returned,
-                Errors = trace.Errors,
+                Errors = errors,
                 ErrorLine = trace.ErrorLine,
                 Check = Check(chosenExample, resolved, returned)
             };
@@ -185,7 +192,34 @@ public static class Stepper
         }
     }
 
-    private static StepVariable Variable(string name, DsaViz.Runtime.CapturedValue value)
+    /// <summary>Every method and local function with its parameter names, for showing a call's arguments.</summary>
+    private static IReadOnlyList<Contracts.MethodParameters> MethodsOf(SourceAnalysis analysis)
+        => analysis.Tree.GetRoot().DescendantNodes()
+            .Select(node => node switch
+            {
+                Microsoft.CodeAnalysis.CSharp.Syntax.MethodDeclarationSyntax m => (m.Identifier.Text, m.ParameterList),
+                Microsoft.CodeAnalysis.CSharp.Syntax.LocalFunctionStatementSyntax f => (f.Identifier.Text, f.ParameterList),
+                _ => (Name: (string?)null, Parameters: (Microsoft.CodeAnalysis.CSharp.Syntax.ParameterListSyntax?)null)
+            })
+            .Where(m => m.Item1 is not null)
+            .GroupBy(m => m.Item1!)
+            .Select(g => new Contracts.MethodParameters(g.Key, g.First().Item2!.Parameters.Select(p => p.Identifier.Text).ToList()))
+            .ToList();
+
+    /// <summary>The input that is a graph, when the signature has one: drawn as nodes and edges.</summary>
+    private static GraphInput? GraphOf(System.Reflection.ParameterInfo[] parameters)
+    {
+        foreach (var parameter in parameters)
+        {
+            var shape = ParameterBinder.ShapeFor(parameter, parameters);
+            if (shape == InputShape.NestedIntList) return new GraphInput("adjacency", parameter.Name!);
+            if (shape == InputShape.EdgeList)
+                return new GraphInput("edges", parameter.Name!) { NodeCount = ParameterBinder.NodeCountParameter(parameters)?.Name };
+        }
+        return null;
+    }
+
+    private static StepVariable Variable(string name, CapturedValue value)
         => new(name, value.Display, value.Kind, value.Items, value.Number);
 
     private static StepTrace Failed(RunStatus status, IReadOnlyList<string> errors, int size) => new()

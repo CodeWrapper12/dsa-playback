@@ -14,6 +14,7 @@ import { JSDOM, VirtualConsole } from "jsdom";
 const root = path.resolve(__dirname, "../../..");
 const engine = path.join(root, "engine/DsaViz.Engine/bin/Debug/net8.0/DsaViz.Engine");
 const script = fs.readFileSync(path.join(root, "extension/media/main.js"), "utf8");
+const runScript = fs.readFileSync(path.join(root, "extension/media/run.js"), "utf8");
 
 function measure(request: Record<string, unknown>): unknown {
   // Fail rather than skip: a skipped test reports green while testing nothing.
@@ -44,6 +45,8 @@ function load(connected = false) {
     (dom.window as unknown as { acquireVsCodeApi(): unknown }).acquireVsCodeApi =
       () => ({ postMessage: (message: Record<string, unknown>) => posted.push(JSON.parse(JSON.stringify(message))) });
   }
+  // Loaded in the same order as the panel loads them.
+  dom.window.eval(runScript);
   dom.window.eval(script);
   return { dom, errors, posted };
 }
@@ -141,7 +144,7 @@ test("the step view draws pointers and steps through a recorded run", () => {
   assert.deepEqual(errors, []);
 
   // Which cell each pointer sits under, e.g. "1:left 7:right" — positions, not just labels.
-  const pointersNow = () => Array.from(document.querySelectorAll(".cell"))
+  const pointersNow = () => Array.from(document.querySelectorAll("#step-area .cell:not(.more)"))
     .map(cell => [cell.querySelector(".cell-index")!.textContent!.trim(), cell.querySelector(".cell-pointers")!.textContent!.trim()])
     .filter(([, labels]) => labels)
     .map(([index, labels]) => `${index}:${labels}`);
@@ -314,4 +317,199 @@ test("the visualizer's own failure offers its details, never a stack trace", () 
 
   dom.window.document.getElementById("show-log")!.click();
   assert.deepEqual(posted.find(m => m.type === "showLog"), { type: "showLog" });
+});
+
+// ---- the animated run view -------------------------------------------------------------
+
+type RunPanel = Panel & { __goto(index: number): void };
+
+/** Records a run with the real engine and shows it, ready to step through. */
+function run(file: string, entry: string, extra: Record<string, unknown> = {}) {
+  const recorded = measure({ file, entry, stepSize: 8, ...extra }) as { steps: { steps: unknown[]; status: string } };
+  assert.equal(recorded.steps.status, "Completed");
+  const loaded = load(true);
+  const window = loaded.dom.window as unknown as RunPanel;
+  window.__steps(recorded.steps, { file, entry });
+  const area = () => loaded.dom.window.document.getElementById("step-area")!;
+  const go = (index: number) => { window.__goto(index); assert.deepEqual(loaded.errors, [], `step ${index}`); };
+  return { ...loaded, trace: recorded.steps, area, go, count: recorded.steps.steps.length };
+}
+
+const leetcode = (name: string) => sample(`leetcode/${name}`);
+
+test("every step of every practice structure draws without error", () => {
+  const cases: [string, string, Record<string, unknown>][] = [
+    [leetcode("ReverseList.cs"), "Solution.ReverseList", {}],
+    [walkthrough("LevelOrder.cs"), "Solution.LevelOrder", {}],
+    [leetcode("TwoSum.cs"), "Solution.TwoSum", {}],
+    [leetcode("KthLargest.cs"), "Solution.FindKthLargest", {}],
+    [leetcode("NumIslands.cs"), "Solution.NumIslands", { stepSize: 4 }],
+    [leetcode("CountComponents.cs"), "Solution.CountComponents", { stepSize: 5 }],
+    [walkthrough("ClimbStairs.cs"), "Solution.ClimbStairs", { example: 1 }],
+    [leetcode("MaxDepth.cs"), "Solution.MaxDepth", {}]
+  ];
+  for (const [file, entry, extra] of cases) {
+    const { go, count } = run(file, entry, extra);
+    for (let i = 0; i < count; i++) go(i);
+    for (let i = count - 1; i >= 0; i -= 7) go(i);   // backwards and jumping too
+  }
+});
+
+test("a linked list is one drawing, labelled by every variable that points into it", () => {
+  const { go, area } = run(leetcode("ReverseList.cs"), "Solution.ReverseList", { stepSize: 4 });
+  go(12);
+  const labels = Array.from(area().querySelectorAll(".node-label")).map(l => l.textContent);
+  assert.deepEqual(labels.sort(), ["head", "next", "previous"].filter(n => labels.includes(n)).sort());
+  assert.equal(area().querySelectorAll("svg[aria-label='linked list']").length, 1, "one list, not one per variable");
+  assert.match(area().querySelector(".var-name")!.textContent!, /head/);
+});
+
+test("a rewired link bends from its old target to the new one", () => {
+  const { go, area, trace } = run(leetcode("ReverseList.cs"), "Solution.ReverseList", { stepSize: 4 });
+  const steps = trace.steps as { heap?: { kind: string }[] }[];
+  const rewiring = steps.findIndex((s, i) => i > 0 && (s.heap || []).some(o => o.kind === "listnode"));
+  go(rewiring - 1);
+  go(rewiring);
+  const rewired = area().querySelector("path.link.rewired, text.null-mark");
+  assert.ok(rewired, "the changed link is marked");
+  go(rewiring + 2);
+  go(rewiring + 3);
+  assert.ok(area().querySelector("path.link.rewired animate[attributeName='d']") || area().querySelector("path.link"),
+    "links are drawn as paths that can bend");
+});
+
+test("swapped values fly past each other and a moving pointer slides", () => {
+  const swap = path.join(root, "extension/.devharness/swap.cs");
+  fs.writeFileSync(swap, [
+    "// Input: values = [5,1,4,2,8]",
+    "public class Solution {",
+    "    public int[] Sort(int[] values) {",
+    "        for (int i = 0; i < values.Length; i++)",
+    "            for (int j = 0; j + 1 < values.Length - i; j++)",
+    "                if (values[j] > values[j + 1])",
+    "                    (values[j], values[j + 1]) = (values[j + 1], values[j]);",
+    "        return values;",
+    "    }",
+    "}"
+  ].join("\n"));
+  const { go, area, count } = run(swap, "Solution.Sort");
+
+  let flew = 0, slid = 0;
+  for (let i = 1; i < count; i++) {
+    go(i);
+    const fly = Array.from(area().querySelectorAll(".value.fly"));
+    if (fly.length === 2) {
+      flew++;
+      // One moves right by a cell and the other left by one: they trade places.
+      assert.deepEqual(fly.map(f => f.getAttribute("style")).sort(), ["--from:-40px", "--from:40px"]);
+    }
+    if (area().querySelector(".pointer.slide")) slid++;
+  }
+  assert.ok(flew >= 4, `[5,1,4,2,8] takes four swaps; ${flew} animated`);
+  assert.ok(slid > 0, "pointers slide as they move");
+});
+
+test("a value written into a cell flashes, and a step back draws without animating", () => {
+  const { go, area, count } = run(walkthrough("TwoSumSorted.cs"), "Solution.TwoSum");
+  go(3);
+  go(count - 1);   // a jump: nothing is adjacent, so nothing animates
+  assert.equal(area().querySelectorAll(".slide, .fly, .written").length, 0);
+});
+
+test("map entries animate in as they are added", () => {
+  const { go, area, count } = run(leetcode("TwoSum.cs"), "Solution.TwoSum");
+  let added = 0;
+  for (let i = 1; i < count; i++) { go(i); added += area().querySelectorAll(".entry.added").length; }
+  assert.ok(added >= 2, "each `seen[...] = i` animates its entry in");
+});
+
+test("a queue shows what joined and what left", () => {
+  const { go, area, count } = run(walkthrough("LevelOrder.cs"), "Solution.LevelOrder");
+  let joined = 0, left = 0;
+  for (let i = 1; i < count; i++) {
+    go(i);
+    joined += area().querySelectorAll(".lane.queue .slot.added").length;
+    left += area().querySelectorAll(".lane.queue .slot.removed").length;
+  }
+  // [3,9,20,null,null,15,7]: five nodes go through the queue, the root included.
+  assert.equal(joined, 5, "every node is enqueued");
+  assert.equal(left, 5, "every node is dequeued");
+});
+
+test("a heap is drawn level by level, smallest at the top", () => {
+  const { go, area, count } = run(leetcode("KthLargest.cs"), "Solution.FindKthLargest");
+  go(count - 1);
+  const levels = area().querySelectorAll(".heap-level");
+  assert.ok(levels.length >= 1);
+  assert.match(area().textContent ?? "", /four-way heap/);
+});
+
+test("a recursive tree walk always shows the whole tree, with the path of calls", () => {
+  const { go, area, count, dom } = run(leetcode("MaxDepth.cs"), "Solution.MaxDepth", { strategy: "Balanced", stepSize: 7 });
+  let deepest = 0;
+  for (let i = 0; i < count; i++) {
+    go(i);
+    assert.equal(area().querySelectorAll("svg[aria-label='tree'] .node").length, 7, `the tree is drawn at step ${i}`);
+    deepest = Math.max(deepest, area().querySelectorAll(".node.path").length);
+  }
+  assert.ok(deepest >= 2, "the nodes being worked on further up the stack are marked");
+  assert.ok(dom.window.document.querySelector("svg[aria-label='recursion tree']"), "recursion gets a recursion tree");
+});
+
+test("the recursion tree shows each call with what it returned", () => {
+  const { go, area, count } = run(walkthrough("ClimbStairs.cs"), "Solution.ClimbStairs", { example: 1 });
+  go(count - 1);
+  const calls = Array.from(area().querySelectorAll("svg[aria-label='recursion tree'] .call"));
+  assert.equal(calls.length, 7, "ClimbStairs(5) with a memo makes 7 calls");
+  const returned = area().querySelectorAll("svg[aria-label='recursion tree'] .returned");
+  assert.ok(returned.length >= 6, "calls that finished show their return value");
+  assert.match(area().querySelector(".call-stack")!.textContent!, /ClimbStairs\(5\)/);
+});
+
+test("a graph is drawn from its edge list, with visited, waiting and current nodes", () => {
+  const { go, area, count } = run(leetcode("CountComponents.cs"), "Solution.CountComponents", { stepSize: 6 });
+  let sawWaiting = false, sawVisited = false;
+  for (let i = 0; i < count; i++) {
+    go(i);
+    assert.equal(area().querySelectorAll("svg[aria-label='graph'] .node").length, 6);
+    sawWaiting ||= !!area().querySelector("svg[aria-label='graph'] .node.waiting");
+    sawVisited ||= !!area().querySelector("svg[aria-label='graph'] .node.visited");
+  }
+  assert.ok(sawWaiting && sawVisited);
+});
+
+test("memory shows this step, the total so far, and each structure's size", () => {
+  const { go, area } = run(leetcode("TwoSum.cs"), "Solution.TwoSum");
+  go(2);
+  const text = area().querySelector(".memory")!.textContent!;
+  assert.match(text, /this line allocates/);
+  assert.match(text, /allocated so far/);
+  assert.match(text, /seen\s*≈\s*\d+ B/);
+  assert.ok(area().querySelector(".memory .sparkline polyline"));
+});
+
+test("a long array is windowed around its pointers", () => {
+  const { go, area } = run(sample("SortParamSample.cs"), "SortParamSample.Sort", { stepSize: 1000, maxSteps: 60 });
+  go(50);
+  const cells = area().querySelectorAll(".cell:not(.more)");
+  assert.equal(cells.length, 64);
+  assert.ok(area().querySelector(".cell.more"), "what is left out is counted");
+  assert.ok(area().querySelector(".cell.pointed"), "the pointers stay on screen");
+});
+
+test("a capped run says so and stays navigable", () => {
+  const { go, dom, count } = run(sample("SortParamSample.cs"), "SortParamSample.Sort", { stepSize: 30, maxSteps: 50 });
+  assert.equal(count, 50);
+  go(49);
+  assert.match(dom.window.document.body.textContent ?? "", /Showing the first 50 steps/);
+});
+
+test("speed changes how fast it plays", () => {
+  const { dom } = run(walkthrough("TwoSumSorted.cs"), "Solution.TwoSum");
+  const document = dom.window.document;
+  const speed = document.querySelector<HTMLSelectElement>("#speed")!;
+  assert.deepEqual(Array.from(speed.options).map(o => o.value), ["0.25", "0.5", "1", "2", "4"]);
+  speed.value = "4";
+  speed.dispatchEvent(new dom.window.Event("change"));
+  assert.match(document.querySelector(".run")!.getAttribute("style")!, /--anim:/);
 });

@@ -100,6 +100,10 @@ if (jobPath is not null)
     catch (JsonException ex) { return Fail($"The job was not valid JSON: {ex.Message}"); }
 
     if (request is null) return Fail("The job was empty.");
+
+    // A job's answer is read by the editor, not by a person, and a recorded run can be
+    // thousands of steps: indentation would roughly double what has to be sent and parsed.
+    json = new JsonSerializerOptions(json) { WriteIndented = false };
     return Emit(JobRunner.Run(request), 0);
 }
 

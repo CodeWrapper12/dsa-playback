@@ -46,6 +46,9 @@ run("dotnet", [
   // Roslyn ships its messages in thirteen languages; the engine reports in English.
   "-p:SatelliteResourceLanguages=en",
   "-p:DebugType=none",
+  // Precompiled, so starting the engine does not mean compiling Roslyn first: each run
+  // starts about twice as fast, for about 7 MB more download.
+  "-p:PublishReadyToRun=true",
   "-o", engineOut
 ]);
 

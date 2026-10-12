@@ -57,10 +57,12 @@ public sealed class TraceRewriter : CSharpSyntaxRewriter
 
         if (step is null) return ParseStatement($"{TraceCalls.Prefix}Hit({id});");
 
-        // An explicit array, never params: a single object[] variable passed to a params
-        // parameter would be taken as the array itself rather than as one value.
+        // Step runs first and the array is built after it, so the array and anything boxed
+        // into it are allocated inside the tracer's own accounting window. An explicit
+        // array, never params: a single object[] variable passed to a params parameter
+        // would be taken as the array itself rather than as one value.
         string values = string.Join(", ", step.Value.Variables.Select(v => v.Expression));
-        return ParseStatement($"{TraceCalls.Prefix}Step({id}, new object[] {{ {values} }});");
+        return ParseStatement($"{TraceCalls.Prefix}Values({TraceCalls.Prefix}Step({id}), new object[] {{ {values} }});");
     }
 
     private SyntaxList<StatementSyntax> Interleave(SyntaxList<StatementSyntax> statements)

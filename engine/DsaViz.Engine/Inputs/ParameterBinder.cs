@@ -42,6 +42,10 @@ public static class ParameterBinder
         _ => Array.Empty<GenerationStrategy>()
     };
 
+    /// <summary>The int parameter that gives a graph's number of nodes, beside its edge list.</summary>
+    public static ParameterInfo? NodeCountParameter(ParameterInfo[] parameters)
+        => parameters.FirstOrDefault(p => p.ParameterType == typeof(int) && NodeCountNames.Contains(p.Name?.ToLowerInvariant()));
+
     public static bool IsScalar(InputShape shape)
         => shape is InputShape.IntScalar or InputShape.LongScalar or InputShape.BoolScalar;
 

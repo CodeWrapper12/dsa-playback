@@ -1,3 +1,4 @@
+using DsaViz.Engine;
 using DsaViz.Engine.Analysis;
 using DsaViz.Engine.Contracts;
 using DsaViz.Engine.Inputs;
@@ -53,8 +54,8 @@ public class StepThroughTests
         // An array captured by reference would show its sorted end state at every step.
         var trace = Record("SortParamSample.cs", "Sort", 6, GenerationStrategy.ReverseSorted);
 
-        string? first = Value(trace.Steps.First(), "values");
-        string? last = Value(trace.Steps.Last(), "values");
+        string? first = StepHeap.Display(trace, trace.Steps.First(), "values");
+        string? last = StepHeap.Display(trace, trace.Steps.Last(), "values");
 
         Assert.Equal("[6, 5, 4, 3, 2, 1]", first);
         Assert.Equal("[1, 2, 3, 4, 5, 6]", last);
@@ -79,7 +80,8 @@ public class StepThroughTests
         var j = step.Variables.Single(v => v.Name == "j");
 
         Assert.Equal("array", values.Kind);
-        Assert.Equal(5, values.Items!.Count);
+        Assert.NotNull(values.Ref);
+        Assert.Equal(5, StepHeap.Object(trace, step, "values").Items!.Count);
         Assert.Equal("scalar", j.Kind);
         Assert.NotNull(j.Number);
     }
@@ -91,7 +93,7 @@ public class StepThroughTests
         var trace = Record("leetcode/ClimbStairsMemo.cs", "ClimbStairs", 6);
 
         Assert.Equal(RunStatus.Completed, trace.Status);
-        var memoSizes = trace.Steps.Select(s => Value(s, "memo")).Where(v => v is not null).Distinct().ToList();
+        var memoSizes = trace.Steps.Select(s => StepHeap.Display(trace, s, "memo")).Where(v => v is not null).Distinct().ToList();
         Assert.Contains("{}", memoSizes);
         Assert.True(memoSizes.Count > 2, "the memo should fill up as the run goes");
     }
@@ -148,7 +150,8 @@ public class StepThroughTests
         foreach (int size in new[] { 0, 1, 6 })
         {
             var expected = Runner.Invoke(baseline, ParameterBinder.Bind(specs, baseline.Parameters, size));
-            var actual = Runner.Invoke(recorder, ParameterBinder.Bind(specs, recorder.Parameters, size), recordSteps: 500);
+            var actual = Runner.Invoke(recorder, ParameterBinder.Bind(specs, recorder.Parameters, size),
+                recording: new StepRecording(new HeapRecorder(recorder.Statements), 500));
 
             Assert.Equal(expected.Status, actual.Status);
             Assert.Equal(expected.ReturnValue, actual.ReturnValue);
@@ -158,19 +161,31 @@ public class StepThroughTests
 
 public class StepRecorderIsolationTests
 {
+    private sealed class BrokenObserver : DsaViz.Runtime.IStepObserver
+    {
+        public int Calls;
+        public void Step(int statementId, int depth, object?[] values, long allocatedBytes)
+        {
+            Calls++;
+            throw new InvalidOperationException("recorder bug");
+        }
+        public void Returned(int depth, object? value) => throw new InvalidOperationException("recorder bug");
+    }
+
     [Fact]
-    public void A_value_that_cannot_be_rendered_never_breaks_the_run()
+    public void A_recorder_that_fails_never_breaks_the_run()
     {
         // The recorder observes; it must not be able to fail the code it observes.
-        var state = DsaViz.Runtime.TraceState.BeginStepping(1, 0, 1_000, 10,
-            _ => throw new InvalidOperationException("renderer bug"));
+        var observer = new BrokenObserver();
+        var state = DsaViz.Runtime.TraceState.BeginStepping(1, 0, 1_000, 10, observer);
 
-        state.Step(0, new object[] { 42 });
+        state.Values(state.Step(0), new object[] { 42 });
+        state.Values(state.Step(0), new object[] { 43 });
+        Assert.Equal(7, state.Returned(7));
         state.End();
 
-        var step = Assert.Single(state.Steps);
-        Assert.Equal("error", step.Values.Single().Kind);
-        Assert.Contains("unavailable", step.Values.Single().Display);
+        Assert.IsType<InvalidOperationException>(state.ObserverFailure);
+        Assert.Equal(1, observer.Calls);   // recording stops at the failure, so what was kept is consistent
     }
 
     [Fact]

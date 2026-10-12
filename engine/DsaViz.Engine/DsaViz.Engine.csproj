@@ -3,6 +3,12 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
+    <!-- A method with a loop is compiled fully on its first call instead of being swapped
+         for an optimised version while its loop is running (on-stack replacement). That swap
+         allocates on the running thread, and was measured landing about 1.5 KB inside a
+         single execution of a student's statement — enough to bend a memory curve. The tests
+         run with the same setting as the engine, so they measure what students get. -->
+    <TieredCompilationQuickJitForLoops>false</TieredCompilationQuickJitForLoops>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>DsaViz.Engine</RootNamespace>
   </PropertyGroup>

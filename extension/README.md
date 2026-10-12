@@ -10,9 +10,19 @@ machine.
 
 Open a C# solution. Above every method you can run there are two buttons:
 
-- **▶ Visualize** — plays your code step by step. The current line lights up in the
-  editor, every variable is shown as it changes, and index variables (`i`, `j`, `left`,
-  `right`, `mid`…) are drawn as pointers into your arrays. ← and → step, Space plays.
+- **▶ Visualize** — plays your code step by step, with your data drawn and moving:
+  - arrays with `i`, `j`, `left`, `right`, `mid`… as pointers that slide, and swapped
+    values that trade places
+  - linked lists whose arrows bend as you rewire them — `prev`, `curr` and `next` label
+    the nodes they point at
+  - trees, with the nodes your recursion is working on marked
+  - graphs, with visited nodes and the BFS queue
+  - hash maps and sets whose entries animate in and out; stacks, queues and heaps
+  - the call stack, and a recursion tree showing what every call returned
+  - memory: what each line allocates, and the total as the run goes
+
+  The current line lights up in the editor. ← and → step, Space plays, and the speed
+  goes from 0.25× to 4×.
 - **Complexity** — runs your code on bigger and bigger inputs and explains how its time
   and memory grow, line by line.
 

@@ -210,25 +210,42 @@ student can **type their own** at any time.
 
 ## Status
 
-**Phase 1 (friendly C#) is done.** Phases 2 (animated run view), 3 (Python) and 4
-(release) are not started.
+**Phases 1 (friendly C#) and 2 (animated run view) are done.** Phase 3 (Python) and
+Phase 4 (release) have not started.
 
 | # | Status | Checked by |
 |---|---|---|
 | 1 | Met on macOS Apple silicon. The other platforms wait for Phase 4's CI. | `npm run verify-package`: unpacks the package and runs the bundled engine with no .NET on the path. Integration: *a solution outside the open folder visualizes*. |
-| 2 | Met: 32.4 MB on macOS Apple silicon. | `npm run verify-package` |
-| 3 | Met for C#. Python is Phase 3. | Integration: *the ▶ Visualize button appears above every method that can run*. `EntryPointScannerTests` |
-| 4 | Met for C#: three samples. Python's are Phase 3. | Integration: *the walkthrough opens an editable copy of its sample*. The walkthrough page has not yet been looked at by hand in VS Code. |
-| 5 | Met for C#, by construction. | The extension activates on `onLanguage:csharp`. The buttons need the method list, which is read by parsing only, never by running. |
-| 6–10 | Met for C#. | `ExampleFinderTests`, `StepInputTests`, `LiteralsTests`. Panel tests: *values found in the code fill the boxes, and the result is checked*; *with no example in the code, values are generated*. |
-| 11 | Met: every shape, with the position of each error. | `LiteralsTests`. Panel test: *an input that cannot be read is marked under its own box* |
-| 12 | Met. | Integration: *a typed value is used, and still used when the method is opened again* |
-| 13 | Partly: ← →, Space, the scrubber and the editor line work. Speed control is Phase 2. | Panel test: *Space plays and pauses the run* |
-| 27 | Met early. | `StepInputTests`. Panel test: *an exception in the student's code names the line* |
-| 31 | Partly: *Show line* and *Show details* exist, and no stack trace reaches the student. *Install Python* is Phase 3. | Panel test: *the visualizer's own failure offers its details* |
+| 2 | Met: 39.5 MB on macOS Apple silicon, including the precompiled engine. | `npm run verify-package` |
+| 3 | Met for C#. Python is Phase 3. | Integration: *the ▶ Visualize button appears*. `EntryPointScannerTests` |
+| 4 | Met for C#: three samples. Python's are Phase 3. | Integration: *the walkthrough opens an editable copy*. The walkthrough page has not yet been looked at by hand in VS Code. |
+| 5 | Met for C#, by construction. | The extension activates on `onLanguage:csharp`, and listing methods only parses. |
+| 6–12 | Met for C#. | `ExampleFinderTests`, `StepInputTests`, `LiteralsTests`, panel tests, integration |
+| 13 | Met: speed from 0.25× to 4×, ← → and Space. | Panel tests: *speed changes how fast it plays*; *Space plays and pauses* |
+| 14 | Met. | Panel test: *every step of every practice structure draws* |
+| 15 | Met: pointers slide and written cells flash. A tuple swap flies both values; a swap through a temporary variable shows as two writes. | Panel tests: *swapped values fly past each other*; *a value written into a cell flashes* |
+| 16 | Met. | Panel test: *every step… draws* (NumIslands) |
+| 17 | Met: one drawing for the whole list, a rewired arrow bends to its new target. | `HeapRecorderTests`. Panel tests: *a linked list is one drawing*; *a rewired link bends* |
+| 18 | Met: the whole tree stays drawn deep in a recursive walk, with the path of calls marked. | Panel test: *a recursive tree walk always shows the whole tree* |
+| 19 | Met for edge lists and adjacency lists. | Panel test: *a graph is drawn from its edge list* |
+| 20 | Met. | Panel test: *map entries animate in* |
+| 21 | Met for C#: Stack, Queue, PriorityQueue (drawn as its four-way heap). | Panel tests: *a queue shows what joined and what left*; *a heap is drawn level by level* |
+| 22 | Met. | `HeapRecorderTests.Two_variables_holding_one_node_hold_the_same_id`. Sabotaged identity failed four tests. |
+| 23 | Met, including arrow-bodied recursive helpers. | `HeapRecorderTests.Every_call_returns_its_value_at_its_depth`. Panel test: *the recursion tree shows each call* |
+| 24 | Met. | `HeapRecorderTests.Each_step_carries_what_the_code_had_allocated`. Panel test: *memory shows this step* |
+| 25 | Met. | `HeapRecorderTests.Ten_thousand_steps_are_kept_by_default`. Panel tests: *a long array is windowed*; *a capped run says so* |
+| 26 | Met. In the browser harness, stepping with one frame between steps: 1,000-element array median 3.4 ms, worst 14.9 ms; 200-node tree median 6.3 ms, worst 8.7 ms. Stepping hundreds of times with no pause at all shows the browser's own garbage-collection pauses, which real playback (≥ 175 ms between steps) does not trigger. | Browser harness, by hand |
+| 27 | Met. | `StepInputTests`. Panel test: *an exception names the line* |
+| 31 | Partly: *Show line* and *Show details*. *Install Python* is Phase 3. | Panel test: *the visualizer's own failure offers its details* |
 
-Test counts: 303 engine tests, 28 extension tests, and 7 integration checks in a real
+Test counts: 315 engine tests, 43 panel tests, and 8 integration checks in a real
 VS Code.
+
+**Found and fixed on the way.** Memory measurement could absorb about 1.5 KB from the
+JIT recompiling a running loop (on-stack replacement). That bent one statement's
+largest-allocation curve, which showed up as a test failing in one order and passing in
+another. Loops are now compiled fully on their first call, and the engine ships
+precompiled, so it is about twice as fast to start.
 
 ## Constraints
 

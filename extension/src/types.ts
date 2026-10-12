@@ -212,10 +212,38 @@ export interface JobRequest {
 export interface StepVariable {
   name: string;
   display: string;
-  /** scalar, string, array, grid, collection, tree, list, null, object, function or error. */
+  /** scalar, string, null, function, or for an object its heap kind: array, list, map, set, stack, queue, heap, tree, listnode, sequence, object. */
   kind: string;
   items: string[] | null;
   number: number | null;
+  /** The object this variable holds; the same id is the same object. */
+  ref?: number;
+}
+
+export interface HeapValue {
+  text: string;
+  number?: number;
+  ref?: number;
+}
+
+/** An object as it was at a step, sent only at steps where it changed. */
+export interface HeapObject {
+  id: number;
+  kind: string;
+  type: string;
+  count: number;
+  bytes: number;
+  items?: HeapValue[];
+  entries?: { key: HeapValue; value: HeapValue }[];
+  fields?: { name: string; value: HeapValue }[];
+  /** Instead of items: just the positions that changed. */
+  patch?: { index: number; value: HeapValue }[];
+}
+
+export interface ReturnEvent {
+  afterStep: number;
+  depth: number;
+  value: HeapValue;
 }
 
 export interface ExecutionStep {
@@ -226,6 +254,9 @@ export interface ExecutionStep {
   depth: number;
   method: string;
   variables: StepVariable[];
+  heap?: HeapObject[];
+  /** Bytes the code had allocated before this statement. */
+  allocated: number;
 }
 
 export interface StatementInfo {
@@ -254,6 +285,10 @@ export interface StepTrace {
   exampleNotes: string[];
   selectedExample: number | null;
   check: OutputCheck | null;
+  returns: ReturnEvent[];
+  totalAllocated: number;
+  methods: { name: string; parameters: string[] }[];
+  graph: { kind: "adjacency" | "edges"; variable: string; nodeCount?: string } | null;
 }
 
 export type InputSource = "Example" | "Typed" | "Generated";

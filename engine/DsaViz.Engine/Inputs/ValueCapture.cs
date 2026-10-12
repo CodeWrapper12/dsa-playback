@@ -8,7 +8,16 @@ using DsaViz.Runtime;
 namespace DsaViz.Engine.Inputs;
 
 /// <summary>
-/// Renders a variable for one step of a step-through, at the moment it is captured.
+/// A value rendered at the moment it was captured. Rendering at capture time is the whole
+/// point: an array captured by reference would show its final state at every step.
+/// </summary>
+/// <param name="Kind">scalar, string, array, grid, collection, tree, list, null, object or function.</param>
+/// <param name="Items">Elements, for anything with positions a pointer can point into.</param>
+/// <param name="Number">The value, for integers — what lets an index be drawn as a pointer.</param>
+public sealed record CapturedValue(string Display, string Kind, IReadOnlyList<string>? Items = null, long? Number = null);
+
+/// <summary>
+/// Renders the arguments a step-through was called with, before the run can change them.
 ///
 /// Every rendering is capped. A step-through runs at a small n, but a solution can still
 /// build something large — and a step list that took seconds to serialise, or megabytes

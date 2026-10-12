@@ -152,6 +152,10 @@ public sealed class BraceNormalizer : CSharpSyntaxRewriter
         if (origin is { } o)
             statement = statement.WithAdditionalAnnotations(LineAnnotations.For(o.Line, o.Start, o.Length));
 
+        // The step build marked the expression with the variables it can see; the
+        // statement that now holds it is what gets a step.
+        statement = statement.WithAdditionalAnnotations(expression.GetAnnotations(StepVariables.AnnotationKind));
+
         return Block(statement);
     }
 }

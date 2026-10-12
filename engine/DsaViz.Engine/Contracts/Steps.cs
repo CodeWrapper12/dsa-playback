@@ -1,11 +1,27 @@
 namespace DsaViz.Engine.Contracts;
 
-/// <summary>A variable at one step. Items and Number let the editor draw arrays with index pointers.</summary>
-public sealed record StepVariable(string Name, string Display, string Kind, IReadOnlyList<string>? Items, long? Number);
+/// <summary>
+/// A variable at one step. Number lets an integer be drawn as a pointer; Items lets a
+/// string be drawn as cells. A variable holding an object carries its <see cref="Ref"/>,
+/// and the object itself is in the step's heap.
+/// </summary>
+public sealed record StepVariable(string Name, string Display, string Kind, IReadOnlyList<string>? Items, long? Number)
+{
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public int? Ref { get; init; }
+}
 
 /// <summary>One statement about to run, with every variable it can see.</summary>
 public sealed record ExecutionStep(
-    int Index, int StatementId, int Line, int Column, int Depth, string Method, IReadOnlyList<StepVariable> Variables);
+    int Index, int StatementId, int Line, int Column, int Depth, string Method, IReadOnlyList<StepVariable> Variables)
+{
+    /// <summary>The objects that changed since the previous step, or appeared for the first time.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<HeapObject>? Heap { get; init; }
+
+    /// <summary>Bytes the solution had allocated before this statement ran.</summary>
+    public long Allocated { get; init; }
+}
 
 /// <summary>
 /// A recorded run at a small size, for stepping through: what the code does, one
@@ -44,6 +60,17 @@ public sealed record StepTrace
 
     /// <summary>The result against the example's expected output, when it gives one.</summary>
     public OutputCheck? Check { get; init; }
+
+    /// <summary>Every value returned by a method or local function, in order.</summary>
+    public IReadOnlyList<ReturnEvent> Returns { get; init; } = Array.Empty<ReturnEvent>();
+
+    /// <summary>Bytes the solution allocated over the whole recorded run.</summary>
+    public long TotalAllocated { get; init; }
+
+    public IReadOnlyList<MethodParameters> Methods { get; init; } = Array.Empty<MethodParameters>();
+
+    /// <summary>The input to draw as a graph, when there is one.</summary>
+    public GraphInput? Graph { get; init; }
 }
 
 public enum InputSource

@@ -97,6 +97,18 @@ const checks: [string, (api: TestApi) => Promise<void>][] = [
     assert.equal(fromCode.inputs[1].source, "Example");
   }],
 
+  ["a recorded run carries objects, their identity, and what each call returned", async api => {
+    const file = path.join(repository, "extension/samples/csharp/LevelOrder.cs");
+    const before = api.lastSteps();
+    await vscode.commands.executeCommand("dsaViz.visualize", vscode.Uri.file(file), "Solution.LevelOrder");
+    const steps = await waitFor(() => (api.lastSteps() !== before ? api.lastSteps() : undefined), "a recorded run");
+
+    const kinds = new Set(steps.steps.flatMap(s => (s.heap ?? []).map(o => o.kind)));
+    for (const kind of ["tree", "queue", "list"]) assert.ok(kinds.has(kind), `a ${kind} is recorded`);
+    assert.equal(steps.returns.at(-1)?.value.text.startsWith("List"), true, "the method's return is recorded");
+    assert.ok(steps.steps.every(s => typeof s.allocated === "number"), "every step carries the memory so far");
+  }],
+
   ["the walkthrough opens an editable copy of its sample", async () => {
     await vscode.commands.executeCommand("dsaViz.openSample", "LevelOrder.cs");
     const opened = vscode.window.activeTextEditor?.document.fileName ?? "";

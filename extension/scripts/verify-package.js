@@ -33,6 +33,9 @@ try {
   const files = execFileSync("find", [root, "-type", "f"]).toString().split("\n").filter(Boolean)
     .map(file => path.relative(root, file));
 
+  for (const script of ["media/main.js", "media/run.js", "media/styles.css"]) {
+    check(`the panel's ${script} is shipped`, files.includes(script));
+  }
   check("no TypeScript sources, tests or dev files are shipped",
     !files.some(f => f.startsWith("src/") || f.startsWith("out/test/") || f.startsWith(".devharness/") || f.endsWith(".map")));
   for (const sample of ["TwoSumSorted.cs", "LevelOrder.cs", "ClimbStairs.cs"]) {

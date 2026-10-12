@@ -43,7 +43,15 @@ public static class StepVariables
         if (root.SyntaxTree != model.SyntaxTree)
             throw new InvalidOperationException("Step variables must be read from the tree the semantic model was built for.");
 
-        var statements = root.DescendantNodes().OfType<StatementSyntax>().Where(s => s is not BlockSyntax).ToList();
+        // An arrow body is not a statement yet: BraceNormalizer turns it into one later, and
+        // carries this annotation across. Without it, a recursive helper written as
+        // `int Go(int k) => …` would run without a single recorded step.
+        var statements = root.DescendantNodes().OfType<StatementSyntax>().Where(s => s is not BlockSyntax)
+            .Cast<SyntaxNode>()
+            .Concat(root.DescendantNodes().OfType<ArrowExpressionClauseSyntax>()
+                .Where(a => a.Parent is MethodDeclarationSyntax or LocalFunctionStatementSyntax or ConstructorDeclarationSyntax)
+                .Select(a => (SyntaxNode)a.Expression))
+            .ToList();
         var annotations = new Dictionary<SyntaxNode, SyntaxAnnotation>();
 
         foreach (var statement in statements)
@@ -59,13 +67,27 @@ public static class StepVariables
             annotations[statement] = Annotation(method, VariablesAt(statement, enclosing, model));
         }
 
-        return root.ReplaceNodes(annotations.Keys, (original, current) => current.WithAdditionalAnnotations(annotations[original]));
+        // Returned values are marked in the same pass: once the root is replaced, the
+        // semantic model can no longer answer questions about it.
+        var marks = annotations.ToDictionary(pair => pair.Key, pair => new List<SyntaxAnnotation> { pair.Value });
+        foreach (var (node, annotation) in ReturnValues.Mark(root, model))
+        {
+            if (!marks.TryGetValue(node, out var list)) marks[node] = list = new List<SyntaxAnnotation>();
+            list.Add(annotation);
+        }
+
+        return root.ReplaceNodes(marks.Keys, (original, current) => current.WithAdditionalAnnotations(marks[original]));
     }
 
-    private static IEnumerable<Entry> VariablesAt(StatementSyntax statement, IMethodSymbol? enclosing, SemanticModel model)
+    private static IEnumerable<Entry> VariablesAt(SyntaxNode statement, IMethodSymbol? enclosing, SemanticModel model)
     {
         // Some statement kinds are not a valid data-flow region; for those Succeeded is false.
-        var flow = model.AnalyzeDataFlow(statement);
+        var flow = statement switch
+        {
+            StatementSyntax s => model.AnalyzeDataFlow(s),
+            ExpressionSyntax e => model.AnalyzeDataFlow(e),
+            _ => null
+        };
         if (flow is null || !flow.Succeeded) yield break;
 
         var assigned = new HashSet<ISymbol>(flow.DefinitelyAssignedOnEntry, SymbolEqualityComparer.Default);

@@ -65,6 +65,7 @@ public static class Instrumenter
 
         var rewriter = new TraceRewriter(tree.GetText(), stepping);
         var instrumented = rewriter.Visit(costed)!;
+        if (stepping) instrumented = new ReturnValues.Rewriter().Visit(instrumented)!;
 
         return new InstrumentedSource(
             CSharpSyntaxTree.Create((CompilationUnitSyntax)instrumented, path: "instrumented.cs"),

@@ -18,6 +18,9 @@ namespace DsaViz.Engine;
 /// Compilation is by far the expensive step, and a growth curve runs the same solution
 /// at half a dozen sizes. Separating compile from invoke keeps that cost paid once.
 /// </summary>
+/// <summary>Record a step-through: who watches the run, and how many steps to keep.</summary>
+public sealed record StepRecording(IStepObserver Observer, int MaxSteps);
+
 public sealed class CompiledSolution : IDisposable
 {
     private readonly RunContext _context;
@@ -154,7 +157,7 @@ public static class Runner
         long budget = DefaultBudget,
         TimeSpan? timeout = null,
         int depthLimit = TraceState.DefaultDepthLimit,
-        int? recordSteps = null)
+        StepRecording? recording = null)
     {
         if (solution.Abandoned)
             return Failure(RunStatus.RuntimeError, new[]
@@ -169,7 +172,7 @@ public static class Runner
             Console.SetOut(capturedOutput);
 
             var outcome = new RunOutcome();
-            var worker = new Thread(() => Execute(solution, arguments, budget, depthLimit, recordSteps, outcome), StackSize)
+            var worker = new Thread(() => Execute(solution, arguments, budget, depthLimit, recording, outcome), StackSize)
             {
                 IsBackground = true,
                 Name = "DsaViz solution",
@@ -215,7 +218,7 @@ public static class Runner
     }
 
     private static void Execute(
-        CompiledSolution solution, object?[]? arguments, long budget, int depthLimit, int? recordSteps, RunOutcome outcome)
+        CompiledSolution solution, object?[]? arguments, long budget, int depthLimit, StepRecording? recording, RunOutcome outcome)
     {
         try
         {
@@ -227,9 +230,9 @@ public static class Runner
             if (solution.Slot is { } slot)
             {
                 // Begun on this thread: the allocation baseline is per thread.
-                state = recordSteps is { } maxSteps
-                    ? TraceState.BeginStepping(solution.Statements.Count, solution.Sites.Count, budget, maxSteps,
-                        ValueCapture.Capture, depthLimit)
+                state = recording is not null
+                    ? TraceState.BeginStepping(solution.Statements.Count, solution.Sites.Count, budget, recording.MaxSteps,
+                        recording.Observer, depthLimit)
                     : TraceState.Begin(solution.Statements.Count, solution.Sites.Count, budget, depthLimit);
                 outcome.State = state;
                 slot.SetValue(null, state);
@@ -375,8 +378,8 @@ public static class Runner
             ReturnValue = outcome.Status == RunStatus.Completed ? Render(outcome.ReturnValue) : null,
             ReturnObject = outcome.Status == RunStatus.Completed ? outcome.ReturnValue : null,
             ErrorLine = outcome.ErrorLine,
-            RecordedSteps = outcome.State?.Steps ?? Array.Empty<RecordedStep>(),
-            StepsTruncated = outcome.State?.StepsTruncated ?? false
+            StepsTruncated = outcome.State?.StepsTruncated ?? false,
+            RecorderFailure = outcome.State?.ObserverFailure?.ToString()
         };
     }
 

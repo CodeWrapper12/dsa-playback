@@ -103,12 +103,12 @@ public sealed record TraceResult
 
     public IReadOnlyList<LibraryCall> LibraryCalls { get; init; } = Array.Empty<LibraryCall>();
 
-    /// <summary>Raw steps from a step-through build. Internal plumbing, never serialised.</summary>
-    [System.Text.Json.Serialization.JsonIgnore]
-    public IReadOnlyList<DsaViz.Runtime.RecordedStep> RecordedSteps { get; init; } = Array.Empty<DsaViz.Runtime.RecordedStep>();
-
     [System.Text.Json.Serialization.JsonIgnore]
     public bool StepsTruncated { get; init; }
+
+    /// <summary>The step recorder's own failure, when it had one. Internal, never serialised.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? RecorderFailure { get; init; }
 
     public IReadOnlyList<string> Errors { get; init; } = Array.Empty<string>();
     public string Output { get; init; } = "";

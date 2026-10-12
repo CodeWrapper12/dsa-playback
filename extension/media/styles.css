@@ -279,7 +279,9 @@ input.narrow { min-width: 0; width: 56px; }
 
 .variables { display: flex; flex-direction: column; gap: 6px; }
 .variable {
-  display: grid; grid-template-columns: 110px 1fr; gap: 10px; align-items: start;
+  /* minmax(0, …): without it the value column grows to fit a wide tree and the whole panel
+     scrolls, instead of the drawing scrolling inside its row. */
+  display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 10px; align-items: start;
   padding: 6px 8px; border-radius: 4px; border: 1px solid transparent;
 }
 .variable.changed { border-color: var(--hot); background: rgba(224, 108, 43, 0.07); }
@@ -349,3 +351,131 @@ details.arguments summary { cursor: pointer; color: var(--vscode-descriptionFore
 .check.fail { border-left-color: var(--vscode-testing-iconFailed, var(--vscode-errorForeground)); }
 
 button.show-line, #show-log { margin: -4px 0 12px; }
+
+/* ---- animated run view ---------------------------------------------------------- */
+
+/* Animations last --anim, which the panel sets from the playback speed, so a fast replay
+   never queues animations behind each other. Anyone who has asked their system for less
+   motion gets none. */
+.run { --anim: 300ms; }
+@media (prefers-reduced-motion: reduce) {
+  .run *, .run *::before { animation: none !important; transition: none !important; }
+}
+
+@keyframes flash {
+  from { background: rgba(224, 108, 43, 0.55); }
+  to { background: transparent; }
+}
+@keyframes slide-in {
+  from { transform: translateX(var(--from)); }
+  to { transform: none; }
+}
+@keyframes pop-in {
+  from { transform: scale(0.4); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@keyframes fade-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: scale(0.6); }
+}
+
+.cell { position: relative; width: 36px; min-width: 36px; }
+.cells { gap: 4px; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; }
+.cell-value { width: 36px; min-width: 36px; padding: 4px 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cell.more { justify-content: center; color: var(--vscode-descriptionForeground); font-size: 0.85em; width: auto; padding: 0 4px; }
+.cell-value.written, .grid span.written { animation: flash calc(var(--anim) * 2) ease-out; }
+.value { display: inline-block; }
+.value.fly, .pointer.slide { animation: slide-in var(--anim) ease-in-out; }
+.pointer { display: inline-block; margin: 0 1px; }
+
+.variable.shared .var-name { color: var(--hot); }
+
+.entries { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.entry {
+  display: inline-flex; gap: 4px; align-items: center;
+  border: 1px solid var(--vscode-panel-border); border-radius: 4px; padding: 2px 6px;
+  font-family: var(--vscode-editor-font-family); font-size: 0.95em;
+}
+.entry .arrow { color: var(--vscode-descriptionForeground); }
+.entry.added, .slot.added, .frame-card.added, .call.added { animation: pop-in var(--anim) ease-out; }
+.entry.added { border-color: var(--hot); }
+.entry.updated .val { animation: flash calc(var(--anim) * 2) ease-out; }
+.entry.removed, .slot.removed { animation: fade-out var(--anim) ease-in forwards; text-decoration: line-through; }
+
+.lane { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.lane.stack { flex-direction: column; align-items: flex-start; }
+.slot {
+  display: inline-block; min-width: 36px; text-align: center; padding: 4px 6px;
+  border: 1px solid var(--vscode-panel-border); border-radius: 3px; font-family: var(--vscode-editor-font-family);
+}
+.slot.added { border-color: var(--hot); }
+.slot small { display: block; font-size: 0.75em; color: var(--vscode-descriptionForeground); }
+.lane-end { font-size: 0.75em; text-transform: uppercase; color: var(--vscode-descriptionForeground); }
+
+.heap-tree { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.heap-level { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
+
+.fields { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.type-name { color: var(--vscode-descriptionForeground); font-family: var(--vscode-editor-font-family); margin-right: 4px; }
+
+/* Trees, lists, graphs and the recursion tree are SVG. */
+.diagram { overflow-x: auto; }
+.diagram svg { display: block; font-family: var(--vscode-editor-font-family); font-size: 12px; }
+.diagram .edge { stroke: var(--vscode-panel-border); stroke-width: 1.5; }
+.diagram .edge.rewired, .diagram .link.rewired { stroke: var(--hot); }
+.diagram .link { fill: none; stroke: var(--vscode-descriptionForeground); stroke-width: 1.5; }
+.diagram marker path { fill: var(--vscode-descriptionForeground); }
+.diagram .node circle, .diagram .node rect {
+  fill: var(--vscode-editor-background); stroke: var(--vscode-descriptionForeground); stroke-width: 1.5;
+}
+.diagram .node.visited circle { fill: rgba(63, 143, 206, 0.25); }
+.diagram .node.waiting circle { fill: rgba(176, 95, 200, 0.3); }
+.diagram .node.current circle, .diagram .node.current rect { stroke: var(--hot); stroke-width: 2.5; }
+.diagram .node.path circle { stroke: var(--cool); stroke-width: 2.5; }
+.diagram .node.written circle { animation: flash calc(var(--anim) * 2) ease-out; }
+.diagram text { fill: var(--vscode-foreground); text-anchor: middle; }
+.diagram .node-label { fill: var(--hot); font-weight: 600; }
+.diagram .null-mark { fill: var(--vscode-descriptionForeground); }
+
+.diagram .call rect { fill: var(--vscode-editor-background); stroke: var(--vscode-panel-border); }
+.diagram .call.active rect { stroke: var(--cool); }
+.diagram .call.current rect { stroke: var(--hot); stroke-width: 2; }
+.diagram .call.returned text { fill: var(--vscode-descriptionForeground); }
+.diagram .call .returned { fill: var(--cool); font-weight: 600; }
+
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin: 0 3px 0 10px; vertical-align: -1px;
+  border: 1.5px solid var(--vscode-descriptionForeground); }
+.dot.current { border-color: var(--hot); }
+.dot.visited { background: rgba(63, 143, 206, 0.35); }
+.dot.waiting { background: rgba(176, 95, 200, 0.4); }
+.dot.active, .dot.path { border-color: var(--cool); }
+.dot.returned { background: var(--vscode-panel-border); }
+
+.panel-block {
+  border: 1px solid var(--vscode-panel-border); border-radius: 6px; padding: 8px 12px; margin: 0 0 12px;
+}
+.block-title {
+  font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--vscode-descriptionForeground); margin-bottom: 6px;
+}
+
+.call-stack { display: flex; flex-direction: column; gap: 4px; }
+.frame-card { border: 1px solid var(--vscode-panel-border); border-radius: 4px; padding: 4px 8px; }
+.frame-card.top { border-color: var(--hot); }
+.frame-name { font-family: var(--vscode-editor-font-family); margin-bottom: 2px; }
+
+.memory-figures { display: flex; flex-wrap: wrap; gap: 18px; margin-bottom: 6px; }
+.memory .figure { font-size: 1.15em; font-weight: 600; font-family: var(--vscode-editor-font-family); }
+.memory .figure.hot { color: var(--hot); }
+.memory .muted { font-size: 0.85em; color: var(--vscode-descriptionForeground); }
+.sparkline polyline { fill: none; stroke: var(--cool); stroke-width: 1.5; }
+.sparkline .cursor { stroke: var(--hot); stroke-width: 1.5; }
+.entries.sizes { margin: 6px 0; }
+
+#speed { min-width: 0; width: auto; }
+
+.returned-value {
+  margin: 0 0 12px; padding: 6px 10px; border-left: 3px solid var(--cool); border-radius: 0 4px 4px 0;
+  background: var(--vscode-editorWidget-background);
+}
+.returned-value code { font-family: var(--vscode-editor-font-family); }

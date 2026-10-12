@@ -411,6 +411,7 @@ class ReportPanel {
 </head>
 <body>
 <div id="app"><p class="placeholder">Loading…</p></div>
+<script nonce="${nonce}" src="${media("run.js")}"></script>
 <script nonce="${nonce}" src="${media("main.js")}"></script>
 </body>
 </html>`;

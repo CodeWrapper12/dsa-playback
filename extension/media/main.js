@@ -568,17 +568,6 @@
 
   // ---- step through --------------------------------------------------------------
 
-  // Integer variables drawn as pointers into arrays and strings. A fixed list of the names
-  // people give indices, rather than "any int that happens to be in range": a `target` of
-  // 3 is not an index, and drawing it under cell 3 would mislead.
-  const INDEX_NAMES = new Set(["i", "j", "k", "l", "r", "left", "right", "lo", "hi", "low", "high", "mid",
-    "start", "end", "slow", "fast", "p", "q", "idx", "index", "pos", "ptr", "cur", "write", "read"]);
-  const ROW_NAMES = new Set(["r", "row", "i", "y"]);
-  const COL_NAMES = new Set(["c", "col", "j", "x"]);
-
-  function isIndexName(name) {
-    return INDEX_NAMES.has(name) || /(Index|Idx|Ptr|Pointer)$/.test(name);
-  }
 
   const SOURCE_LABEL = {
     Example: input => `from ${escapeHtml(input.from || "your code")}`,
@@ -667,48 +656,6 @@
     }
 
     const index = Math.max(0, Math.min(st.index || 0, trace.steps.length - 1));
-    const step = trace.steps[index];
-    const previous = index > 0 ? trace.steps[index - 1] : null;
-    const statement = trace.statements.find(s => s.id === step.statementId) || { snippet: "", method: "" };
-
-    const transport = `<div class="transport">
-      <button class="ghost" data-step="first" title="First step">⏮</button>
-      <button class="ghost" data-step="prev" title="Previous step (←)">◀</button>
-      <button class="ghost" data-step="play" title="Play / pause">${st.playing ? "⏸" : "▶"}</button>
-      <button class="ghost" data-step="next" title="Next step (→)">▶</button>
-      <button class="ghost" data-step="last" title="Last step">⏭</button>
-      <input type="range" id="scrubber" min="0" max="${trace.steps.length - 1}" value="${index}">
-      <span class="muted">step ${num(index + 1)} of ${num(trace.steps.length)}${trace.truncated ? "+" : ""}</span>
-    </div>`;
-
-    const stack = `<div class="stack">${Array.from({ length: step.depth }, (_, d) =>
-      `<span class="frame ${d === step.depth - 1 ? "current" : ""}"></span>`).join("")}
-      <span class="muted">depth ${step.depth}${step.method ? " · " + escapeHtml(step.method) : ""}</span></div>`;
-
-    const current = `<div class="current-step">
-      <div class="label">About to run · line ${step.line}</div>
-      <code class="statement">${escapeHtml(statement.snippet)}</code>
-      ${stack}
-    </div>`;
-
-    const before = previous ? new Map(previous.variables.map(v => [v.name, v.display])) : new Map();
-    const scalars = step.variables.filter(v => v.kind === "scalar" && v.number !== null);
-
-    const rows = step.variables.length === 0
-      ? '<p class="placeholder">No variables are in scope here yet.</p>'
-      : step.variables.map(v => {
-          const changed = previous && before.has(v.name) && before.get(v.name) !== v.display;
-          const appeared = previous && !before.has(v.name);
-          return `<div class="variable ${changed ? "changed" : ""} ${appeared ? "appeared" : ""}">
-            <div class="var-name">${escapeHtml(v.name)}</div>
-            <div class="var-value">${renderValue(v, scalars)}</div>
-          </div>`;
-        }).join("");
-
-    const notes = [];
-    if (trace.truncated) notes.push(`Only the first ${num(trace.maxSteps)} steps were kept; the run itself completed.`);
-    if (index === trace.steps.length - 1 && trace.returnValue !== null)
-      notes.push(`Returned <code>${escapeHtml(trace.returnValue)}</code>.`);
 
     // The student's own exception: every step up to it still plays, and the last one is
     // the line that threw.
@@ -717,64 +664,144 @@
           trace.errors.map(escapeHtml).join("<br>"), true) + showLineButton(trace.errors, trace.errorLine)
       : "";
 
+    const notes = [];
+    if (trace.truncated) {
+      notes.push(`Showing the first ${num(trace.maxSteps)} steps. The run itself went on to finish` +
+        (trace.returnValue !== null ? `, returning <code>${escapeHtml(trace.returnValue)}</code>.` : "."));
+    }
+
     const args = trace.arguments.length === 0 ? "" :
       `<details class="arguments"><summary>Called with</summary>${trace.arguments.map(a =>
         `<div class="variable"><div class="var-name">${escapeHtml(a.name)}</div>
-         <div class="var-value">${renderValue(a, [])}</div></div>`).join("")}</details>`;
+         <div class="var-value">${renderValue(a)}</div></div>`).join("")}</details>`;
 
-    return header + failed + checkLine(trace.check) + transport + current + `<div class="variables">${rows}</div>` + args +
-      (notes.length ? `<div class="footnote">${notes.join(" ")}</div>` : "") +
-      `<div class="footnote">← and → step, Space plays. Changed values are highlighted; integer variables named like
-        indices are drawn as pointers into the arrays and strings they fall inside.</div>`;
+    return header + failed + checkLine(trace.check) +
+      `<div id="transport">${transport(st, trace, index)}</div>` +
+      (notes.length ? `<div class="banner info">${notes.join(" ")}</div>` : "") +
+      `<div id="step-area">${stepArea(st, index, null)}</div>` + args +
+      `<div class="footnote">← and → step, Space plays. Index variables are drawn as pointers into the arrays they
+        fall inside; a value that just changed flashes.</div>`;
   }
 
-  /** Arrays and strings as cells with index pointers, grids as cells with a [r][c] marker. */
-  function renderValue(variable, scalars) {
+  const SPEEDS = [0.25, 0.5, 1, 2, 4];
+
+  /** Time between steps while playing, at the chosen speed. */
+  const stepInterval = st => 700 / (st.speed || 1);
+
+  function transport(st, trace, index) {
+    return `<div class="transport">
+      <button class="ghost" data-step="first" title="First step" aria-label="First step">⏮</button>
+      <button class="ghost" data-step="prev" title="Previous step (←)" aria-label="Previous step">◀</button>
+      <button class="ghost" data-step="play" title="Play / pause (Space)" aria-label="${st.playing ? "Pause" : "Play"}">${st.playing ? "⏸" : "▶"}</button>
+      <button class="ghost" data-step="next" title="Next step (→)" aria-label="Next step">▶</button>
+      <button class="ghost" data-step="last" title="Last step" aria-label="Last step">⏭</button>
+      <input type="range" id="scrubber" min="0" max="${trace.steps.length - 1}" value="${index}" aria-label="Step">
+      <span class="muted" id="step-count">step ${num(index + 1)} of ${num(trace.steps.length)}${trace.truncated ? "+" : ""}</span>
+      <select id="speed" title="Speed" aria-label="Speed">${SPEEDS.map(speed =>
+        `<option value="${speed}" ${speed === (st.speed || 1) ? "selected" : ""}>${speed}×</option>`).join("")}</select>
+    </div>`;
+  }
+
+  /** The drawing of one step, animated from `previous` when it is the step next to it. */
+  function stepArea(st, index, previous) {
+    if (!window.DsaRun) return '<p class="placeholder">The run view could not load.</p>';
+    if (!st.model || st.model.trace !== st.trace) st.model = window.DsaRun.prepare(st.trace);
+    return window.DsaRun.render(st.model, index, previous, { animationMs: Math.min(450, stepInterval(st) * 0.7) });
+  }
+
+  /** The arguments as they were passed in: arrays and strings as cells, grids as rows. */
+  function renderValue(variable) {
     const items = variable.items;
-
     if ((variable.kind === "array" || variable.kind === "string") && items && items.length > 0) {
-      const pointers = scalars.filter(s => isIndexName(s.name) && s.number >= 0 && s.number < items.length);
-      const cells = items.map((item, i) => {
-        const here = pointers.filter(p => p.number === i).map(p => escapeHtml(p.name));
-        return `<div class="cell ${here.length ? "pointed" : ""}">
-          <div class="cell-value">${escapeHtml(item)}</div>
-          <div class="cell-index">${i}</div>
-          <div class="cell-pointers">${here.join(" ")}</div>
-        </div>`;
-      }).join("");
-      return `<div class="cells">${cells}</div>`;
+      return `<div class="cells">${items.map((item, i) => `<div class="cell">
+          <div class="cell-value">${escapeHtml(item)}</div><div class="cell-index">${i}</div></div>`).join("")}</div>`;
     }
-
     if (variable.kind === "grid" && items && items.length > 0) {
-      const row = scalars.find(s => ROW_NAMES.has(s.name));
-      const col = scalars.find(s => COL_NAMES.has(s.name) && s !== row);
-      return `<div class="grid">${items.map((line, r) =>
-        `<div class="grid-row">${[...line].map((ch, c) =>
-          `<span class="${row && col && row.number === r && col.number === c ? "grid-here" : ""}">${escapeHtml(ch)}</span>`
-        ).join("")}</div>`).join("")}</div>`;
+      return `<div class="grid">${items.map(line =>
+        `<div class="grid-row">${[...line].map(ch => `<span>${escapeHtml(ch)}</span>`).join("")}</div>`).join("")}</div>`;
     }
-
     return `<code>${escapeHtml(variable.display)}</code>`;
   }
 
+  /**
+   * Moves to a step. Only the step's drawing and the transport are redrawn, not the whole
+   * panel: the inputs keep whatever is being typed, and the drawing can animate from the
+   * step before.
+   */
   function setStep(index) {
     const st = state.stepping;
     if (!st || !st.trace || st.trace.steps.length === 0) return;
+    const previous = st.index || 0;
     st.index = Math.max(0, Math.min(index, st.trace.steps.length - 1));
-    render();
+
+    const area = document.getElementById("step-area");
+    const bar = document.getElementById("transport");
+    if (area && bar && state.tab === "steps") {
+      area.innerHTML = stepArea(st, st.index, previous);
+      bar.innerHTML = transport(st, st.trace, st.index);
+      wireTransport();
+      followCurrent(area);
+    } else {
+      render();
+    }
     // Keep the real editor on the same line, so scrubbing reads like stepping in a debugger.
     if (vscode) vscode.postMessage({ type: "stepAt", line: st.trace.steps[st.index].line });
+  }
+
+  /** Keeps what the code is working on in view when a tree or graph is wider than the panel. */
+  function followCurrent(area) {
+    area.querySelectorAll(".diagram").forEach(diagram => {
+      const current = diagram.querySelector(".node.current, .call.current");
+      if (!current || diagram.scrollWidth <= diagram.clientWidth || !current.getBoundingClientRect) return;
+      const box = current.getBoundingClientRect(), frame = diagram.getBoundingClientRect();
+      diagram.scrollLeft += box.left + box.width / 2 - (frame.left + frame.width / 2);
+    });
+  }
+
+  function stopPlaying(st) {
+    if (st.playing) clearInterval(st.playing);
+    st.playing = null;
   }
 
   function togglePlay() {
     const st = state.stepping;
     if (!st || !st.trace) return;
-    if (st.playing) { clearInterval(st.playing); st.playing = null; render(); return; }
+    if (st.playing) { stopPlaying(st); setStep(st.index); return; }
+    // From the end, playing starts again from the beginning.
+    if (st.index >= st.trace.steps.length - 1) st.index = 0;
     st.playing = setInterval(() => {
-      if (st.index >= st.trace.steps.length - 1) { clearInterval(st.playing); st.playing = null; render(); return; }
+      if (st.index >= st.trace.steps.length - 1) { stopPlaying(st); setStep(st.index); return; }
       setStep(st.index + 1);
-    }, 450);
-    render();
+    }, stepInterval(st));
+    setStep(st.index);
+  }
+
+  function setSpeed(speed) {
+    const st = state.stepping;
+    if (!st) return;
+    st.speed = speed;
+    // A running timer keeps its old interval, so it is restarted at the new one.
+    if (st.playing) { stopPlaying(st); togglePlay(); }
+  }
+
+  function wireTransport() {
+    app.querySelectorAll("[data-step]").forEach(button => button.addEventListener("click", () => {
+      const st = state.stepping;
+      if (!st || !st.trace) return;
+      switch (button.dataset.step) {
+        case "first": setStep(0); break;
+        case "prev": setStep(st.index - 1); break;
+        case "next": setStep(st.index + 1); break;
+        case "last": setStep(st.trace.steps.length - 1); break;
+        case "play": togglePlay(); break;
+      }
+    }));
+
+    const scrubber = document.getElementById("scrubber");
+    if (scrubber) scrubber.addEventListener("input", () => setStep(Number(scrubber.value)));
+
+    const speed = document.getElementById("speed");
+    if (speed) speed.addEventListener("change", () => setSpeed(Number(speed.value)));
   }
 
   /** Asks for a run. With no choice, the extension uses what was saved for this method. */
@@ -886,20 +913,7 @@
     if (useCode) useCode.addEventListener("click", () =>
       requestRun({ example: currentExample(), size: currentSize() }));
 
-    app.querySelectorAll("[data-step]").forEach(button => button.addEventListener("click", () => {
-      const st = state.stepping;
-      if (!st || !st.trace) return;
-      switch (button.dataset.step) {
-        case "first": setStep(0); break;
-        case "prev": setStep(st.index - 1); break;
-        case "next": setStep(st.index + 1); break;
-        case "last": setStep(st.trace.steps.length - 1); break;
-        case "play": togglePlay(); break;
-      }
-    }));
-
-    const scrubber = document.getElementById("scrubber");
-    if (scrubber) scrubber.addEventListener("input", () => setStep(Number(scrubber.value)));
+    wireTransport();
 
     const sizesField = document.getElementById("sizes");
     if (sizesField) sizesField.addEventListener("input", () => { state.sizesEdited = true; });
@@ -999,6 +1013,9 @@
     state.stepping = { size: trace.size, trace, index: 0, loading: false, error: null, draft: {} };
     render();
   };
+
+  // Development and test entry point: move to a step as the transport would.
+  window.__goto = index => setStep(index);
 
   // Development entry point: feed a recorded engine response straight in.
   window.__render = (response, request) => {
