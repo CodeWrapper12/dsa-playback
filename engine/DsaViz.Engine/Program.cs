@@ -110,11 +110,15 @@ if (file is null)
         "                [--sizes 10,100,1000] [--strategy <" + string.Join("|", Enum.GetNames<GenerationStrategy>()) + ">]\n" +
         "                [--budget <n>]\n" +
         "  DsaViz.Engine --file <solution.cs> --entry <Method> --steps <n> [--strategy <...>]\n" +
-        "  DsaViz.Engine --file <solution.cs> --list-entries\n" +
+        "  DsaViz.Engine --file <solution.cs|-> --list-entries\n" +
         "  DsaViz.Engine --job <request.json|->");
 
-if (!File.Exists(file)) return Fail($"File not found: {file}");
-string source = File.ReadAllText(file);
+// "-" reads the source from stdin, so the editor can list the methods of a file with
+// unsaved changes and put its buttons on the lines the student is looking at.
+string source;
+if (file == "-") source = Console.In.ReadToEnd();
+else if (!File.Exists(file)) return Fail($"File not found: {file}");
+else source = File.ReadAllText(file);
 
 if (listEntries) return Emit(new { Entries = EntryPointScanner.Scan(source) }, 0);
 

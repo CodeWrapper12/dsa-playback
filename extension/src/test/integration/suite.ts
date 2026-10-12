@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
 import type { TestApi } from "../../extension";
@@ -49,12 +51,57 @@ const checks: [string, (api: TestApi) => Promise<void>][] = [
     await vscode.commands.executeCommand("workbench.action.files.revert");
   }],
 
-  ["the step view records a run when the panel asks for it", async api => {
-    await api.sendPanelMessage({ type: "steps", size: 6 });
-    const steps = await waitFor(() => api.lastSteps(), "a step recording");
+  ["the ▶ Visualize button appears above every method that can run", async api => {
+    const document = await open("extension/samples/csharp/TwoSumSorted.cs");
+    const titles = (await api.lenses(document)).map(lens => lens.command?.title);
+    assert.deepEqual(titles, ["$(play) Visualize", "$(graph) Complexity"]);
+  }],
+
+  ["a solution outside the open folder visualizes, using the example in its comment", async api => {
+    // The bug a student met first: the engine was only looked for inside the open folder.
+    const folder = fs.mkdtempSync(path.join(os.tmpdir(), "dsaviz-elsewhere-"));
+    const file = path.join(folder, "TwoSum.cs");
+    fs.copyFileSync(path.join(repository, "extension/samples/csharp/TwoSumSorted.cs"), file);
+
+    const before = api.lastSteps();
+    await vscode.commands.executeCommand("dsaViz.visualize", vscode.Uri.file(file), "Solution.TwoSum");
+    const steps = await waitFor(() => (api.lastSteps() !== before ? api.lastSteps() : undefined), "a recorded run");
+
     assert.equal(steps.status, "Completed");
-    assert.ok(steps.steps.length > 0);
-    assert.ok(steps.steps.some(s => s.variables.some(v => v.name === "seen")), "the steps carry the solution's variables");
+    assert.equal(steps.inputs[0].literal, "[2,7,11,15]");
+    assert.equal(steps.check?.matches, true);
+    assert.equal(api.lastError(), undefined, "no error was shown");
+  }],
+
+  ["a typed value is used, and still used when the method is opened again", async api => {
+    const file = path.join(repository, "extension/samples/csharp/TwoSumSorted.cs");
+    let before = api.lastSteps();
+    await vscode.commands.executeCommand("dsaViz.visualize", vscode.Uri.file(file), "Solution.TwoSum");
+    await waitFor(() => (api.lastSteps() !== before ? true : undefined), "a first run");
+
+    before = api.lastSteps();
+    await api.sendPanelMessage({ type: "run", values: [null, "26"] });
+    const typed = await waitFor(() => (api.lastSteps() !== before ? api.lastSteps() : undefined), "a run with the typed value");
+    assert.equal(typed.inputs[1].source, "Typed");
+    assert.equal(typed.returnValue, "[3,4]");
+
+    before = api.lastSteps();
+    await vscode.commands.executeCommand("dsaViz.visualize", vscode.Uri.file(file), "Solution.TwoSum");
+    const reopened = await waitFor(() => (api.lastSteps() !== before ? api.lastSteps() : undefined), "a run on reopening");
+    assert.equal(reopened.inputs[1].literal, "26");
+
+    // Back to the values in the code, which also clears what was saved.
+    before = api.lastSteps();
+    await api.sendPanelMessage({ type: "run", example: 0 });
+    const fromCode = await waitFor(() => (api.lastSteps() !== before ? api.lastSteps() : undefined), "a run from the code");
+    assert.equal(fromCode.inputs[1].source, "Example");
+  }],
+
+  ["the walkthrough opens an editable copy of its sample", async () => {
+    await vscode.commands.executeCommand("dsaViz.openSample", "LevelOrder.cs");
+    const opened = vscode.window.activeTextEditor?.document.fileName ?? "";
+    assert.ok(opened.endsWith("LevelOrder.cs"));
+    assert.ok(!opened.startsWith(path.join(repository, "extension")), "not the file inside the extension itself");
   }],
 
   ["a wrong engine path is reported, not hung on", async api => {

@@ -36,6 +36,9 @@ public static class EntryPointScanner
             if (method.TypeParameterList is not null) continue;
             if (method.Parent is not ClassDeclarationSyntax owner) continue;
 
+            // A program's entry point is where examples are called from, not a solution.
+            if (method.Identifier.Text == "Main" && method.Modifiers.Any(m => m.ValueText == "static")) continue;
+
             // A node class's own members are plumbing, not solutions.
             if (nodeTypes.Contains(owner.Identifier.Text)) continue;
 
@@ -57,7 +60,8 @@ public static class EntryPointScanner
             else if (parameters.FirstOrDefault(p => !p.Supported) is { } unsupported)
                 reason = $"Parameter '{unsupported.Name}' has type '{unsupported.Type}', which the engine cannot generate.";
 
-            entries.Add(new EntryPoint(owner.Identifier.Text, method.Identifier.Text, parameters) { Reason = reason });
+            int line = method.Identifier.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+            entries.Add(new EntryPoint(owner.Identifier.Text, method.Identifier.Text, parameters) { Reason = reason, Line = line });
         }
 
         // Measurable ones first: the editor shows this as a pick list, and burying a usable

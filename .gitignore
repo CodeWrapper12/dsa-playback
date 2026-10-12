@@ -8,3 +8,5 @@ out/
 .devharness/
 .claude/launch.json
 .vscode-test/
+extension/engine/
+extension/dist/

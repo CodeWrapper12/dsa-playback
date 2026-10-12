@@ -66,4 +66,28 @@ public class EntryPointScannerTests
 
         Assert.Contains(entries, e => e.Name == "Go");
     }
+
+    [Fact]
+    public void Main_is_where_examples_are_called_from_not_a_method_to_visualize()
+    {
+        var entries = EntryPointScanner.Scan("""
+            public class Solution { public int Go(int[] a) => 0; }
+            public static class Program { public static void Main() { new Solution().Go(new[] { 1 }); } }
+            """);
+        Assert.Equal(new[] { "Go" }, entries.Select(e => e.Name));
+    }
+
+    [Fact]
+    public void Each_method_reports_its_line_for_the_editor_buttons()
+    {
+        var entries = EntryPointScanner.Scan("""
+            // a comment
+            public class Solution {
+                public int First(int n) => n;
+
+                public int Second(int n) => n;
+            }
+            """);
+        Assert.Equal(new[] { 3, 5 }, entries.OrderBy(e => e.Line).Select(e => e.Line));
+    }
 }

@@ -18,15 +18,23 @@ Write a LeetCode-style solution, run one command, and get:
 
 ## Run it
 
-Needs the .NET 8 SDK or later, Node, and VS Code.
+**Install it** (no .NET needed — the engine is inside the package):
 
 ```
-cd extension && npm install
+cd extension && npm install && npm run package
 ```
 
-Open this folder — the repository root — in VS Code, press **F5**, and pick **Run DSA
-Visualizer**. In the window that opens, open any file under `samples/leetcode/` and run
-**DSA Visualizer: Measure Current File**.
+```
+code --install-extension extension/dist/dsa-visualizer-darwin-arm64.vsix
+```
+
+Then open any C# solution and press **▶ Visualize** above a method. Values from LeetCode
+example comments (`// Input: nums = [2,7,11,15], target = 9`) or from a call in `Main`
+are used automatically.
+
+**Or run it from source:** open this folder in VS Code, press **F5** and pick **Run DSA
+Visualizer**. From source it uses the engine's debug build, so build that first with
+`dotnet build engine/DsaViz.sln`.
 
 ## Test it
 
@@ -42,8 +50,13 @@ cd extension && npm test
 cd extension && npm run test:integration
 ```
 
-The last one opens VS Code for about a minute and drives the real command against the
-real engine.
+The last one opens VS Code for about a minute and drives the real commands against the
+real engine. To check a built package the way a student gets it — unpacked, with no .NET
+anywhere:
+
+```
+cd extension && npm run verify-package dist/dsa-visualizer-darwin-arm64.vsix
+```
 
 ## Layout
 

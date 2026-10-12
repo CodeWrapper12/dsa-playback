@@ -1,0 +1,10 @@
+src/**
+out/test/**
+**/*.map
+**/*.ts
+tsconfig.json
+scripts/**
+dist/**
+.vscode-test/**
+node_modules/**
+.devharness/**

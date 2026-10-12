@@ -67,8 +67,8 @@ author practising in C# remains a user.
 
 ## Acceptance criteria
 
-Each can be checked by someone outside this conversation. Each will name its tests
-once they exist, as v1's did.
+Each can be checked by someone outside this conversation. The tests that check each
+one are listed under **Status**.
 
 ### A. Install and first run
 
@@ -207,6 +207,28 @@ student can **type their own** at any time.
       students, a CHANGELOG and a licence
     - one CI workflow that, on a version tag, builds every platform package, runs the
       tests on each, and publishes to the Marketplace and Open VSX
+
+## Status
+
+**Phase 1 (friendly C#) is done.** Phases 2 (animated run view), 3 (Python) and 4
+(release) are not started.
+
+| # | Status | Checked by |
+|---|---|---|
+| 1 | Met on macOS Apple silicon. The other platforms wait for Phase 4's CI. | `npm run verify-package`: unpacks the package and runs the bundled engine with no .NET on the path. Integration: *a solution outside the open folder visualizes*. |
+| 2 | Met: 32.4 MB on macOS Apple silicon. | `npm run verify-package` |
+| 3 | Met for C#. Python is Phase 3. | Integration: *the ▶ Visualize button appears above every method that can run*. `EntryPointScannerTests` |
+| 4 | Met for C#: three samples. Python's are Phase 3. | Integration: *the walkthrough opens an editable copy of its sample*. The walkthrough page has not yet been looked at by hand in VS Code. |
+| 5 | Met for C#, by construction. | The extension activates on `onLanguage:csharp`. The buttons need the method list, which is read by parsing only, never by running. |
+| 6–10 | Met for C#. | `ExampleFinderTests`, `StepInputTests`, `LiteralsTests`. Panel tests: *values found in the code fill the boxes, and the result is checked*; *with no example in the code, values are generated*. |
+| 11 | Met: every shape, with the position of each error. | `LiteralsTests`. Panel test: *an input that cannot be read is marked under its own box* |
+| 12 | Met. | Integration: *a typed value is used, and still used when the method is opened again* |
+| 13 | Partly: ← →, Space, the scrubber and the editor line work. Speed control is Phase 2. | Panel test: *Space plays and pauses the run* |
+| 27 | Met early. | `StepInputTests`. Panel test: *an exception in the student's code names the line* |
+| 31 | Partly: *Show line* and *Show details* exist, and no stack trace reaches the student. *Install Python* is Phase 3. | Panel test: *the visualizer's own failure offers its details* |
+
+Test counts: 303 engine tests, 28 extension tests, and 7 integration checks in a real
+VS Code.
 
 ## Constraints
 

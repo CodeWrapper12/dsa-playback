@@ -1,10 +1,19 @@
+import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
+import { EntryPointLenses } from "./codeLens";
 import { CostDecorations } from "./decorations";
-import { EngineCancelledError, EngineNotFoundError, listEntryPoints, measure } from "./engine";
+import {
+  configureEngine, EngineCancelledError, EngineFailedError, EngineNotFoundError, listEntryPoints, measure,
+  resolveEnginePath
+} from "./engine";
+import { log, showLog } from "./log";
 import { EntryPoint, InputSpec, JobRequest, JobResponse, StepTrace } from "./types";
 
 let decorations: CostDecorations;
+
+/** Samples offered by the walkthrough, shipped inside the extension under samples/csharp. */
+const SAMPLES = new Set(["TwoSumSorted.cs", "LevelOrder.cs", "ClimbStairs.cs"]);
 
 /**
  * What the integration tests can observe. Decorations and webviews are not readable
@@ -17,48 +26,70 @@ export interface TestApi {
   lastError(): string | undefined;
   linesDecoratedIn(uri: vscode.Uri): number;
   sendPanelMessage(message: unknown): Promise<void>;
+  lenses(document: vscode.TextDocument): Promise<vscode.CodeLens[]>;
+  enginePath(): string;
 }
 
 const observed: { response?: JobResponse; steps?: StepTrace; error?: string } = {};
 
 export function activate(context: vscode.ExtensionContext): TestApi {
+  configureEngine(context.extensionPath, context.extensionMode !== vscode.ExtensionMode.Production);
   decorations = new CostDecorations();
+  const lenses = new EntryPointLenses();
 
   context.subscriptions.push(
     decorations,
-    vscode.commands.registerCommand("dsaViz.measure", () => start(context, false)),
-    vscode.commands.registerCommand("dsaViz.compare", () => start(context, true)),
-    vscode.commands.registerCommand("dsaViz.clearAnnotations", () => decorations.clear()));
+    vscode.languages.registerCodeLensProvider({ language: "csharp" }, lenses),
+    vscode.workspace.onDidCloseTextDocument(document => lenses.forget(document.uri)),
+    vscode.workspace.onDidChangeConfiguration(change => {
+      if (change.affectsConfiguration("dsaViz.enginePath")) lenses.refresh();
+    }),
+    vscode.commands.registerCommand("dsaViz.visualize", (uri?: vscode.Uri, entry?: string) =>
+      start(context, "steps", uri, entry)),
+    vscode.commands.registerCommand("dsaViz.measure", (uri?: vscode.Uri, entry?: string) =>
+      start(context, "cost", uri, entry)),
+    vscode.commands.registerCommand("dsaViz.compare", () => start(context, "compare")),
+    vscode.commands.registerCommand("dsaViz.clearAnnotations", () => decorations.clear()),
+    vscode.commands.registerCommand("dsaViz.openSample", (name: string) => openSample(context, name)),
+    vscode.commands.registerCommand("dsaViz.showLog", () => showLog()));
 
   return {
     lastResponse: () => observed.response,
     lastSteps: () => observed.steps,
     lastError: () => observed.error,
     linesDecoratedIn: uri => decorations.linesDecoratedIn(uri),
-    sendPanelMessage: async message => { await ReportPanel.deliver(message); }
+    sendPanelMessage: async message => { await ReportPanel.deliver(message); },
+    lenses: document => lenses.provideCodeLenses(document, new vscode.CancellationTokenSource().token),
+    enginePath: () => resolveEnginePath()
   };
 }
 
 export function deactivate() {}
 
-async function start(context: vscode.ExtensionContext, withComparison: boolean) {
-  const editor = vscode.window.activeTextEditor;
-  if (!editor || !editor.document.fileName.endsWith(".cs")) {
-    vscode.window.showWarningMessage("Open the C# file you want to measure first.");
+type Tab = "steps" | "cost" | "compare";
+
+async function start(context: vscode.ExtensionContext, tab: Tab, uri?: vscode.Uri, entryName?: string) {
+  const document = uri
+    ? await vscode.workspace.openTextDocument(uri)
+    : vscode.window.activeTextEditor?.document;
+
+  if (!document || document.languageId !== "csharp") {
+    vscode.window.showWarningMessage("Open a C# file first, then press ▶ Visualize above a method.");
     return;
   }
 
-  await editor.document.save();
-  const file = editor.document.fileName;
+  // The engine reads the file from disk, so what runs must be what is on screen.
+  if (document.isDirty) await document.save();
+  const file = document.fileName;
 
   try {
-    const entry = await pickEntryPoint(file, "Which method should be measured?");
+    const entry = entryName ?? (await pickEntryPoint(file, "Which method?"))?.qualified;
     if (!entry) return;
 
     let compareFile: string | undefined;
     let compareEntry: string | undefined;
 
-    if (withComparison) {
+    if (tab === "compare") {
       const picked = await vscode.window.showOpenDialog({
         canSelectMany: false,
         filters: { "C# files": ["cs"] },
@@ -79,14 +110,14 @@ async function start(context: vscode.ExtensionContext, withComparison: boolean) 
 
     const request: JobRequest = {
       file,
-      entry: entry.qualified,
+      entry,
       sizes: configuredSizes.length > 0 ? configuredSizes : undefined,
       budget: vscode.workspace.getConfiguration("dsaViz").get<number>("budget"),
       compareFile,
       compareEntry
     };
 
-    ReportPanel.show(context, request);
+    ReportPanel.show(context, request, tab === "steps" ? "steps" : "cost");
   } catch (error) {
     reportError(error);
   }
@@ -96,7 +127,7 @@ async function pickEntryPoint(file: string, title: string): Promise<EntryPoint |
   const entries = await listEntryPoints(file);
 
   if (entries.length === 0) {
-    vscode.window.showWarningMessage(`${path.basename(file)} has no public methods to measure.`);
+    vscode.window.showWarningMessage(`${path.basename(file)} has no public methods to visualize.`);
     return undefined;
   }
 
@@ -114,54 +145,88 @@ async function pickEntryPoint(file: string, title: string): Promise<EntryPoint |
     { title, matchOnDescription: true });
 
   if (picked && !picked.entry.measurable) {
-    vscode.window.showWarningMessage(`${picked.entry.name} cannot be measured: ${picked.entry.reason}`);
+    vscode.window.showWarningMessage(`${picked.entry.name} cannot be run: ${picked.entry.reason}`);
     return undefined;
   }
 
   return picked?.entry;
 }
 
+/**
+ * Copies a walkthrough sample somewhere the student can edit it, then opens it. Opening
+ * it in place would mean editing files inside the extension's own installation.
+ */
+async function openSample(context: vscode.ExtensionContext, name: string) {
+  if (!SAMPLES.has(name)) {
+    log(`Unknown sample requested: ${name}`);
+    return;
+  }
+  const source = path.join(context.extensionPath, "samples", "csharp", name);
+  const folder = path.join(context.globalStorageUri.fsPath, "samples");
+  const target = path.join(folder, name);
+
+  try {
+    await fs.promises.mkdir(folder, { recursive: true });
+    // An earlier copy may hold the student's own edits, so it is never overwritten.
+    if (!fs.existsSync(target)) await fs.promises.copyFile(source, target);
+    const document = await vscode.workspace.openTextDocument(target);
+    await vscode.window.showTextDocument(document);
+  } catch (error) {
+    reportError(error);
+  }
+}
+
 function reportError(error: unknown) {
   if (error instanceof EngineCancelledError) return;
   const message = error instanceof Error ? error.message : String(error);
   observed.error = message;
-  if (error instanceof EngineNotFoundError) {
-    vscode.window.showErrorMessage(message, "Open Settings").then(choice => {
-      if (choice === "Open Settings") {
-        vscode.commands.executeCommand("workbench.action.openSettings", "dsaViz.enginePath");
-      }
+  log(`Shown to the student: ${message}`);
+
+  if (error instanceof EngineNotFoundError || error instanceof EngineFailedError) {
+    vscode.window.showErrorMessage(message, "Show Details").then(choice => {
+      if (choice === "Show Details") showLog();
     });
     return;
   }
   vscode.window.showErrorMessage(`DSA Visualizer: ${message}`);
 }
 
-interface RerunMessage {
-  type: "rerun";
-  inputs?: InputSpec[];
-  sizes?: number[];
+// ---- the panel --------------------------------------------------------------------
+
+interface RerunMessage { type: "rerun"; inputs?: InputSpec[]; sizes?: number[] }
+interface MeasureMessage { type: "measure" }
+interface RevealMessage { type: "reveal"; line: number }
+interface StepAtMessage { type: "stepAt"; line: number }
+interface ShowLogMessage { type: "showLog" }
+
+/** Record a run: with typed values, a chosen example, and a size for anything generated. */
+interface RunMessage {
+  type: "run";
+  values?: (string | null)[];
+  example?: number;
+  size?: number;
+  /** Run with what was saved for this method, as when the run view is first opened. */
+  useSaved?: boolean;
 }
 
-interface RevealMessage {
-  type: "reveal";
-  line: number;
+type PanelMessage = RerunMessage | MeasureMessage | RevealMessage | StepAtMessage | ShowLogMessage | RunMessage;
+
+/** What the student chose for one method, kept across restarts. */
+interface SavedInputs {
+  values?: (string | null)[];
+  example?: number;
+  size?: number;
 }
 
-interface StepsMessage {
-  type: "steps";
-  size: number;
-}
-
-interface StepAtMessage {
-  type: "stepAt";
-  line: number;
-}
+const DEFAULT_STEP_SIZE = 8;
+const MAX_STEP_SIZE = 64;
 
 class ReportPanel {
   private static current: ReportPanel | undefined;
 
   private readonly disposables: vscode.Disposable[] = [];
-  private inFlight: AbortController | undefined;
+  private measuring: AbortController | undefined;
+  private recording: AbortController | undefined;
 
   private constructor(
     private readonly panel: vscode.WebviewPanel,
@@ -169,86 +234,109 @@ class ReportPanel {
     private request: JobRequest) {
 
     this.panel.webview.html = this.render();
-
-    this.panel.webview.onDidReceiveMessage(
-      message => this.onMessage(message), null, this.disposables);
-
+    this.panel.webview.onDidReceiveMessage(message => this.onMessage(message), null, this.disposables);
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
   }
 
   /** Routes a message as if the webview had sent it. For integration tests. */
   static async deliver(message: unknown) {
-    await ReportPanel.current?.onMessage(message as RerunMessage | RevealMessage | StepsMessage | StepAtMessage);
+    await ReportPanel.current?.onMessage(message as PanelMessage);
   }
 
-  static show(context: vscode.ExtensionContext, request: JobRequest) {
+  static show(context: vscode.ExtensionContext, request: JobRequest, tab: "steps" | "cost") {
     const column = vscode.ViewColumn.Beside;
 
-    if (ReportPanel.current) {
-      ReportPanel.current.request = request;
-      ReportPanel.current.panel.reveal(column);
-      void ReportPanel.current.run();
-      return;
+    let panel = ReportPanel.current;
+    if (panel) {
+      panel.request = request;
+      panel.panel.reveal(column, true);
+    } else {
+      const webview = vscode.window.createWebviewPanel(
+        "dsaVizReport", "DSA Visualizer", { viewColumn: column, preserveFocus: true },
+        {
+          enableScripts: true,
+          retainContextWhenHidden: true,
+          localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, "media")]
+        });
+      panel = new ReportPanel(webview, context, request);
+      ReportPanel.current = panel;
     }
 
-    const panel = vscode.window.createWebviewPanel(
-      "dsaVizReport", "DSA Visualizer", column,
-      {
-        enableScripts: true,
-        retainContextWhenHidden: true,
-        localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, "media")]
-      });
+    panel.panel.title = `DSA: ${path.basename(request.file, path.extname(request.file))}`;
+    panel.panel.webview.postMessage({ type: "open", request, tab });
 
-    ReportPanel.current = new ReportPanel(panel, context, request);
-    void ReportPanel.current.run();
+    // Only what is on screen is computed. Opening on the run view records a run, which
+    // takes a moment; measuring growth takes several seconds and waits until asked for.
+    if (tab === "steps") void panel.record(panel.saved());
+    else void panel.measure();
   }
 
-  private async onMessage(message: RerunMessage | RevealMessage | StepsMessage | StepAtMessage) {
-    if (message.type === "steps") { await this.recordSteps(message.size); return; }
-    if (message.type === "stepAt") { await decorations.showStep(this.request.file, message.line); return; }
-
-    if (message.type === "reveal") {
-      // The panel ranks the costliest statements; clicking one lands the cursor on it,
-      // since the annotated source is the thing the user actually works in.
-      const document = await vscode.workspace.openTextDocument(this.request.file);
-      const editor = await vscode.window.showTextDocument(document, { preview: false });
-      const line = Math.max(0, Math.min(message.line - 1, document.lineCount - 1));
-      const range = document.lineAt(line).range;
-      editor.selection = new vscode.Selection(range.start, range.start);
-      editor.revealRange(range, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
-      return;
+  private async onMessage(message: PanelMessage) {
+    switch (message.type) {
+      case "run": {
+        if (message.useSaved) { await this.record(this.saved()); return; }
+        const choice: SavedInputs = { values: message.values, example: message.example, size: message.size };
+        await this.save(choice);
+        await this.record(choice);
+        return;
+      }
+      case "measure": await this.measure(); return;
+      case "stepAt": await decorations.showStep(this.request.file, message.line); return;
+      case "showLog": showLog(); return;
+      case "reveal": await this.reveal(message.line); return;
+      case "rerun":
+        // The panel sends back the engine's own resolved inputs with the user's edits
+        // applied, so this side never has to reproduce the engine's inference rules.
+        this.request = {
+          ...this.request,
+          inputs: message.inputs ?? this.request.inputs,
+          sizes: message.sizes ?? this.request.sizes
+        };
+        await this.measure();
+        return;
     }
-
-    // The panel sends back the engine's own resolved inputs with the user's edits
-    // applied, so this side never has to reproduce the engine's inference rules — the
-    // duplication that previously let the two drift apart.
-    this.request = {
-      ...this.request,
-      inputs: message.inputs ?? this.request.inputs,
-      sizes: message.sizes ?? this.request.sizes
-    };
-    await this.run();
   }
 
-  private async run() {
-    // Re-measuring while a measurement is still running replaces it rather than
-    // queueing behind it.
-    this.inFlight?.abort();
+  private async reveal(line: number) {
+    const document = await vscode.workspace.openTextDocument(this.request.file);
+    const editor = await vscode.window.showTextDocument(document, { preview: false, viewColumn: vscode.ViewColumn.One });
+    const target = Math.max(0, Math.min(line - 1, document.lineCount - 1));
+    const range = document.lineAt(target).range;
+    editor.selection = new vscode.Selection(range.start, range.start);
+    editor.revealRange(range, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+  }
+
+  private get savedKey() {
+    return `dsaViz.inputs:${this.request.file}::${this.request.entry}`;
+  }
+
+  private saved(): SavedInputs {
+    return this.context.globalState.get<SavedInputs>(this.savedKey) ?? {};
+  }
+
+  private async save(choice: SavedInputs) {
+    // Nothing typed and nothing chosen is the default, which needs no entry at all.
+    const typed = choice.values?.some(value => value !== null && value !== undefined);
+    const empty = !typed && choice.example === undefined && choice.size === undefined;
+    await this.context.globalState.update(this.savedKey, empty ? undefined : choice);
+  }
+
+  private async measure() {
+    // Re-measuring while a measurement is still running replaces it rather than queueing.
+    this.measuring?.abort();
     const controller = new AbortController();
-    this.inFlight = controller;
-
+    this.measuring = controller;
     this.panel.webview.postMessage({ type: "loading" });
 
     try {
       const request: JobRequest = { ...this.request };
-      const response: JobResponse = await measure(request, controller.signal);
+      const response = await measure(request, controller.signal);
       if (controller.signal.aborted) return;
 
-      this.panel.title = response.label ? `DSA: ${response.label}` : "DSA Visualizer";
       this.panel.webview.postMessage({ type: "result", response, request });
       observed.response = response;
 
-      // The costs belong on the user's own file, not on a copy of it inside a panel.
+      // The costs belong on the student's own file, not on a copy of it inside a panel.
       const detail = response.primary?.detail;
       if (detail && response.primary?.status === "Completed") {
         const points = response.primary.points;
@@ -258,34 +346,48 @@ class ReportPanel {
         decorations.clear();
       }
     } catch (error) {
-      if (error instanceof EngineCancelledError) return;
-      const message = error instanceof Error ? error.message : String(error);
-      this.panel.webview.postMessage({ type: "error", message });
-      reportError(error);
+      this.fail("error", error);
     } finally {
-      if (this.inFlight === controller) this.inFlight = undefined;
+      if (this.measuring === controller) this.measuring = undefined;
     }
   }
 
   /**
-   * Records a step-through on request rather than with every measurement: it is a second
-   * build and a second run, and most measurements never open the step view.
+   * Records a run for the run view. A second build and a second run, kept apart from
+   * measurement so recording every variable can never show up in a measured number.
    */
-  private async recordSteps(size: number) {
-    this.panel.webview.postMessage({ type: "stepsLoading" });
+  private async record(choice: SavedInputs) {
+    this.recording?.abort();
+    const controller = new AbortController();
+    this.recording = controller;
+    this.panel.webview.postMessage({ type: "stepsLoading", choice });
+
+    const size = Math.max(0, Math.min(choice.size ?? DEFAULT_STEP_SIZE, MAX_STEP_SIZE));
     try {
       const response = await measure({
         file: this.request.file,
         entry: this.request.entry,
-        inputs: this.request.inputs,
-        stepSize: size
-      });
-      this.panel.webview.postMessage({ type: "steps", trace: response.steps, errors: response.errors });
+        stepSize: size,
+        values: choice.values,
+        example: choice.example
+      }, controller.signal);
+      if (controller.signal.aborted) return;
+
+      this.panel.webview.postMessage({ type: "steps", trace: response.steps, errors: response.errors, choice });
       observed.steps = response.steps ?? undefined;
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.panel.webview.postMessage({ type: "stepsError", message });
+      this.fail("stepsError", error);
+    } finally {
+      if (this.recording === controller) this.recording = undefined;
     }
+  }
+
+  private fail(type: "error" | "stepsError", error: unknown) {
+    if (error instanceof EngineCancelledError) return;
+    const message = error instanceof Error ? error.message : String(error);
+    const internal = error instanceof EngineFailedError || error instanceof EngineNotFoundError;
+    this.panel.webview.postMessage({ type, message, internal });
+    reportError(error);
   }
 
   private render(): string {
@@ -308,14 +410,15 @@ class ReportPanel {
 <title>DSA Visualizer</title>
 </head>
 <body>
-<div id="app"><p class="placeholder">Measuring…</p></div>
+<div id="app"><p class="placeholder">Loading…</p></div>
 <script nonce="${nonce}" src="${media("main.js")}"></script>
 </body>
 </html>`;
   }
 
   private dispose() {
-    this.inFlight?.abort();
+    this.measuring?.abort();
+    this.recording?.abort();
     decorations.clearStep();
     ReportPanel.current = undefined;
     this.panel.dispose();

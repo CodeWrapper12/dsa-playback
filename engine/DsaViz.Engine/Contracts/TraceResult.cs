@@ -10,6 +10,9 @@ public enum RunStatus
     /// <summary>Recursion passed the depth limit — usually a missing base case.</summary>
     RecursionLimitExceeded,
 
+    /// <summary>An input could not be read, so nothing ran. Each input carries its own error.</summary>
+    InvalidInput,
+
     /// <summary>
     /// The run did not finish within the wall-clock limit. The statement budget cannot
     /// catch this case: a single statement — a sleep, or one enormous library call —
@@ -110,6 +113,13 @@ public sealed record TraceResult
     public IReadOnlyList<string> Errors { get; init; } = Array.Empty<string>();
     public string Output { get; init; } = "";
     public string? ReturnValue { get; init; }
+
+    /// <summary>The returned object itself, for callers that format it their own way. Never serialised.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public object? ReturnObject { get; init; }
+
+    /// <summary>The line of the student's code that threw, when it threw.</summary>
+    public int? ErrorLine { get; init; }
 
     /// <summary>
     /// What the byte counts mean, for the UI to show verbatim rather than inventing a

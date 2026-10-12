@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using DsaViz.Engine.Contracts;
 
 namespace DsaViz.Engine.Inputs;
@@ -209,14 +208,7 @@ public static class InputGenerator
             ?? throw new UnsupportedSignatureException($"'{type.Name}' is not shaped like a TreeNode.");
         if (size == 0) return null;
 
-        object NewNode(int value)
-        {
-            // Built without running a constructor: LeetCode's TreeNode takes optional
-            // parameters, so it has no parameterless constructor to call.
-            var node = RuntimeHelpers.GetUninitializedObject(type);
-            shape.Value.Set(node, value);
-            return node;
-        }
+        object NewNode(int value) => NodeShapes.NewNode(type, shape.Value, value);
 
         switch (spec.Strategy)
         {
@@ -295,8 +287,7 @@ public static class InputGenerator
         object? head = null;
         for (int i = values.Length - 1; i >= 0; i--)
         {
-            var node = RuntimeHelpers.GetUninitializedObject(type);
-            shape.Value.Set(node, values[i]);
+            var node = NodeShapes.NewNode(type, shape.Value, values[i]);
             shape.Next.Set(node, head);
             head = node;
         }

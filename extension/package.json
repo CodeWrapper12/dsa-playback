@@ -1,7 +1,7 @@
 {
   "name": "dsa-visualizer",
   "displayName": "DSA Visualizer",
-  "description": "Shows what each line of a C# solution costs in time and memory, and plots how that cost grows with input size.",
+  "description": "Watch your C# solution run step by step, and see how its time and memory grow \u2014 built for learning data structures and algorithms.",
   "version": "0.1.0",
   "publisher": "local",
   "private": true,
@@ -12,30 +12,65 @@
     "Visualization",
     "Education"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onLanguage:csharp"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
+        "command": "dsaViz.visualize",
+        "title": "Visualize Method",
+        "category": "DSA Visualizer",
+        "icon": "$(play)"
+      },
+      {
         "command": "dsaViz.measure",
-        "title": "DSA Visualizer: Measure Current File",
+        "title": "Measure Complexity",
+        "category": "DSA Visualizer",
         "icon": "$(graph)"
       },
       {
         "command": "dsaViz.compare",
-        "title": "DSA Visualizer: Compare With Another Solution..."
+        "title": "Compare With Another Solution...",
+        "category": "DSA Visualizer"
       },
       {
         "command": "dsaViz.clearAnnotations",
-        "title": "DSA Visualizer: Clear Cost Annotations"
+        "title": "Clear Cost Annotations",
+        "category": "DSA Visualizer"
+      },
+      {
+        "command": "dsaViz.showLog",
+        "title": "Show Log",
+        "category": "DSA Visualizer"
+      },
+      {
+        "command": "dsaViz.openSample",
+        "title": "Open Sample",
+        "category": "DSA Visualizer"
       }
     ],
     "menus": {
       "editor/title": [
         {
-          "command": "dsaViz.measure",
+          "command": "dsaViz.visualize",
           "when": "resourceLangId == csharp",
           "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "dsaViz.openSample",
+          "when": "false"
+        },
+        {
+          "command": "dsaViz.visualize",
+          "when": "editorLangId == csharp"
+        },
+        {
+          "command": "dsaViz.measure",
+          "when": "editorLangId == csharp"
         }
       ]
     },
@@ -45,7 +80,7 @@
         "dsaViz.enginePath": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Path to the built `DsaViz.Engine` executable. Left empty, the extension looks for it under `engine/DsaViz.Engine/bin/Debug/net8.0/` in the open workspace."
+          "markdownDescription": "Only for development: a different `DsaViz.Engine` executable to use. Leave empty \u2014 the extension uses the engine bundled inside it."
         },
         "dsaViz.sizes": {
           "type": "array",
@@ -53,7 +88,7 @@
             "type": "integer"
           },
           "default": [],
-          "markdownDescription": "Input sizes to measure. Leave empty to let the engine choose: it starts at `10, 25, 50, 100, 250, 500, 1000` and drops to small sizes on its own when an algorithm is too expensive for them — which is the only way an exponential solution gets a curve at all."
+          "markdownDescription": "Input sizes to measure. Leave empty to let the engine choose: it starts at `10, 25, 50, 100, 250, 500, 1000` and drops to small sizes on its own when an algorithm is too expensive for them \u2014 which is the only way an exponential solution gets a curve at all."
         },
         "dsaViz.timeoutSeconds": {
           "type": "integer",
@@ -67,19 +102,64 @@
           "description": "Maximum statements a single run may execute before it is stopped. This is what keeps a runaway loop from hanging the editor."
         }
       }
-    }
+    },
+    "walkthroughs": [
+      {
+        "id": "dsaViz.start",
+        "title": "Get started with DSA Visualizer",
+        "description": "Watch an algorithm run, then see why it has the complexity it has.",
+        "steps": [
+          {
+            "id": "twoPointers",
+            "title": "Watch two pointers move",
+            "description": "Open a two-pointer solution, then press **\u25b6 Visualize** above `TwoSum`.\n[Open Two Sum II](command:dsaViz.openSample?%5B%22TwoSumSorted.cs%22%5D)",
+            "media": {
+              "markdown": "walkthrough/visualize.md"
+            },
+            "completionEvents": [
+              "onCommand:dsaViz.visualize"
+            ]
+          },
+          {
+            "id": "bfs",
+            "title": "Try your own input on a tree",
+            "description": "Open a breadth-first search, press **\u25b6 Visualize**, then type a different tree in the box.\n[Open Level Order Traversal](command:dsaViz.openSample?%5B%22LevelOrder.cs%22%5D)",
+            "media": {
+              "markdown": "walkthrough/inputs.md"
+            },
+            "completionEvents": [
+              "onCommand:dsaViz.openSample"
+            ]
+          },
+          {
+            "id": "complexity",
+            "title": "See why it's O(n)",
+            "description": "Open a memoised dynamic-programming solution and press **Complexity**.\n[Open Climbing Stairs](command:dsaViz.openSample?%5B%22ClimbStairs.cs%22%5D)",
+            "media": {
+              "markdown": "walkthrough/complexity.md"
+            },
+            "completionEvents": [
+              "onCommand:dsaViz.measure"
+            ]
+          }
+        ]
+      }
+    ]
   },
   "scripts": {
     "compile": "tsc -p ./",
     "test": "tsc -p ./ && node --test out/test/*.test.js",
     "test:integration": "tsc -p ./ && node out/test/integration/runTest.js",
-    "watch": "tsc -watch -p ./"
+    "watch": "tsc -watch -p ./",
+    "package": "node scripts/package.js",
+    "verify-package": "node scripts/verify-package.js"
   },
   "devDependencies": {
     "@types/jsdom": "^21.1.7",
     "@types/node": "^20.11.0",
     "@types/vscode": "^1.85.0",
     "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^3.9.2",
     "jsdom": "^24.1.3",
     "typescript": "^5.4.0"
   }

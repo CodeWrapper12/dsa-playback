@@ -27,6 +27,18 @@ public sealed record JobRequest
     public int? StepSize { get; init; }
     public int MaxSteps { get; init; } = DsaViz.Engine.Measurement.Stepper.DefaultMaxSteps;
 
+    /// <summary>
+    /// For a step-through: values typed by the student, one LeetCode-format text per
+    /// parameter, null where the parameter keeps its default source.
+    /// </summary>
+    public string?[]? Values { get; init; }
+
+    /// <summary>
+    /// For a step-through: which example found in the code to use. Omitted means the
+    /// first one found; a negative number means none, so every value is generated.
+    /// </summary>
+    public int? Example { get; init; }
+
     /// <summary>A second solution to measure alongside the first, for comparison.</summary>
     public string? CompareFile { get; init; }
     public string? CompareEntry { get; init; }
@@ -44,6 +56,9 @@ public sealed record EntryPoint(
     public string? Reason { get; init; }
 
     public bool Measurable => Reason is null;
+
+    /// <summary>The 1-based line of the method's name, where the editor puts its buttons.</summary>
+    public int Line { get; init; }
 
     /// <summary>"Solution.TwoSum" — unambiguous even when two classes share a method name.</summary>
     public string Qualified => $"{DeclaringType}.{Name}";

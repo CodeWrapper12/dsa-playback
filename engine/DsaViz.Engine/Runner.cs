@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using System.Collections;
 using System.Diagnostics;
 using System.Globalization;
@@ -208,6 +209,9 @@ public static class Runner
         public object? ReturnValue;
         public double ElapsedMs;
         public TraceState? State;
+        public int? ErrorLine;
+        public Exception? Thrown;
+        public int ThrownAt = -1;
     }
 
     private static void Execute(
@@ -231,13 +235,31 @@ public static class Runner
                 slot.SetValue(null, state);
             }
 
+            // Which statement threw is only knowable while the exception is being thrown:
+            // by the time it reaches this method, every frame has unwound and the tracer has
+            // moved back to the outermost call. So the statement is noted at the throw, on
+            // this thread only, and matched by identity to whatever finally escapes.
+            int runThread = Environment.CurrentManagedThreadId;
+            EventHandler<FirstChanceExceptionEventArgs> onThrow = (_, e) =>
+            {
+                if (Environment.CurrentManagedThreadId != runThread || state is null) return;
+                // Reflection wraps what escapes the solution in a TargetInvocationException,
+                // thrown on this same thread after the real one. Noting it would overwrite
+                // the student's exception with the wrapper.
+                if (e.Exception is TargetInvocationException) return;
+                outcome.Thrown = e.Exception;
+                outcome.ThrownAt = state.PendingStatement;
+            };
+
             var stopwatch = Stopwatch.StartNew();
+            AppDomain.CurrentDomain.FirstChanceException += onThrow;
             try
             {
                 outcome.ReturnValue = solution.Entry.Invoke(target, arguments);
             }
             finally
             {
+                AppDomain.CurrentDomain.FirstChanceException -= onThrow;
                 stopwatch.Stop();
                 outcome.ElapsedMs = stopwatch.Elapsed.TotalMilliseconds;
                 if (state is not null)
@@ -257,10 +279,24 @@ public static class Runner
             outcome.Status = RunStatus.RecursionLimitExceeded;
             outcome.Errors.Add(depthEx.Message);
         }
+        catch (TargetInvocationException ex) when (ex.InnerException is { } thrown)
+        {
+            // The student's own exception, said the way they would want to hear it. The
+            // stack trace is left out: its frames are the instrumented copy, which has no
+            // line numbers and names helpers the student never wrote.
+            outcome.Status = RunStatus.RuntimeError;
+            int? line = ReferenceEquals(thrown, outcome.Thrown) &&
+                        outcome.ThrownAt is >= 0 and var at && at < solution.Statements.Count
+                ? solution.Statements[at].Line
+                : null;
+            outcome.ErrorLine = line;
+            outcome.Errors.Add(
+                $"Your code threw {thrown.GetType().Name}{(line is { } l ? $" at line {l}" : "")}: {thrown.Message}");
+        }
         catch (TargetInvocationException ex)
         {
             outcome.Status = RunStatus.RuntimeError;
-            outcome.Errors.Add(ex.InnerException?.ToString() ?? ex.ToString());
+            outcome.Errors.Add(ex.ToString());
         }
         catch (Exception ex)
         {
@@ -337,6 +373,8 @@ public static class Runner
             Errors = outcome.Errors,
             Output = output,
             ReturnValue = outcome.Status == RunStatus.Completed ? Render(outcome.ReturnValue) : null,
+            ReturnObject = outcome.Status == RunStatus.Completed ? outcome.ReturnValue : null,
+            ErrorLine = outcome.ErrorLine,
             RecordedSteps = outcome.State?.Steps ?? Array.Empty<RecordedStep>(),
             StepsTruncated = outcome.State?.StepsTruncated ?? false
         };

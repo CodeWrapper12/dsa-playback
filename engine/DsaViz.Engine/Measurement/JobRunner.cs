@@ -25,7 +25,7 @@ public static class JobRunner
         {
             var steps = Stepper.Record(
                 DsaViz.Engine.Analysis.SourceAnalysis.Create(primarySource), request.Entry, request.Inputs,
-                stepSize, request.MaxSteps, request.Strategy, request.Budget);
+                stepSize, request.MaxSteps, request.Strategy, request.Budget, request.Values, request.Example);
             return new JobResponse
             {
                 Steps = steps,

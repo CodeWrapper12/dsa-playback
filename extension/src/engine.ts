@@ -2,19 +2,45 @@ import { spawn } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
+import { log } from "./log";
 import { EntryPoint, JobRequest, JobResponse } from "./types";
 
-const RELATIVE_BUILD_PATH = path.join(
-  "engine", "DsaViz.Engine", "bin", "Debug", "net8.0", "DsaViz.Engine");
+const EXECUTABLE = process.platform === "win32" ? "DsaViz.Engine.exe" : "DsaViz.Engine";
+
+/** Where the packaging script puts the self-contained engine inside the extension. */
+const BUNDLED = ["engine", EXECUTABLE];
+
+/** The engine's debug build, relative to the extension folder in this repository. */
+const DEVELOPMENT_BUILD = ["..", "engine", "DsaViz.Engine", "bin", "Debug", "net8.0", EXECUTABLE];
 
 export class EngineNotFoundError extends Error {}
 
+/** The engine ran but stopped without an answer. The message is for the student; details go to the log. */
+export class EngineFailedError extends Error {}
+
+let location: { root: string; development: boolean } | undefined;
+
+/** Called once on activation: where the extension is installed, and whether it runs from source. */
+export function configureEngine(extensionRoot: string, development: boolean) {
+  location = { root: extensionRoot, development };
+}
+
 /**
- * Locates the engine executable.
- *
- * An explicit setting always wins. Otherwise the open workspace folders are searched
- * for a debug build, which is what makes the extension usable while the engine is
- * still being developed alongside it.
+ * The places the engine is looked for, in order. Installed, the bundled engine is the
+ * only one. Run from source (F5), the debug build comes first, so a stale bundled copy
+ * left by an earlier packaging run can never hide the code being worked on.
+ */
+export function engineCandidates(): string[] {
+  if (!location) return [];
+  const bundled = path.join(location.root, ...BUNDLED);
+  const development = path.join(location.root, ...DEVELOPMENT_BUILD);
+  return location.development ? [development, bundled] : [bundled, development];
+}
+
+/**
+ * Locates the engine executable. An explicit setting always wins; otherwise it is found
+ * relative to the extension itself, never relative to whatever folder is open — which is
+ * what used to make the extension fail in any folder but this repository.
  */
 export function resolveEnginePath(): string {
   const configured = vscode.workspace.getConfiguration("dsaViz").get<string>("enginePath")?.trim();
@@ -26,14 +52,13 @@ export function resolveEnginePath(): string {
     return configured;
   }
 
-  for (const folder of vscode.workspace.workspaceFolders ?? []) {
-    const candidate = path.join(folder.uri.fsPath, RELATIVE_BUILD_PATH);
-    if (fs.existsSync(candidate)) return candidate;
-  }
+  const candidates = engineCandidates();
+  const found = candidates.find(candidate => fs.existsSync(candidate));
+  if (found) return found;
 
+  log(`Engine not found. Looked in:\n  ${candidates.join("\n  ")}`);
   throw new EngineNotFoundError(
-    "Could not find the DsaViz engine. Build it with `dotnet build` in the engine folder, " +
-    "or set `dsaViz.enginePath` to the built executable.");
+    "The DSA Visualizer engine is missing from this installation. Reinstalling the extension restores it.");
 }
 
 export class EngineCancelledError extends Error {}
@@ -48,6 +73,9 @@ export class EngineCancelledError extends Error {}
  */
 function run(executable: string, args: string[], stdin?: string, signal?: AbortSignal): Promise<string> {
   const timeoutSeconds = vscode.workspace.getConfiguration("dsaViz").get<number>("timeoutSeconds") ?? 120;
+
+  const started = Date.now();
+  log(`engine ${args.join(" ")}`);
 
   return new Promise((resolve, reject) => {
     const child = spawn(executable, args);
@@ -71,23 +99,43 @@ function run(executable: string, args: string[], stdin?: string, signal?: AbortS
     child.stdout.on("data", chunk => (stdout += chunk));
     child.stderr.on("data", chunk => (stderr += chunk));
 
-    child.on("error", error =>
-      settle(() => reject(new Error(`Could not start the engine: ${error.message}`))));
+    child.on("error", error => settle(() => {
+      log(`  could not start ${executable}: ${error.message}`);
+      reject(new EngineFailedError(`The visualizer's engine could not be started: ${error.message}`));
+    }));
 
     child.on("close", code => settle(() => {
+      log(`  exit ${code} after ${Date.now() - started} ms, ${stdout.length} chars of output`);
+      if (stderr.trim()) log(`  stderr:\n${stderr.trim()}`);
+
       // The engine uses a non-zero exit code to report that a measurement did not
       // complete, and still writes a JSON explanation. Only treat it as a failure when
       // there is genuinely nothing to read.
-      if (stdout.trim()) resolve(stdout);
-      else reject(new Error(stderr.trim() || `The engine exited with code ${code} and produced no output.`));
+      if (stdout.trim()) { resolve(stdout); return; }
+
+      // Exit code 2 is the engine refusing a request, with a sentence meant to be read.
+      // Anything else is the engine itself breaking, and its stderr is a stack trace —
+      // kept in the log, never shown.
+      if (code === 2 && stderr.trim()) reject(new Error(stderr.trim()));
+      else reject(new EngineFailedError(
+        `The visualizer stopped unexpectedly (exit code ${code}). This is a bug in the visualizer, not in your code.`));
     }));
 
+    // An engine that exits before reading its input makes this write fail with EPIPE.
+    // The exit itself is what gets reported, from the close handler above; without a
+    // listener the stream error would surface as an uncaught exception in the editor.
+    child.stdin.on("error", error => log(`  could not send input to the engine: ${error.message}`));
     if (stdin !== undefined) { child.stdin.write(stdin); child.stdin.end(); }
   });
 }
 
-export async function listEntryPoints(file: string): Promise<EntryPoint[]> {
-  const output = await run(resolveEnginePath(), ["--file", file, "--list-entries"]);
+/**
+ * The methods in a file that can be run. Given `source`, reads that text instead of the
+ * file on disk, so a file with unsaved changes is listed as the student sees it.
+ */
+export async function listEntryPoints(file: string, source?: string, signal?: AbortSignal): Promise<EntryPoint[]> {
+  const args = source === undefined ? ["--file", file, "--list-entries"] : ["--file", "-", "--list-entries"];
+  const output = await run(resolveEnginePath(), args, source, signal);
   return (JSON.parse(output) as { entries: EntryPoint[] }).entries ?? [];
 }
 

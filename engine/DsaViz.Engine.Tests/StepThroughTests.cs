@@ -66,7 +66,7 @@ public class StepThroughTests
         var trace = Record("SortParamSample.cs", "Sort", 5, GenerationStrategy.ReverseSorted);
 
         Assert.Equal("[5, 4, 3, 2, 1]", trace.Arguments.Single().Display);
-        Assert.Equal("[1, 2, 3, 4, 5]", trace.ReturnValue);
+        Assert.Equal("[1,2,3,4,5]", trace.ReturnValue);
     }
 
     [Fact]

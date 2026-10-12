@@ -214,6 +214,9 @@ public sealed class TraceState
         return state;
     }
 
+    /// <summary>The statement running now: the one whose Hit came last. -1 outside a run.</summary>
+    public int PendingStatement => _pendingStatement;
+
     public IReadOnlyList<RecordedStep> Steps => (IReadOnlyList<RecordedStep>?)_steps ?? Array.Empty<RecordedStep>();
 
     /// <summary>True when more steps ran than were kept.</summary>

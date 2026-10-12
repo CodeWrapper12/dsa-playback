@@ -51,9 +51,32 @@
 
   // ---- rendering ---------------------------------------------------------------
 
+  const TABS = [["steps", "▶ Run"], ["cost", "Statement cost"], ["growth", "Growth"]];
+
   function render() {
-    const { response } = state;
-    if (!response) { app.innerHTML = '<p class="placeholder">Measuring…</p>'; return; }
+    if (!state.request) { app.innerHTML = '<p class="placeholder">Loading…</p>'; return; }
+
+    const response = state.response;
+    const tabs = TABS.slice();
+    if (state.request.compareFile) tabs.push(["compare", "Comparison"]);
+    if (!tabs.some(t => t[0] === state.tab)) state.tab = "steps";
+
+    const parts = [header(response)];
+    parts.push('<div class="tabs">' + tabs.map(([id, label]) =>
+      `<button class="tab ${state.tab === id ? "active" : ""}" data-tab="${id}">${label}</button>`
+    ).join("") + "</div>");
+
+    parts.push('<div class="panel">' + (state.tab === "steps" ? stepPanel() : measurementPanel()) + "</div>");
+
+    app.innerHTML = parts.join("");
+    wire();
+  }
+
+  /** The complexity tabs. Measured only once one of them is opened, because it takes seconds. */
+  function measurementPanel() {
+    const response = state.response;
+    if (state.measureError) return errorBanner("The measurement could not run", state.measureError);
+    if (!response) return '<p class="placeholder">Measuring how this grows with the input — running it at several sizes…</p>';
 
     const primary = response.primary;
     if (!primary || primary.status !== "Completed") {
@@ -61,15 +84,12 @@
       // is a fallback so an explanation can never be reduced to "no result".
       const problems = [...(response.errors || []), ...((primary && primary.errors) || [])];
       if (problems.length === 0 && primary && primary.sizeNote) problems.push(primary.sizeNote);
-      app.innerHTML = header(response) + banner(
-        "Nothing could be measured",
-        problems.length ? problems.map(escapeHtml).join("<br>") : "The engine returned no result.",
-        true);
-      return;
+      return banner("Nothing could be measured",
+        problems.length ? problems.map(escapeHtml).join("<br>") : "The engine returned no result.", true) +
+        showLineButton(problems);
     }
 
-    const parts = [header(response), verdicts(primary)];
-
+    const parts = [verdicts(primary)];
     if (primary.disagreement && primary.disagreementNote) {
       parts.push(banner("Time: the code and the measurement disagree", escapeHtml(primary.disagreementNote)));
     }
@@ -80,31 +100,35 @@
     if (primary.errors && primary.errors.length) {
       parts.push(banner("Some sizes did not run", primary.errors.map(escapeHtml).join("<br>")));
     }
-
     parts.push(controls(primary));
+    parts.push(state.tab === "cost" ? costPanel(response, primary)
+      : state.tab === "growth" ? growthPanel(primary)
+      : comparePanel(response));
+    return parts.join("");
+  }
 
-    const tabs = [["cost", "Statement cost"], ["growth", "Growth"], ["steps", "Step through"]];
-    if (response.comparison) tabs.push(["compare", "Comparison"]);
-    if (!tabs.some(t => t[0] === state.tab)) state.tab = "cost";
+  /** An error, with the way to its details when it is the visualizer's own failure. */
+  function errorBanner(title, error) {
+    return banner(title, escapeHtml(error.message), true) +
+      (error.internal ? '<button class="ghost" id="show-log">Show details</button>' : "");
+  }
 
-    parts.push('<div class="tabs">' + tabs.map(([id, label]) =>
-      `<button class="tab ${state.tab === id ? "active" : ""}" data-tab="${id}">${label}</button>`
-    ).join("") + "</div>");
-
-    parts.push('<div class="panel">' +
-      (state.tab === "cost" ? costPanel(response, primary)
-        : state.tab === "growth" ? growthPanel(primary)
-        : state.tab === "steps" ? stepPanel()
-        : comparePanel(response)) +
-      "</div>");
-
-    app.innerHTML = parts.join("");
-    wire();
+  /** A "Show line" button for the first message that names a line of the student's code. */
+  function showLineButton(messages, line) {
+    if (line == null) {
+      for (const message of messages || []) {
+        const match = /\bline (\d+)/i.exec(message);
+        if (match) { line = Number(match[1]); break; }
+      }
+    }
+    return line == null ? "" : `<button class="ghost show-line" data-line="${line}">Show line ${line}</button>`;
   }
 
   function header(response) {
+    const file = state.request.file || "";
+    const name = (response && response.label) || file.split(/[\\/]/).pop().replace(/\.cs$/, "") || "Solution";
     return `<div class="head">
-      <h1>${escapeHtml(response.label || "Solution")}</h1>
+      <h1>${escapeHtml(name)}</h1>
       <span class="entry">${escapeHtml((state.request && state.request.entry) || "")}()</span>
     </div>`;
   }
@@ -556,27 +580,90 @@
     return INDEX_NAMES.has(name) || /(Index|Idx|Ptr|Pointer)$/.test(name);
   }
 
+  const SOURCE_LABEL = {
+    Example: input => `from ${escapeHtml(input.from || "your code")}`,
+    Typed: () => "typed by you",
+    Generated: input => `generated at n = ${input.size}`
+  };
+
+  /**
+   * Where the inputs come from, and the boxes to change them. Values found in the code
+   * are used without asking; a student only types when they want something else.
+   */
+  function inputsSection(st) {
+    const trace = st.trace;
+    const inputs = (trace && trace.inputs) || st.lastInputs || [];
+    const examples = (trace && trace.examples) || st.lastExamples || [];
+    const selected = trace ? trace.selectedExample : st.choice && st.choice.example;
+    const draft = st.draft || {};
+
+    const picker = examples.length === 0
+      ? `<div class="footnote">No example found in your code, so values are generated. Paste LeetCode's
+           <code>Input: nums = [2,7,11,15], target = 9</code> as a comment, or call the method from
+           <code>Main</code>, and it is used automatically.</div>`
+      : `<div class="control"><label for="example">Example</label>
+           <select id="example">
+             ${examples.map((e, i) => `<option value="${i}" ${selected === i ? "selected" : ""}>${escapeHtml(e.label)}</option>`).join("")}
+             <option value="-1" ${selected == null ? "selected" : ""}>None — generate values</option>
+           </select></div>`;
+
+    const exampleLabel = selected != null && examples[selected] ? examples[selected].label : null;
+    const anyGenerated = inputs.some(i => i.source === "Generated");
+
+    const boxes = inputs.map((input, index) => {
+      const value = draft[index] !== undefined ? draft[index] : input.literal;
+      const source = draft[index] !== undefined ? "Typed" : input.source;
+      const describe = SOURCE_LABEL[source]({ from: exampleLabel, size: (trace && trace.size) || st.size || 8 });
+      return `<div class="input-row ${input.error ? "invalid" : ""}">
+        <label for="value-${index}">${escapeHtml(input.name)} <span class="type">${escapeHtml(input.type)}</span>
+          <span class="source source-${source.toLowerCase()}">${describe}</span></label>
+        <input type="text" class="value-box" id="value-${index}" data-index="${index}" spellcheck="false"
+               value="${escapeHtml(value)}" aria-invalid="${input.error ? "true" : "false"}">
+        ${input.error ? `<div class="input-error" role="alert">${escapeHtml(input.error)}</div>` : ""}
+        ${input.note && source === "Generated" ? `<div class="input-note">${escapeHtml(input.note)}</div>` : ""}
+      </div>`;
+    }).join("");
+
+    const typedSomething = Object.keys(draft).length > 0 ||
+      inputs.some(i => i.source === "Typed");
+
+    return `<div class="inputs">
+      ${picker}
+      ${boxes}
+      <div class="input-actions">
+        ${anyGenerated ? `<label class="inline" for="step-size">size n</label>
+          <input type="text" id="step-size" class="narrow" value="${(trace && trace.size) || st.size || 8}">` : ""}
+        <button id="record">▶ Run</button>
+        ${typedSomething ? '<button class="ghost" id="use-code">Use values from code</button>' : ""}
+      </div>
+      ${((trace && trace.exampleNotes) || []).map(n => `<div class="input-note">${escapeHtml(n)}</div>`).join("")}
+    </div>`;
+  }
+
+  /** The result against the example's expected output. */
+  function checkLine(check) {
+    if (!check) return "";
+    const order = check.anyOrder ? " (any order accepted)" : "";
+    return check.matches
+      ? `<div class="check pass">✓ Matches the expected output <code>${escapeHtml(check.expected)}</code>${order}</div>`
+      : `<div class="check fail">✗ Expected <code>${escapeHtml(check.expected)}</code>, got <code>${escapeHtml(check.actual)}</code>${order}</div>`;
+  }
+
   function stepPanel() {
     const st = state.stepping || {};
-    const size = st.size || 8;
+    const header = inputsSection(st);
 
-    const header = `<div class="controls step-controls">
-      <div class="control">
-        <label for="step-size">Step through at n =</label>
-        <input type="text" id="step-size" value="${size}" class="narrow">
-      </div>
-      <button id="record">${st.trace ? "Record again" : "Record"}</button>
-      <div class="footnote inline-note">A separate run at a small size, recorded statement by statement.
-        Measurement is never slowed down by it.</div>
-    </div>`;
-
-    if (st.loading) return header + '<p class="placeholder">Recording…</p>';
-    if (st.error) return header + banner("The run could not be recorded", escapeHtml(st.error), true);
-    if (!st.trace) return header + '<p class="placeholder">Record a run to step through it.</p>';
+    if (st.loading) return header + '<p class="placeholder">Running…</p>';
+    if (st.error) return header + errorBanner("The run could not be recorded", st.error);
+    if (!st.trace) return header + '<p class="placeholder">Press ▶ Run to watch it run.</p>';
 
     const trace = st.trace;
+    if (trace.status === "InvalidInput") {
+      return header + banner("Fix the highlighted input", "Nothing ran, because an input above could not be read.", true);
+    }
     if (trace.steps.length === 0) {
-      return header + banner("Nothing was recorded", (trace.errors || []).map(escapeHtml).join("<br>") || "No steps.", true);
+      return header + banner(trace.status === "CompileError" ? "Your code does not compile" : "Nothing was recorded",
+        (trace.errors || []).map(escapeHtml).join("<br>") || "No steps.", true) + showLineButton(trace.errors, trace.errorLine);
     }
 
     const index = Math.max(0, Math.min(st.index || 0, trace.steps.length - 1));
@@ -623,14 +710,21 @@
     if (index === trace.steps.length - 1 && trace.returnValue !== null)
       notes.push(`Returned <code>${escapeHtml(trace.returnValue)}</code>.`);
 
+    // The student's own exception: every step up to it still plays, and the last one is
+    // the line that threw.
+    const failed = trace.status !== "Completed" && trace.errors && trace.errors.length
+      ? banner(trace.status === "RuntimeError" ? "Your code threw an exception" : "The run stopped early",
+          trace.errors.map(escapeHtml).join("<br>"), true) + showLineButton(trace.errors, trace.errorLine)
+      : "";
+
     const args = trace.arguments.length === 0 ? "" :
       `<details class="arguments"><summary>Called with</summary>${trace.arguments.map(a =>
         `<div class="variable"><div class="var-name">${escapeHtml(a.name)}</div>
          <div class="var-value">${renderValue(a, [])}</div></div>`).join("")}</details>`;
 
-    return header + transport + current + `<div class="variables">${rows}</div>` + args +
+    return header + failed + checkLine(trace.check) + transport + current + `<div class="variables">${rows}</div>` + args +
       (notes.length ? `<div class="footnote">${notes.join(" ")}</div>` : "") +
-      `<div class="footnote">← and → step through. Changed values are highlighted; integer variables named like
+      `<div class="footnote">← and → step, Space plays. Changed values are highlighted; integer variables named like
         indices are drawn as pointers into the arrays and strings they fall inside.</div>`;
   }
 
@@ -683,17 +777,73 @@
     render();
   }
 
-  function requestSteps(size) {
-    state.stepping = { ...(state.stepping || {}), size, loading: true, error: null };
+  /** Asks for a run. With no choice, the extension uses what was saved for this method. */
+  function requestRun(choice) {
+    const st = state.stepping || {};
+    if (st.playing) clearInterval(st.playing);
+    state.stepping = {
+      ...st, playing: null, loading: true, error: null, draft: {},
+      lastInputs: (st.trace && st.trace.inputs) || st.lastInputs,
+      lastExamples: (st.trace && st.trace.examples) || st.lastExamples,
+      trace: null
+    };
     render();
-    if (vscode) vscode.postMessage({ type: "steps", size });
+    if (vscode) vscode.postMessage(choice ? { type: "run", ...choice } : { type: "run", useSaved: true });
+  }
+
+  /** The values to send: what was typed now, else what was typed before, else none. */
+  function typedValues() {
+    const st = state.stepping || {};
+    const inputs = (st.trace && st.trace.inputs) || st.lastInputs || [];
+    const draft = st.draft || {};
+    const values = inputs.map((input, i) =>
+      draft[i] !== undefined ? draft[i] : input.source === "Typed" ? input.literal : null);
+    return values.some(v => v !== null) ? values : undefined;
+  }
+
+  function currentExample() {
+    const select = document.getElementById("example");
+    return select ? Number(select.value) : undefined;
+  }
+
+  function currentSize() {
+    const field = document.getElementById("step-size");
+    if (!field) return undefined;
+    const size = parseInt(field.value, 10);
+    return Number.isFinite(size) && size >= 0 ? Math.min(size, 64) : undefined;
+  }
+
+  function startMeasuring() {
+    state.measuring = true;
+    if (vscode) vscode.postMessage({ type: "measure" });
+  }
+
+  function runFromControls() {
+    requestRun({ values: typedValues(), example: currentExample(), size: currentSize() });
   }
 
   // ---- events ------------------------------------------------------------------
 
   function wire() {
     app.querySelectorAll(".tab").forEach(button =>
-      button.addEventListener("click", () => { state.tab = button.dataset.tab; render(); }));
+      button.addEventListener("click", () => {
+        state.tab = button.dataset.tab;
+        if (state.tab === "steps") {
+          const st = state.stepping || {};
+          if (!st.trace && !st.loading && !st.error) { requestRun(null); return; }
+        } else if (!state.response && !state.measuring && !state.measureError) {
+          startMeasuring();
+        }
+        render();
+      }));
+
+    app.querySelectorAll(".show-line").forEach(button =>
+      button.addEventListener("click", () => {
+        if (vscode) vscode.postMessage({ type: "reveal", line: Number(button.dataset.line) });
+      }));
+
+    const showLogButton = document.getElementById("show-log");
+    if (showLogButton) showLogButton.addEventListener("click", () => { if (vscode) vscode.postMessage({ type: "showLog" }); });
 
     app.querySelectorAll(".expander").forEach(span =>
       span.addEventListener("click", () => {
@@ -713,16 +863,28 @@
     const toggle = document.getElementById("toggle-log");
     if (toggle) toggle.addEventListener("click", () => { state.log = !state.log; render(); });
 
-    // The step view records lazily, the first time it is opened.
-    if (state.tab === "steps" && !(state.stepping && (state.stepping.trace || state.stepping.loading || state.stepping.error)) && vscode) {
-      requestSteps((state.stepping && state.stepping.size) || 8);
-    }
+    // Typing does not re-render — that would take the cursor out of the box — it only
+    // remembers the value, which the next run sends.
+    app.querySelectorAll(".value-box").forEach(box => {
+      box.addEventListener("input", () => {
+        state.stepping.draft = { ...(state.stepping.draft || {}), [box.dataset.index]: box.value };
+      });
+      box.addEventListener("keydown", event => {
+        if (event.key === "Enter") { event.preventDefault(); runFromControls(); }
+      });
+    });
 
     const record = document.getElementById("record");
-    if (record) record.addEventListener("click", () => {
-      const size = parseInt(document.getElementById("step-size").value, 10);
-      requestSteps(Number.isFinite(size) && size >= 0 ? Math.min(size, 64) : 8);
-    });
+    if (record) record.addEventListener("click", runFromControls);
+
+    const example = document.getElementById("example");
+    if (example) example.addEventListener("change", () =>
+      // Choosing an example means using its values, so anything typed is set aside.
+      requestRun({ example: Number(example.value), size: currentSize() }));
+
+    const useCode = document.getElementById("use-code");
+    if (useCode) useCode.addEventListener("click", () =>
+      requestRun({ example: currentExample(), size: currentSize() }));
 
     app.querySelectorAll("[data-step]").forEach(button => button.addEventListener("click", () => {
       const st = state.stepping;
@@ -780,43 +942,67 @@
 
   document.addEventListener("keydown", event => {
     if (state.tab !== "steps" || !state.stepping || !state.stepping.trace) return;
-    if (event.target && event.target.tagName === "INPUT" && event.target.type === "text") return;
+    const target = event.target;
+    if (target && (target.tagName === "INPUT" || target.tagName === "SELECT" || target.tagName === "TEXTAREA")) return;
     if (event.key === "ArrowRight") { setStep(state.stepping.index + 1); event.preventDefault(); }
     if (event.key === "ArrowLeft") { setStep(state.stepping.index - 1); event.preventDefault(); }
+    if (event.key === " ") { togglePlay(); event.preventDefault(); }
   });
 
   window.addEventListener("message", event => {
     const message = event.data;
-    if (message.type === "stepsLoading") { state.stepping = { ...(state.stepping || {}), loading: true, error: null }; if (state.tab === "steps") render(); return; }
-    if (message.type === "steps") {
-      const trace = message.trace;
-      state.stepping = { ...(state.stepping || {}), trace, index: 0, loading: false,
-        error: trace ? null : ((message.errors || []).join(" ") || "The engine returned no steps.") };
-      if (state.tab === "steps") render();
-      if (trace && trace.steps.length && vscode) vscode.postMessage({ type: "stepAt", line: trace.steps[0].line });
-      return;
-    }
-    if (message.type === "stepsError") { state.stepping = { ...(state.stepping || {}), loading: false, error: message.message }; render(); return; }
-    if (message.type === "loading") { state.response = null; render(); }
-    else if (message.type === "result") {
-      if (state.stepping && state.stepping.playing) clearInterval(state.stepping.playing);
-      state = { ...state, response: message.response, request: message.request, expanded: new Set(), sizesEdited: false,
-        stepping: { size: (state.stepping && state.stepping.size) || 8 } };
-      render();
-    } else if (message.type === "error") {
-      app.innerHTML = banner("The engine could not be run", escapeHtml(message.message), true);
+    const st = state.stepping || {};
+    switch (message.type) {
+      case "open":
+        // A new method, or the same one again: everything shown belongs to the old request.
+        if (st.playing) clearInterval(st.playing);
+        state = { ...state, request: message.request, tab: message.tab, response: null, measuring: message.tab !== "steps",
+          measureError: null, expanded: new Set(), sizesEdited: false, stepping: {} };
+        render();
+        return;
+      case "stepsLoading":
+        state.stepping = { ...st, loading: true, error: null, choice: message.choice, size: message.choice && message.choice.size };
+        if (state.tab === "steps") render();
+        return;
+      case "steps": {
+        const trace = message.trace;
+        state.stepping = { ...st, trace, index: 0, loading: false, draft: {},
+          error: trace ? null : { message: (message.errors || []).join(" ") || "The engine returned no steps." } };
+        if (state.tab === "steps") render();
+        if (trace && trace.steps.length && vscode) vscode.postMessage({ type: "stepAt", line: trace.steps[0].line });
+        return;
+      }
+      case "stepsError":
+        state.stepping = { ...st, loading: false, error: { message: message.message, internal: message.internal } };
+        if (state.tab === "steps") render();
+        return;
+      case "loading":
+        state = { ...state, response: null, measuring: true, measureError: null };
+        if (state.tab !== "steps") render();
+        return;
+      case "result":
+        state = { ...state, response: message.response, request: { ...state.request, ...message.request },
+          measuring: false, measureError: null, expanded: new Set(), sizesEdited: false };
+        if (state.tab !== "steps") render();
+        return;
+      case "error":
+        state = { ...state, measuring: false, measureError: { message: message.message, internal: message.internal } };
+        if (state.tab !== "steps") render();
+        return;
     }
   });
 
   // Development and test entry point for a recorded step trace.
-  window.__steps = trace => {
-    state.stepping = { size: trace.size, trace, index: 0, loading: false, error: null };
+  window.__steps = (trace, request) => {
+    state.request = request || state.request || { file: "Solution.cs", entry: "Solution.Solve" };
+    state.tab = "steps";
+    state.stepping = { size: trace.size, trace, index: 0, loading: false, error: null, draft: {} };
     render();
   };
 
   // Development entry point: feed a recorded engine response straight in.
   window.__render = (response, request) => {
-    state = { ...state, response, request, expanded: new Set() };
+    state = { ...state, response, request, expanded: new Set(), tab: state.tab === "steps" ? "cost" : state.tab };
     render();
   };
 })();

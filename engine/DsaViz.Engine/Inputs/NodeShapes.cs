@@ -53,6 +53,17 @@ public static class NodeShapes
 {
     private static readonly string[] ValueNames = { "val", "value" };
 
+    /// <summary>
+    /// A node holding <paramref name="value"/>, built without running a constructor:
+    /// LeetCode's TreeNode takes optional parameters, so it has no parameterless one to call.
+    /// </summary>
+    public static object NewNode(Type type, NodeMember valueMember, int value)
+    {
+        var node = System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(type);
+        valueMember.Set(node, value);
+        return node;
+    }
+
     public static TreeShape? AsTree(Type type)
     {
         if (!type.IsClass || type.IsAbstract) return null;

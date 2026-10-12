@@ -3,7 +3,7 @@
 
 export type RunStatus =
   | "Completed" | "BudgetExceeded" | "CompileError" | "RuntimeError"
-  | "RecursionLimitExceeded" | "TimedOut";
+  | "RecursionLimitExceeded" | "TimedOut" | "InvalidInput";
 
 export type ComplexityClass =
   | "Unknown" | "Constant" | "Logarithmic" | "Linear"
@@ -181,6 +181,8 @@ export interface EntryPoint {
   name: string;
   parameters: EntryParameter[];
   measurable: boolean;
+  /** 1-based line of the method's name. */
+  line: number;
   /** Why it cannot be measured, in a sentence the user can act on. */
   reason: string | null;
   /** "Solution.TwoSum" — unambiguous even when classes share a method name. */
@@ -197,6 +199,10 @@ export interface JobRequest {
   strategy?: GenerationStrategy;
   stepSize?: number;
   maxSteps?: number;
+  /** Typed values, one LeetCode-format text per parameter; null keeps that parameter's default source. */
+  values?: (string | null)[];
+  /** Which example found in the code to use; negative means none. */
+  example?: number;
   compareFile?: string;
   compareEntry?: string;
 }
@@ -242,4 +248,39 @@ export interface StepTrace {
   arguments: StepVariable[];
   returnValue: string | null;
   errors: string[];
+  errorLine: number | null;
+  inputs: StepInput[];
+  examples: FoundExample[];
+  exampleNotes: string[];
+  selectedExample: number | null;
+  check: OutputCheck | null;
+}
+
+export type InputSource = "Example" | "Typed" | "Generated";
+
+export interface StepInput {
+  name: string;
+  type: string;
+  /** The value in LeetCode's format, as shown in the input box. */
+  literal: string;
+  source: InputSource;
+  note: string | null;
+  error: string | null;
+}
+
+export interface FoundExample {
+  label: string;
+  line: number;
+  origin: "Comment" | "Call";
+  values: (string | null)[];
+  notes: { parameter: string; message: string }[];
+  expected: string | null;
+  anyOrder: boolean;
+}
+
+export interface OutputCheck {
+  expected: string;
+  actual: string;
+  matches: boolean;
+  anyOrder: boolean;
 }
