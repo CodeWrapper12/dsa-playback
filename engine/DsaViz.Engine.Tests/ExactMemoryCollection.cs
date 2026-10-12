@@ -52,12 +52,21 @@ public class CleanestReadingTests
     };
 
     [Fact]
-    public void A_clean_first_reading_is_not_repeated()
+    public void A_small_reading_is_taken_twice_and_no_more_when_both_are_clean()
     {
         int calls = 0;
         var result = Runner.Cleanest(() => { calls++; return Reading(400, 0); });
-        Assert.Equal(1, calls);
+        Assert.Equal(2, calls);
         Assert.Equal(400, result.TotalBytesAllocated);
+    }
+
+    [Fact]
+    public void Noise_without_a_counted_collection_is_still_caught()
+    {
+        // A stray reading with no collection counted: the smaller, second one is faithful.
+        var readings = new Queue<TraceResult>(new[] { Reading(12_216, 0), Reading(4_024, 0) });
+        var result = Runner.Cleanest(() => readings.Dequeue());
+        Assert.Equal(4_024, result.TotalBytesAllocated);
     }
 
     [Fact]

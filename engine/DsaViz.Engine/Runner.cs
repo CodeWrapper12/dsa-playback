@@ -399,28 +399,40 @@ public static class Runner
     private const int MaxAttempts = 5;
 
     /// <summary>
-    /// Repeats a run that saw a garbage collection while allocating little, and keeps the
-    /// smallest reading. A collection set off by another thread can only ever add phantom
-    /// bytes, never remove real ones, so for a deterministic solution the smallest reading
-    /// is the faithful one. <paramref name="attempt"/> must build fresh inputs each time:
-    /// many solutions change their arguments in place.
+    /// Repeats a run that allocated little and keeps the smallest reading. Noise in an
+    /// allocation count can only ever add bytes, never remove real ones — a collection set
+    /// off by another thread, or other work the runtime does on this one — so for a
+    /// deterministic solution the smallest reading is the faithful one.
+    ///
+    /// A small run is always measured twice, not only when a collection was counted: on a
+    /// busy CI machine a merge sort's allocation curve — 64 bytes to 4 KB across the sizes —
+    /// came out irregular in one run of the suite and clean in the next, and one stray
+    /// reading of a few kilobytes is enough to break a curve that small. A run that saw a
+    /// collection is repeated up to <see cref="MaxAttempts"/> times.
+    /// <paramref name="attempt"/> must build fresh inputs each time: many solutions change
+    /// their arguments in place.
     /// </summary>
     public static TraceResult Cleanest(Func<TraceResult> attempt)
     {
         var best = attempt();
-        for (int i = 1; i < MaxAttempts && NeedsAnotherAttempt(best); i++)
+        for (int i = 1; i < MaxAttempts && NeedsAnotherAttempt(best, i); i++)
         {
             var next = attempt();
             if (next.Status != best.Status) break;     // behaving differently is not noise
-            if (next.CollectionsDuringRun == 0 || next.TotalBytesAllocated < best.TotalBytesAllocated) best = next;
+            if (next.TotalBytesAllocated < best.TotalBytesAllocated ||
+                next.TotalBytesAllocated == best.TotalBytesAllocated && next.CollectionsDuringRun < best.CollectionsDuringRun)
+                best = next;
         }
         return best;
     }
 
-    private static bool NeedsAnotherAttempt(TraceResult trace)
+    private static bool NeedsAnotherAttempt(TraceResult trace, int attemptsSoFar)
         => trace.Status == RunStatus.Completed
-           && trace.CollectionsDuringRun > 0
-           && trace.TotalBytesAllocated < PhantomSensitiveBytes;
+           && trace.TotalBytesAllocated < PhantomSensitiveBytes
+           && (attemptsSoFar < MinimumSmallRunAttempts || trace.CollectionsDuringRun > 0);
+
+    /// <summary>A small run is measured at least this many times.</summary>
+    private const int MinimumSmallRunAttempts = 2;
 
     /// <summary>
     /// Accepts "Method" or "Type.Method". Instance methods are measured too: LeetCode's C#

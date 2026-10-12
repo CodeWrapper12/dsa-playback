@@ -1273,7 +1273,14 @@ def execute(request, tracer, code, namespace):
         finally:
             sys.stdout = _stdout
 
-    threading.stack_size(THREAD_STACK)
+    # A deep stack for deep recursion — as deep as the platform allows. Windows caps a
+    # thread's stack at 256 MB and refuses more with ValueError.
+    for size in (THREAD_STACK, 256 * 1024 * 1024, 64 * 1024 * 1024):
+        try:
+            threading.stack_size(size)
+            break
+        except ValueError:
+            continue
     sys.setrecursionlimit(tracer.depth_limit * 4 + 1000)
     worker = threading.Thread(target=target, daemon=True)
     worker.start()

@@ -152,7 +152,8 @@ public class SpaceTests
         var space = Space("MergeSortSample.cs", "Sort");
 
         Assert.Equal(ComplexityClass.Logarithmic, space.CallDepth.Best);
-        Assert.Equal(ComplexityClass.Linear, space.Allocation.Best);   // the merge buffer
+        Assert.True(space.Allocation.Best == ComplexityClass.Linear,    // the merge buffer
+            $"Allocation read as {space.Allocation.Best}: {space.Allocation.Explanation}");
         Assert.Equal(ComplexityClass.Linear, space.LikelyPeak);
     }
 
