@@ -2,7 +2,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Run DSA Visualizer",
+      "name": "Run DSA Playback",
       "type": "extensionHost",
       "request": "launch",
       "args": [

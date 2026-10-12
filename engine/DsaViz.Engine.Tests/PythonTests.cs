@@ -327,7 +327,12 @@ public class PythonTests
             Assert.True(steps.Check?.Matches == true, $"{version}: {string.Join("; ", steps.Errors)}");
             found.Add(version);
         }
-        Assert.NotEmpty(found);
+        // Windows has no python3.x names on the path: there, the default interpreter is the one tested.
+        if (found.Count == 0)
+        {
+            var steps = Stepper.RecordPython(PythonHost.Locate(), File.ReadAllText(Sample("level_order.py")), "Solution.levelOrder");
+            Assert.True(steps.Check?.Matches == true, string.Join("; ", steps.Errors));
+        }
 
         if (Which("python3.8") is { } old)
         {

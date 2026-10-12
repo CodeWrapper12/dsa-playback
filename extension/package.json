@@ -1,16 +1,45 @@
 {
-  "name": "dsa-visualizer",
-  "displayName": "DSA Visualizer",
-  "description": "Watch your C# or Python solution run step by step, and see how its time and memory grow \u2014 built for learning data structures and algorithms.",
-  "version": "0.1.0",
-  "publisher": "local",
-  "private": true,
+  "name": "dsa-playback",
+  "displayName": "DSA Playback",
+  "description": "Watch your C# or Python solution run step by step \u2014 pointers sliding, lists rewiring, trees filling \u2014 and see why it has the complexity it has. Built for learning data structures and algorithms.",
+  "version": "1.0.0",
+  "publisher": "codewrapper12",
+  "license": "MIT",
+  "icon": "images/icon.png",
+  "galleryBanner": {
+    "color": "#151b24",
+    "theme": "dark"
+  },
+  "pricing": "Free",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CodeWrapper12/dsa-playback.git",
+    "directory": "extension"
+  },
+  "bugs": {
+    "url": "https://github.com/CodeWrapper12/dsa-playback/issues"
+  },
+  "homepage": "https://github.com/CodeWrapper12/dsa-playback#readme",
+  "keywords": [
+    "dsa",
+    "algorithms",
+    "data structures",
+    "leetcode",
+    "big o",
+    "complexity",
+    "visualizer",
+    "step through",
+    "python",
+    "c#",
+    "education"
+  ],
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": [
+    "Education",
     "Visualization",
-    "Education"
+    "Debuggers"
   ],
   "activationEvents": [
     "onLanguage:csharp",
@@ -20,75 +49,75 @@
   "contributes": {
     "commands": [
       {
-        "command": "dsaViz.visualize",
+        "command": "dsaPlayback.visualize",
         "title": "Visualize Method",
-        "category": "DSA Visualizer",
+        "category": "DSA Playback",
         "icon": "$(play)"
       },
       {
-        "command": "dsaViz.measure",
+        "command": "dsaPlayback.measure",
         "title": "Measure Complexity",
-        "category": "DSA Visualizer",
+        "category": "DSA Playback",
         "icon": "$(graph)"
       },
       {
-        "command": "dsaViz.compare",
+        "command": "dsaPlayback.compare",
         "title": "Compare With Another Solution...",
-        "category": "DSA Visualizer"
+        "category": "DSA Playback"
       },
       {
-        "command": "dsaViz.clearAnnotations",
+        "command": "dsaPlayback.clearAnnotations",
         "title": "Clear Cost Annotations",
-        "category": "DSA Visualizer"
+        "category": "DSA Playback"
       },
       {
-        "command": "dsaViz.showLog",
+        "command": "dsaPlayback.showLog",
         "title": "Show Log",
-        "category": "DSA Visualizer"
+        "category": "DSA Playback"
       },
       {
-        "command": "dsaViz.openSample",
+        "command": "dsaPlayback.openSample",
         "title": "Open Sample",
-        "category": "DSA Visualizer"
+        "category": "DSA Playback"
       },
       {
-        "command": "dsaViz.installPython",
+        "command": "dsaPlayback.installPython",
         "title": "Install Python",
-        "category": "DSA Visualizer"
+        "category": "DSA Playback"
       }
     ],
     "menus": {
       "editor/title": [
         {
-          "command": "dsaViz.visualize",
+          "command": "dsaPlayback.visualize",
           "when": "resourceLangId == csharp || resourceLangId == python",
           "group": "navigation"
         }
       ],
       "commandPalette": [
         {
-          "command": "dsaViz.openSample",
+          "command": "dsaPlayback.openSample",
           "when": "false"
         },
         {
-          "command": "dsaViz.visualize",
+          "command": "dsaPlayback.visualize",
           "when": "editorLangId == csharp || editorLangId == python"
         },
         {
-          "command": "dsaViz.measure",
+          "command": "dsaPlayback.measure",
           "when": "editorLangId == csharp || editorLangId == python"
         }
       ]
     },
     "configuration": {
-      "title": "DSA Visualizer",
+      "title": "DSA Playback",
       "properties": {
-        "dsaViz.enginePath": {
+        "dsaPlayback.enginePath": {
           "type": "string",
           "default": "",
           "markdownDescription": "Only for development: a different `DsaViz.Engine` executable to use. Leave empty \u2014 the extension uses the engine bundled inside it."
         },
-        "dsaViz.sizes": {
+        "dsaPlayback.sizes": {
           "type": "array",
           "items": {
             "type": "integer"
@@ -96,18 +125,18 @@
           "default": [],
           "markdownDescription": "Input sizes to measure. Leave empty to let the engine choose: it starts at `10, 25, 50, 100, 250, 500, 1000` and drops to small sizes on its own when an algorithm is too expensive for them \u2014 which is the only way an exponential solution gets a curve at all."
         },
-        "dsaViz.timeoutSeconds": {
+        "dsaPlayback.timeoutSeconds": {
           "type": "integer",
           "default": 120,
           "minimum": 5,
           "description": "Longest a whole measurement may take before the engine is stopped. This is what guarantees the editor never waits forever."
         },
-        "dsaViz.budget": {
+        "dsaPlayback.budget": {
           "type": "integer",
           "default": 50000000,
           "description": "Maximum statements a single run may execute before it is stopped. This is what keeps a runaway loop from hanging the editor."
         },
-        "dsaViz.pythonPath": {
+        "dsaPlayback.pythonPath": {
           "type": "string",
           "default": "",
           "markdownDescription": "The Python interpreter for Python files. Leave empty to use the one selected in the Python extension, or else `python3` on your path. Needs Python 3.9 or later."
@@ -116,41 +145,41 @@
     },
     "walkthroughs": [
       {
-        "id": "dsaViz.start",
-        "title": "Get started with DSA Visualizer",
+        "id": "dsaPlayback.start",
+        "title": "Get started with DSA Playback",
         "description": "Watch an algorithm run, then see why it has the complexity it has.",
         "steps": [
           {
             "id": "twoPointers",
             "title": "Watch two pointers move",
-            "description": "Open a two-pointer solution, then press **\u25b6 Visualize** above `TwoSum`.\n[Open Two Sum II in C#](command:dsaViz.openSample?%5B%22TwoSumSorted.cs%22%5D) \u00b7 [in Python](command:dsaViz.openSample?%5B%22two_sum_sorted.py%22%5D)",
+            "description": "Open a two-pointer solution, then press **\u25b6 Visualize** above `TwoSum`.\n[Open Two Sum II in C#](command:dsaPlayback.openSample?%5B%22TwoSumSorted.cs%22%5D) \u00b7 [in Python](command:dsaPlayback.openSample?%5B%22two_sum_sorted.py%22%5D)",
             "media": {
               "markdown": "walkthrough/visualize.md"
             },
             "completionEvents": [
-              "onCommand:dsaViz.visualize"
+              "onCommand:dsaPlayback.visualize"
             ]
           },
           {
             "id": "bfs",
             "title": "Try your own input on a tree",
-            "description": "Open a breadth-first search, press **\u25b6 Visualize**, then type a different tree in the box.\n[Open Level Order Traversal in C#](command:dsaViz.openSample?%5B%22LevelOrder.cs%22%5D) \u00b7 [in Python](command:dsaViz.openSample?%5B%22level_order.py%22%5D)",
+            "description": "Open a breadth-first search, press **\u25b6 Visualize**, then type a different tree in the box.\n[Open Level Order Traversal in C#](command:dsaPlayback.openSample?%5B%22LevelOrder.cs%22%5D) \u00b7 [in Python](command:dsaPlayback.openSample?%5B%22level_order.py%22%5D)",
             "media": {
               "markdown": "walkthrough/inputs.md"
             },
             "completionEvents": [
-              "onCommand:dsaViz.openSample"
+              "onCommand:dsaPlayback.openSample"
             ]
           },
           {
             "id": "complexity",
             "title": "See why it's O(n)",
-            "description": "Open a memoised dynamic-programming solution and press **Complexity**.\n[Open Climbing Stairs in C#](command:dsaViz.openSample?%5B%22ClimbStairs.cs%22%5D) \u00b7 [in Python](command:dsaViz.openSample?%5B%22climb_stairs.py%22%5D)",
+            "description": "Open a memoised dynamic-programming solution and press **Complexity**.\n[Open Climbing Stairs in C#](command:dsaPlayback.openSample?%5B%22ClimbStairs.cs%22%5D) \u00b7 [in Python](command:dsaPlayback.openSample?%5B%22climb_stairs.py%22%5D)",
             "media": {
               "markdown": "walkthrough/complexity.md"
             },
             "completionEvents": [
-              "onCommand:dsaViz.measure"
+              "onCommand:dsaPlayback.measure"
             ]
           }
         ]
@@ -159,7 +188,7 @@
   },
   "scripts": {
     "compile": "tsc -p ./",
-    "test": "tsc -p ./ && node --test out/test/*.test.js",
+    "test": "tsc -p ./ && node scripts/unit-tests.js",
     "test:integration": "tsc -p ./ && node out/test/integration/runTest.js",
     "watch": "tsc -watch -p ./",
     "package": "node scripts/package.js",
@@ -172,6 +201,7 @@
     "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^3.9.2",
     "jsdom": "^24.1.3",
+    "ovsx": "^0.10.12",
     "typescript": "^5.4.0"
   }
 }

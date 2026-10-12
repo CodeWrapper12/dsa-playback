@@ -2,7 +2,7 @@
 // .NET at all. Runs the bundled engine with an environment stripped of every .NET
 // location, on a walkthrough sample, both recording a run and measuring complexity.
 //
-//   node scripts/verify-package.js dist/dsa-visualizer-darwin-arm64.vsix
+//   node scripts/verify-package.js dist/dsa-playback-darwin-arm64.vsix
 
 const { execFileSync, spawnSync } = require("child_process");
 const fs = require("fs");
@@ -28,10 +28,13 @@ check(`package is at most ${MAX_PACKAGE_MEGABYTES} MB`, megabytes <= MAX_PACKAGE
 
 const unpacked = fs.mkdtempSync(path.join(os.tmpdir(), "dsaviz-package-"));
 try {
-  execFileSync("unzip", ["-q", vsix, "-d", unpacked]);
+  // A .vsix is a zip. Windows' own tar reads zips; elsewhere unzip is standard.
+  if (process.platform === "win32") execFileSync("tar", ["-xf", vsix, "-C", unpacked]);
+  else execFileSync("unzip", ["-q", vsix, "-d", unpacked]);
   const root = path.join(unpacked, "extension");
-  const files = execFileSync("find", [root, "-type", "f"]).toString().split("\n").filter(Boolean)
-    .map(file => path.relative(root, file));
+  const files = fs.readdirSync(root, { recursive: true, withFileTypes: true })
+    .filter(entry => entry.isFile())
+    .map(entry => path.relative(root, path.join(entry.parentPath ?? entry.path, entry.name)).split(path.sep).join("/"));
 
   for (const script of ["media/main.js", "media/run.js", "media/styles.css"]) {
     check(`the panel's ${script} is shipped`, files.includes(script));
@@ -43,6 +46,17 @@ try {
     check(`walkthrough sample ${sample} is shipped`, files.includes(`samples/${sample}`));
   }
   check("the Python runner is shipped beside the engine", files.includes("engine/python/dsaviz_py.py"));
+  check("the icon, licence and changelog are shipped",
+    files.includes("images/icon.png") && files.includes("LICENSE.txt") && files.includes("changelog.md"));
+
+  // Every image the Marketplace page shows must point at a file that is in the repository.
+  const readme = fs.readFileSync(path.join(root, "readme.md"), "utf8");
+  const images = [...readme.matchAll(/!\[[^\]]*\]\(([^)]+)\)/g)].map(m => m[1]);
+  const prefix = "https://github.com/CodeWrapper12/dsa-playback/raw/HEAD/extension/";
+  const repositoryRoot = path.resolve(__dirname, "..");
+  const broken = images.filter(url => !url.startsWith(prefix) || !fs.existsSync(path.join(repositoryRoot, url.slice(prefix.length))));
+  check("every README image links to a file in the repository", images.length > 0 && broken.length === 0,
+    broken.length ? broken.join(", ") : `${images.length} images`);
 
   const engine = path.join(root, "engine", process.platform === "win32" ? "DsaViz.Engine.exe" : "DsaViz.Engine");
   check("the engine is bundled", fs.existsSync(engine));
@@ -70,8 +84,9 @@ try {
     steps?.check ? `${steps.check.actual} vs ${steps.check.expected}` : "no check");
 
   // Python is the student's own; only .NET is kept out of the environment.
-  const python = execFileSync(process.platform === "win32" ? "where" : "which", [process.platform === "win32" ? "python" : "python3"])
-    .toString().split(/\r?\n/)[0].trim();
+  const python = (process.env.DSAPLAYBACK_PYTHON ||
+    execFileSync(process.platform === "win32" ? "where" : "which", [process.platform === "win32" ? "python" : "python3"])
+      .toString().split(/\r?\n/)[0]).trim();
   const pythonSample = path.join(root, "samples", "python", "two_sum_sorted.py");
   const pythonRun = job({ file: pythonSample, entry: "Solution.twoSum", stepSize: 8, python });
   const pythonSteps = pythonRun.stdout ? JSON.parse(pythonRun.stdout).steps : null;

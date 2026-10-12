@@ -8,3 +8,6 @@ dist/**
 .vscode-test/**
 node_modules/**
 .devharness/**
+images/icon.svg
+images/*.gif
+images/complexity.png

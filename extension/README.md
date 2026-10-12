@@ -1,11 +1,12 @@
-# DSA Visualizer
+# DSA Playback
 
 Watch your data-structures-and-algorithms code run, one step at a time — and see why it
-has the complexity it has.
+has the complexity it has. For C# and Python, written the way LeetCode writes it.
+
+![A linked list reversed in Python: the arrows rewire one by one, labelled by previous, head and nxt](images/reverse.gif)
 
 Nothing to set up for C#: the engine is inside the extension. For Python, the Python you
-already have is used (3.9 or later). Either way, your code never leaves your
-machine.
+already have is used (3.9 or later). Either way, your code never leaves your machine.
 
 ## Watch it run
 
@@ -26,6 +27,10 @@ Open a C# or Python solution. Above every method you can run there are two butto
   goes from 0.25× to 4×.
 - **Complexity** — runs your code on bigger and bigger inputs and explains how its time
   and memory grow, line by line.
+
+![Two pointers walking towards each other in a sorted array](images/pointers.gif)
+
+![Breadth-first search: the queue fills and empties as the tree is walked level by level](images/bfs.gif)
 
 ## The input comes from your code
 
@@ -65,6 +70,9 @@ and press Enter.
 
 ## Why it's O(n²), not just that it is
 
+![Every line looks O(1), but List.Contains hides 499,500 units of work: O(n²), derived line by line](images/complexity.png)
+
+
 **Complexity** shows:
 
 - how often each line ran and the memory it allocated, written beside the line
@@ -84,7 +92,7 @@ and press Enter.
 ## Get started
 
 Open the Command Palette and run **Welcome: Open Walkthrough…**, then **Get started with
-DSA Visualizer**. Three samples — two pointers, a tree BFS, and memoised dynamic
+DSA Playback**. Three samples — two pointers, a tree BFS, and memoised dynamic
 programming — open ready to run.
 
 ## Python

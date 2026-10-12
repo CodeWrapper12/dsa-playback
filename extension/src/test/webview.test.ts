@@ -12,7 +12,7 @@ import { JSDOM, VirtualConsole } from "jsdom";
 // control, so that class of mistake fails here instead of in the editor.
 
 const root = path.resolve(__dirname, "../../..");
-const engine = path.join(root, "engine/DsaViz.Engine/bin/Debug/net8.0/DsaViz.Engine");
+const engine = path.join(root, "engine/DsaViz.Engine/bin/Debug/net8.0", process.platform === "win32" ? "DsaViz.Engine.exe" : "DsaViz.Engine");
 const script = fs.readFileSync(path.join(root, "extension/media/main.js"), "utf8");
 const runScript = fs.readFileSync(path.join(root, "extension/media/run.js"), "utf8");
 
@@ -562,4 +562,22 @@ test("a measured Python solution renders every tab", () => {
   document.querySelector<HTMLElement>('.tab[data-tab="cost"]')!.click();
   assert.match(document.body.textContent ?? "", /in \(on a list, tuple or string\)/, "the hidden scan is named");
   assert.match(document.body.textContent ?? "", /tracemalloc/, "Python's memory is labelled approximate");
+});
+
+test("a keyboard user keeps focus on the transport button they pressed", () => {
+  const { dom } = run(walkthrough("TwoSumSorted.cs"), "Solution.TwoSum");
+  const document = dom.window.document;
+  document.querySelector<HTMLElement>('[data-step="next"]')!.focus();
+  document.querySelector<HTMLElement>('[data-step="next"]')!.click();
+  assert.equal((document.activeElement as HTMLElement).dataset.step, "next");
+});
+
+test("rows that go to a line can be reached and used from the keyboard", () => {
+  const { dom, posted } = load(true);
+  const window = dom.window as unknown as { __render(r: unknown, q: unknown): void };
+  window.__render(measure({ file: sample("SortParamSample.cs"), entry: "SortParamSample.Sort" }), { entry: "Sort" });
+  const row = dom.window.document.querySelector<HTMLElement>(".hot-row")!;
+  assert.equal(row.getAttribute("tabindex"), "0");
+  row.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Enter" }));
+  assert.equal(posted.filter(m => m.type === "reveal").length, 1);
 });

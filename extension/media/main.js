@@ -36,7 +36,7 @@
     Cubic: n => n * n * n
   };
 
-  let state = { response: null, request: null, tab: "cost", expanded: new Set() };
+  let state = { response: null, request: null, tab: "cost" };
 
   const num = value => value.toLocaleString("en-US");
   const escapeHtml = text => String(text).replace(/[&<>"]/g,
@@ -234,7 +234,7 @@
       // Logarithmic, so a statement that ran once stays visible beside one that cost
       // half a million. On a linear scale everything but the top row vanishes.
       const width = Math.max(2, Math.round(110 * Math.log(cost(statement) + 1) / Math.log(maxCost + 1)));
-      return `<tr class="hot-row" data-line="${statement.line}" title="Go to line ${statement.line}">
+      return `<tr class="hot-row" data-line="${statement.line}" title="Go to line ${statement.line}" tabindex="0" role="button">
         <td class="rank">${index + 1}</td>
         <td class="hot-bar"><span class="bar" style="width:${width}px"></span></td>
         <td>${num(statement.hits)}</td>
@@ -253,7 +253,7 @@
         The work is the number of elements it touched in total.</p>
       <table class="hot">
         <thead><tr><th class="snippet-cell">call</th><th>cost per call</th><th>calls</th><th>work</th><th>at</th></tr></thead>
-        <tbody>${calls.map(call => `<tr class="hot-row" data-line="${call.line}" title="Go to line ${call.line}">
+        <tbody>${calls.map(call => `<tr class="hot-row" data-line="${call.line}" title="Go to line ${call.line}" tabindex="0" role="button">
           <td class="snippet-cell">${escapeHtml(call.member)}</td>
           <td>${escapeHtml(call.cost)}</td>
           <td>${num(call.calls)}</td>
@@ -741,9 +741,14 @@
     const area = document.getElementById("step-area");
     const bar = document.getElementById("transport");
     if (area && bar && state.tab === "steps") {
+      // Redrawing the transport replaces its buttons. Whichever had keyboard focus gets it
+      // back, or a keyboard user pressing ▶ would be thrown out of the controls each step.
+      const focused = bar.contains(document.activeElement) ? document.activeElement : null;
+      const key = focused && (focused.dataset.step ? `[data-step="${focused.dataset.step}"]` : focused.id ? `#${focused.id}` : null);
       area.innerHTML = stepArea(st, st.index, previous);
       bar.innerHTML = transport(st, st.trace, st.index);
       wireTransport();
+      if (key) { const again = bar.querySelector(key); if (again) again.focus(); }
       followCurrent(area);
     } else {
       render();
@@ -879,17 +884,14 @@
     const showLogButton = document.getElementById("show-log");
     if (showLogButton) showLogButton.addEventListener("click", () => { if (vscode) vscode.postMessage({ type: "showLog" }); });
 
-    app.querySelectorAll(".expander").forEach(span =>
-      span.addEventListener("click", () => {
-        const line = Number(span.dataset.line);
-        state.expanded.has(line) ? state.expanded.delete(line) : state.expanded.add(line);
-        render();
-      }));
-
-    app.querySelectorAll(".hot-row").forEach(row =>
-      row.addEventListener("click", () => {
-        if (vscode) vscode.postMessage({ type: "reveal", line: Number(row.dataset.line) });
-      }));
+    // Rows that go to a line work from the keyboard too: Tab to reach them, Enter or Space.
+    app.querySelectorAll(".hot-row").forEach(row => {
+      const reveal = () => { if (vscode) vscode.postMessage({ type: "reveal", line: Number(row.dataset.line) }); };
+      row.addEventListener("click", reveal);
+      row.addEventListener("keydown", event => {
+        if (event.key === "Enter" || event.key === " ") { event.preventDefault(); reveal(); }
+      });
+    });
 
     app.querySelectorAll(".metric").forEach(button =>
       button.addEventListener("click", () => { state.metric = button.dataset.metric; render(); }));
@@ -978,7 +980,7 @@
         // A new method, or the same one again: everything shown belongs to the old request.
         if (st.playing) clearInterval(st.playing);
         state = { ...state, request: message.request, tab: message.tab, response: null, measuring: message.tab !== "steps",
-          measureError: null, expanded: new Set(), sizesEdited: false, stepping: {} };
+          measureError: null, sizesEdited: false, stepping: {} };
         render();
         return;
       case "stepsLoading":
@@ -1003,7 +1005,7 @@
         return;
       case "result":
         state = { ...state, response: message.response, request: { ...state.request, ...message.request },
-          measuring: false, measureError: null, expanded: new Set(), sizesEdited: false };
+          measuring: false, measureError: null, sizesEdited: false };
         if (state.tab !== "steps") render();
         return;
       case "error":
@@ -1026,7 +1028,7 @@
 
   // Development entry point: feed a recorded engine response straight in.
   window.__render = (response, request) => {
-    state = { ...state, response, request, expanded: new Set(), tab: state.tab === "steps" ? "cost" : state.tab };
+    state = { ...state, response, request, tab: state.tab === "steps" ? "cost" : state.tab };
     render();
   };
 })();

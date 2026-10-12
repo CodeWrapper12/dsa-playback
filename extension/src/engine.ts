@@ -43,11 +43,11 @@ export function engineCandidates(): string[] {
  * what used to make the extension fail in any folder but this repository.
  */
 export function resolveEnginePath(): string {
-  const configured = vscode.workspace.getConfiguration("dsaViz").get<string>("enginePath")?.trim();
+  const configured = vscode.workspace.getConfiguration("dsaPlayback").get<string>("enginePath")?.trim();
   if (configured) {
     if (!fs.existsSync(configured)) {
       throw new EngineNotFoundError(
-        `dsaViz.enginePath points at '${configured}', which does not exist.`);
+        `dsaPlayback.enginePath points at '${configured}', which does not exist.`);
     }
     return configured;
   }
@@ -58,7 +58,7 @@ export function resolveEnginePath(): string {
 
   log(`Engine not found. Looked in:\n  ${candidates.join("\n  ")}`);
   throw new EngineNotFoundError(
-    "The DSA Visualizer engine is missing from this installation. Reinstalling the extension restores it.");
+    "The DSA Playback engine is missing from this installation. Reinstalling the extension restores it.");
 }
 
 export class EngineCancelledError extends Error {}
@@ -72,7 +72,7 @@ export class EngineCancelledError extends Error {}
  * left the panel showing "Measuring…" indefinitely.
  */
 function run(executable: string, args: string[], stdin?: string, signal?: AbortSignal): Promise<string> {
-  const timeoutSeconds = vscode.workspace.getConfiguration("dsaViz").get<number>("timeoutSeconds") ?? 120;
+  const timeoutSeconds = vscode.workspace.getConfiguration("dsaPlayback").get<number>("timeoutSeconds") ?? 120;
 
   const started = Date.now();
   log(`engine ${args.join(" ")}`);
@@ -86,7 +86,7 @@ function run(executable: string, args: string[], stdin?: string, signal?: AbortS
       child.kill("SIGKILL");
       settle(() => reject(new Error(
         `The engine did not finish within ${timeoutSeconds} seconds and was stopped. ` +
-        "Try fewer or smaller sizes, or raise dsaViz.timeoutSeconds.")));
+        "Try fewer or smaller sizes, or raise dsaPlayback.timeoutSeconds.")));
     }, timeoutSeconds * 1000);
 
     signal?.addEventListener("abort", () => {

@@ -5,7 +5,55 @@
   --gap: 12px;
   --hot: #e06c2b;
   --cool: #3f8fce;
-  --compare: #b05fc8;
+  --compare: #c27ad8;
+  --hot-tint: rgba(224, 108, 43, 0.12);
+  --cool-tint: rgba(63, 143, 206, 0.25);
+  --compare-tint: rgba(176, 95, 200, 0.3);
+}
+
+/* VS Code tags the body with the theme's kind. The accents are tuned for each, because
+   they carry meaning — the orange of a pointer label is text, and it has to be readable:
+   on a light background the dark-theme orange is only 3.3:1, under the 4.5:1 small text
+   needs. High contrast themes use VS Code's own high-contrast colours throughout. */
+body.vscode-light {
+  --hot: #b4470f;
+  --cool: #1a6aa8;
+  --compare: #8a3aa3;
+  --hot-tint: rgba(180, 71, 15, 0.1);
+  --cool-tint: rgba(26, 106, 168, 0.18);
+  --compare-tint: rgba(138, 58, 163, 0.18);
+}
+body.vscode-high-contrast {
+  --hot: var(--vscode-contrastActiveBorder, #f38518);
+  --cool: var(--vscode-contrastBorder, #6fc3df);
+  --compare: #ffd700;
+  --hot-tint: transparent;
+  --cool-tint: transparent;
+  --compare-tint: transparent;
+}
+body.vscode-high-contrast-light {
+  --hot: var(--vscode-contrastActiveBorder, #b5200d);
+  --cool: var(--vscode-contrastBorder, #0f4a85);
+  --compare: #5c2a8c;
+  --hot-tint: transparent;
+  --cool-tint: transparent;
+  --compare-tint: transparent;
+}
+
+/* Whatever has keyboard focus says so, in every theme. */
+button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
+/* In high contrast, shapes are told apart by outline, not by a faint fill. */
+body.vscode-high-contrast .cell-value, body.vscode-high-contrast-light .cell-value,
+body.vscode-high-contrast .entry, body.vscode-high-contrast-light .entry,
+body.vscode-high-contrast .slot, body.vscode-high-contrast-light .slot {
+  border-color: var(--vscode-contrastBorder, currentColor);
+}
+body.vscode-high-contrast .diagram .node.visited circle, body.vscode-high-contrast-light .diagram .node.visited circle {
+  stroke-dasharray: 3 2;
 }
 
 * { box-sizing: border-box; }
@@ -284,7 +332,7 @@ input.narrow { min-width: 0; width: 56px; }
   display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 10px; align-items: start;
   padding: 6px 8px; border-radius: 4px; border: 1px solid transparent;
 }
-.variable.changed { border-color: var(--hot); background: rgba(224, 108, 43, 0.07); }
+.variable.changed { border-color: var(--hot); background: var(--hot-tint); }
 .variable.appeared { border-color: var(--vscode-panel-border); }
 .var-name { font-family: var(--vscode-editor-font-family); color: var(--vscode-descriptionForeground); padding-top: 4px; }
 .var-value { overflow-x: auto; }
@@ -297,7 +345,7 @@ input.narrow { min-width: 0; width: 56px; }
   border: 1px solid var(--vscode-panel-border); border-radius: 3px;
   font-family: var(--vscode-editor-font-family);
 }
-.cell.pointed .cell-value { border-color: var(--hot); background: rgba(224, 108, 43, 0.12); }
+.cell.pointed .cell-value { border-color: var(--hot); background: var(--hot-tint); }
 .cell-index { font-size: 0.75em; color: var(--vscode-descriptionForeground); }
 .cell-pointers { font-size: 0.8em; color: var(--hot); font-weight: 600; min-height: 1.1em; font-family: var(--vscode-editor-font-family); }
 
@@ -428,8 +476,8 @@ button.show-line, #show-log { margin: -4px 0 12px; }
 .diagram .node circle, .diagram .node rect {
   fill: var(--vscode-editor-background); stroke: var(--vscode-descriptionForeground); stroke-width: 1.5;
 }
-.diagram .node.visited circle { fill: rgba(63, 143, 206, 0.25); }
-.diagram .node.waiting circle { fill: rgba(176, 95, 200, 0.3); }
+.diagram .node.visited circle { fill: var(--cool-tint); }
+.diagram .node.waiting circle { fill: var(--compare-tint); stroke: var(--compare); }
 .diagram .node.current circle, .diagram .node.current rect { stroke: var(--hot); stroke-width: 2.5; }
 .diagram .node.path circle { stroke: var(--cool); stroke-width: 2.5; }
 .diagram .node.written circle { animation: flash calc(var(--anim) * 2) ease-out; }
@@ -446,8 +494,8 @@ button.show-line, #show-log { margin: -4px 0 12px; }
 .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin: 0 3px 0 10px; vertical-align: -1px;
   border: 1.5px solid var(--vscode-descriptionForeground); }
 .dot.current { border-color: var(--hot); }
-.dot.visited { background: rgba(63, 143, 206, 0.35); }
-.dot.waiting { background: rgba(176, 95, 200, 0.4); }
+.dot.visited { background: var(--cool-tint); }
+.dot.waiting { background: var(--compare-tint); border-color: var(--compare); }
 .dot.active, .dot.path { border-color: var(--cool); }
 .dot.returned { background: var(--vscode-panel-border); }
 

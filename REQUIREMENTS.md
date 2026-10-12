@@ -1,4 +1,4 @@
-# DSA Visualizer — v2: a learning tool for students
+# DSA Playback — v2: a learning tool for students
 
 ## What was asked
 
@@ -210,8 +210,9 @@ student can **type their own** at any time.
 
 ## Status
 
-**Phases 1 (friendly C#), 2 (animated run view) and 3 (Python) are done.** Phase 4
-(release) has not started.
+**Phases 1 to 3 are done; Phase 4 (release) is ready to publish** once the publisher
+accounts exist. The extension is named **DSA Playback**: "DSA Visualizer" was already
+taken on the Marketplace.
 
 | # | Status | Checked by |
 |---|---|---|
@@ -238,6 +239,8 @@ student can **type their own** at any time.
 | 27 | Met, in both languages. | `StepInputTests`, `PythonTests.An_exception_in_the_students_code_names_its_line`. Panel test: *an exception names the line* |
 | 30 | Met. Measured class, derivation and per-line counts as for C#; hidden cost charged for `in` on a list, tuple or string, `insert`/`pop` by position, `remove`, `index`, `count`, slicing, `+=` on a string, `[…] * n`, `sorted`/`sort`, `min`/`max`/`sum`, heapq and bisect, and every comprehension's loop. Space is the peak held, measured directly with tracemalloc. The reading of the code covers loop nesting, halving loops, two-pointer loops, list scans, worklist loops and the recursion kinds, and says *unknown* with a reason otherwise. Python 3.9 to 3.13 checked; 3.8 is refused with a clear message. | `PythonTests` (32 tests), panel tests for every Python sample |
 | 31 | Met: *Show line*, *Show details*, and *Install Python* / *Select Interpreter* when Python is missing or older than 3.9. | `PythonTests.No_Python_is_reported_with_a_code…`. Panel test: *the visualizer's own failure offers its details* |
+| 32 | Met: accents tuned per theme kind and checked at 4.5:1 or better against each default background; high-contrast themes outline every shape; every control is reachable by Tab with a visible focus ring, and keeps focus while stepping. | `contrast.test.ts` (4 themes). Panel tests: *a keyboard user keeps focus*; *rows that go to a line can be used from the keyboard*. Light and high-contrast checked by hand in the browser harness. |
+| 33 | Ready: icon, three animated screenshots and one still, a README for students, CHANGELOG, MIT licence, CI on three operating systems, and a release workflow that builds, tests, verifies and publishes four platform packages. Publishing needs the publisher's two tokens. | `npm run verify-package` checks the icon, licence, changelog and that every README image resolves. |
 
 Test counts: 348 engine tests (32 of them Python), 48 panel tests, and 9 integration
 checks in a real VS Code.
@@ -268,7 +271,7 @@ precompiled, so it is about twice as fast to start.
 - **Python is not bundled.** Students writing Python have it installed, and bundling
   would add about 30 MB per platform. If none is found, the tool shows a message with
   an install link.
-- **Licence: MIT. Name: "DSA Visualizer".** Both are changeable before release.
+- **Licence: MIT. Name: "DSA Playback".** Both are changeable before release.
   The name must be checked for a clash on the Marketplace.
 - **Platforms: Windows x64, macOS x64 and arm64, Linux x64.** Windows and Linux on
   ARM are deferred.

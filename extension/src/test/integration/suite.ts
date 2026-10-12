@@ -28,7 +28,7 @@ async function open(relative: string): Promise<vscode.TextDocument> {
 const checks: [string, (api: TestApi) => Promise<void>][] = [
   ["the measure command runs a LeetCode solution end to end", async api => {
     const document = await open("samples/leetcode/DedupeWithList.cs");
-    await vscode.commands.executeCommand("dsaViz.measure");
+    await vscode.commands.executeCommand("dsaPlayback.measure");
 
     const response = await waitFor(() => api.lastResponse(), "a measurement");
     assert.equal(response.primary?.status, "Completed");
@@ -64,7 +64,7 @@ const checks: [string, (api: TestApi) => Promise<void>][] = [
     fs.copyFileSync(path.join(repository, "extension/samples/csharp/TwoSumSorted.cs"), file);
 
     const before = api.lastSteps();
-    await vscode.commands.executeCommand("dsaViz.visualize", vscode.Uri.file(file), "Solution.TwoSum");
+    await vscode.commands.executeCommand("dsaPlayback.visualize", vscode.Uri.file(file), "Solution.TwoSum");
     const steps = await waitFor(() => (api.lastSteps() !== before ? api.lastSteps() : undefined), "a recorded run");
 
     assert.equal(steps.status, "Completed");
@@ -76,7 +76,7 @@ const checks: [string, (api: TestApi) => Promise<void>][] = [
   ["a typed value is used, and still used when the method is opened again", async api => {
     const file = path.join(repository, "extension/samples/csharp/TwoSumSorted.cs");
     let before = api.lastSteps();
-    await vscode.commands.executeCommand("dsaViz.visualize", vscode.Uri.file(file), "Solution.TwoSum");
+    await vscode.commands.executeCommand("dsaPlayback.visualize", vscode.Uri.file(file), "Solution.TwoSum");
     await waitFor(() => (api.lastSteps() !== before ? true : undefined), "a first run");
 
     before = api.lastSteps();
@@ -86,7 +86,7 @@ const checks: [string, (api: TestApi) => Promise<void>][] = [
     assert.equal(typed.returnValue, "[3,4]");
 
     before = api.lastSteps();
-    await vscode.commands.executeCommand("dsaViz.visualize", vscode.Uri.file(file), "Solution.TwoSum");
+    await vscode.commands.executeCommand("dsaPlayback.visualize", vscode.Uri.file(file), "Solution.TwoSum");
     const reopened = await waitFor(() => (api.lastSteps() !== before ? api.lastSteps() : undefined), "a run on reopening");
     assert.equal(reopened.inputs[1].literal, "26");
 
@@ -100,7 +100,7 @@ const checks: [string, (api: TestApi) => Promise<void>][] = [
   ["a recorded run carries objects, their identity, and what each call returned", async api => {
     const file = path.join(repository, "extension/samples/csharp/LevelOrder.cs");
     const before = api.lastSteps();
-    await vscode.commands.executeCommand("dsaViz.visualize", vscode.Uri.file(file), "Solution.LevelOrder");
+    await vscode.commands.executeCommand("dsaPlayback.visualize", vscode.Uri.file(file), "Solution.LevelOrder");
     const steps = await waitFor(() => (api.lastSteps() !== before ? api.lastSteps() : undefined), "a recorded run");
 
     const kinds = new Set(steps.steps.flatMap(s => (s.heap ?? []).map(o => o.kind)));
@@ -118,25 +118,25 @@ const checks: [string, (api: TestApi) => Promise<void>][] = [
     assert.deepEqual(titles, ["$(play) Visualize", "$(graph) Complexity"]);
 
     const before = api.lastSteps();
-    await vscode.commands.executeCommand("dsaViz.visualize", document.uri, "Solution.levelOrder");
+    await vscode.commands.executeCommand("dsaPlayback.visualize", document.uri, "Solution.levelOrder");
     const steps = await waitFor(() => (api.lastSteps() !== before ? api.lastSteps() : undefined), "a recorded Python run");
     assert.equal(steps.status, "Completed");
     assert.equal(steps.check?.matches, true);
   }],
 
   ["the walkthrough opens an editable copy of its sample", async () => {
-    await vscode.commands.executeCommand("dsaViz.openSample", "LevelOrder.cs");
+    await vscode.commands.executeCommand("dsaPlayback.openSample", "LevelOrder.cs");
     const opened = vscode.window.activeTextEditor?.document.fileName ?? "";
     assert.ok(opened.endsWith("LevelOrder.cs"));
     assert.ok(!opened.startsWith(path.join(repository, "extension")), "not the file inside the extension itself");
   }],
 
   ["a wrong engine path is reported, not hung on", async api => {
-    const settings = vscode.workspace.getConfiguration("dsaViz");
+    const settings = vscode.workspace.getConfiguration("dsaPlayback");
     await settings.update("enginePath", "/nonexistent/DsaViz.Engine", vscode.ConfigurationTarget.Global);
     try {
       await open("samples/leetcode/TwoSum.cs");
-      await vscode.commands.executeCommand("dsaViz.measure");
+      await vscode.commands.executeCommand("dsaPlayback.measure");
       const error = await waitFor(() => api.lastError()?.includes("does not exist") ? api.lastError() : undefined, "an error", 10_000);
       assert.match(error, /enginePath/);
     } finally {
@@ -146,7 +146,7 @@ const checks: [string, (api: TestApi) => Promise<void>][] = [
 ];
 
 export async function run(): Promise<void> {
-  const extension = vscode.extensions.getExtension<TestApi>("local.dsa-visualizer");
+  const extension = vscode.extensions.getExtension<TestApi>("codewrapper12.dsa-playback");
   assert.ok(extension, "the extension is installed in the development host");
   const api = await extension.activate();
 

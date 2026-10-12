@@ -34,7 +34,7 @@ export class EntryPointLenses implements vscode.CodeLensProvider {
     if (entries instanceof EntryListError) {
       return [new vscode.CodeLens(new vscode.Range(0, 0, 0, 0), {
         title: `$(warning) ${entries.message} Click to install Python.`,
-        command: "dsaViz.installPython",
+        command: "dsaPlayback.installPython",
         arguments: [entries.message]
       })];
     }
@@ -55,13 +55,13 @@ export class EntryPointLenses implements vscode.CodeLensProvider {
         new vscode.CodeLens(range, {
           title: "$(play) Visualize",
           tooltip: `Watch ${entry.name} run, one step at a time`,
-          command: "dsaViz.visualize",
+          command: "dsaPlayback.visualize",
           arguments: target
         }),
         new vscode.CodeLens(range, {
           title: "$(graph) Complexity",
           tooltip: `How ${entry.name}'s time and memory grow with the input`,
-          command: "dsaViz.measure",
+          command: "dsaPlayback.measure",
           arguments: target
         })
       ];

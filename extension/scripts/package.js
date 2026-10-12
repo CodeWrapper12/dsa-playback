@@ -4,7 +4,7 @@
 //   node scripts/package.js                 the platform this machine runs
 //   node scripts/package.js linux-x64       any target in TARGETS
 //
-// Writes dist/dsa-visualizer-<target>.vsix.
+// Writes dist/dsa-playback-<target>.vsix.
 
 const { execFileSync } = require("child_process");
 const fs = require("fs");
@@ -55,9 +55,14 @@ run("dotnet", [
 run("npx", ["tsc", "-p", "./"]);
 
 fs.mkdirSync(distribution, { recursive: true });
-const output = path.join(distribution, `dsa-visualizer-${target}.vsix`);
+const output = path.join(distribution, `dsa-playback-${target}.vsix`);
+// The extension lives in a folder of the repository, and vsce does not follow the
+// manifest's repository.directory: without these, every README image would link to a
+// path that does not exist and show broken on the Marketplace.
+const repository = "https://github.com/CodeWrapper12/dsa-playback";
 run("npx", ["vsce", "package", "--target", target, "--out", output,
-  "--allow-missing-repository", "--skip-license"]);
+  "--baseImagesUrl", `${repository}/raw/HEAD/extension`,
+  "--baseContentUrl", `${repository}/blob/HEAD/extension`]);
 
 const megabytes = fs.statSync(output).size / (1024 * 1024);
 console.log(`\n${output}: ${megabytes.toFixed(1)} MB`);

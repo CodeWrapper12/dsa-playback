@@ -48,18 +48,18 @@ export function activate(context: vscode.ExtensionContext): TestApi {
     vscode.languages.registerCodeLensProvider(LANGUAGES.map(language => ({ language })), lenses),
     vscode.workspace.onDidCloseTextDocument(document => lenses.forget(document.uri)),
     vscode.workspace.onDidChangeConfiguration(change => {
-      if (change.affectsConfiguration("dsaViz.enginePath")) lenses.refresh();
+      if (change.affectsConfiguration("dsaPlayback.enginePath")) lenses.refresh();
     }),
-    vscode.commands.registerCommand("dsaViz.visualize", (uri?: vscode.Uri, entry?: string) =>
+    vscode.commands.registerCommand("dsaPlayback.visualize", (uri?: vscode.Uri, entry?: string) =>
       start(context, "steps", uri, entry)),
-    vscode.commands.registerCommand("dsaViz.measure", (uri?: vscode.Uri, entry?: string) =>
+    vscode.commands.registerCommand("dsaPlayback.measure", (uri?: vscode.Uri, entry?: string) =>
       start(context, "cost", uri, entry)),
-    vscode.commands.registerCommand("dsaViz.compare", () => start(context, "compare")),
-    vscode.commands.registerCommand("dsaViz.clearAnnotations", () => decorations.clear()),
-    vscode.commands.registerCommand("dsaViz.openSample", (name: string) => openSample(context, name)),
-    vscode.commands.registerCommand("dsaViz.showLog", () => showLog()),
-    vscode.commands.registerCommand("dsaViz.installPython", (message?: string) =>
-      offerPython(message ?? "DSA Visualizer needs Python 3.9 or later to run Python files.")));
+    vscode.commands.registerCommand("dsaPlayback.compare", () => start(context, "compare")),
+    vscode.commands.registerCommand("dsaPlayback.clearAnnotations", () => decorations.clear()),
+    vscode.commands.registerCommand("dsaPlayback.openSample", (name: string) => openSample(context, name)),
+    vscode.commands.registerCommand("dsaPlayback.showLog", () => showLog()),
+    vscode.commands.registerCommand("dsaPlayback.installPython", (message?: string) =>
+      offerPython(message ?? "DSA Playback needs Python 3.9 or later to run Python files.")));
 
   return {
     lastResponse: () => observed.response,
@@ -115,13 +115,13 @@ async function start(context: vscode.ExtensionContext, tab: Tab, uri?: vscode.Ur
     // An empty setting means "let the engine choose", which is what lets it fall back
     // to small sizes for an expensive algorithm. Sending the default list explicitly
     // used to switch that fallback off and leave exponential solutions unmeasured.
-    const configuredSizes = vscode.workspace.getConfiguration("dsaViz").get<number[]>("sizes") ?? [];
+    const configuredSizes = vscode.workspace.getConfiguration("dsaPlayback").get<number[]>("sizes") ?? [];
 
     const request: JobRequest = {
       file,
       entry,
       sizes: configuredSizes.length > 0 ? configuredSizes : undefined,
-      budget: vscode.workspace.getConfiguration("dsaViz").get<number>("budget"),
+      budget: vscode.workspace.getConfiguration("dsaPlayback").get<number>("budget"),
       compareFile,
       compareEntry,
       python
@@ -203,7 +203,7 @@ function reportError(error: unknown) {
     });
     return;
   }
-  vscode.window.showErrorMessage(`DSA Visualizer: ${message}`);
+  vscode.window.showErrorMessage(`DSA Playback: ${message}`);
 }
 
 // ---- the panel --------------------------------------------------------------------
@@ -268,7 +268,7 @@ class ReportPanel {
       panel.panel.reveal(column, true);
     } else {
       const webview = vscode.window.createWebviewPanel(
-        "dsaVizReport", "DSA Visualizer", { viewColumn: column, preserveFocus: true },
+        "dsaPlaybackReport", "DSA Playback", { viewColumn: column, preserveFocus: true },
         {
           enableScripts: true,
           retainContextWhenHidden: true,
@@ -299,7 +299,7 @@ class ReportPanel {
       case "measure": await this.measure(); return;
       case "stepAt": await decorations.showStep(this.request.file, message.line); return;
       case "showLog": showLog(); return;
-      case "installPython": await offerPython(message.message ?? "DSA Visualizer needs Python 3.9 or later."); return;
+      case "installPython": await offerPython(message.message ?? "DSA Playback needs Python 3.9 or later."); return;
       case "reveal": await this.reveal(message.line); return;
       case "rerun":
         // The panel sends back the engine's own resolved inputs with the user's edits
@@ -324,7 +324,7 @@ class ReportPanel {
   }
 
   private get savedKey() {
-    return `dsaViz.inputs:${this.request.file}::${this.request.entry}`;
+    return `dsaPlayback.inputs:${this.request.file}::${this.request.entry}`;
   }
 
   private saved(): SavedInputs {
@@ -436,7 +436,7 @@ class ReportPanel {
       content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link href="${media("styles.css")}" rel="stylesheet">
-<title>DSA Visualizer</title>
+<title>DSA Playback</title>
 </head>
 <body>
 <div id="app"><p class="placeholder">Loading…</p></div>

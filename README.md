@@ -1,4 +1,4 @@
-# DSA Visualizer
+# DSA Playback
 
 A VS Code extension that shows what each line of a C# or Python solution costs — and why.
 
@@ -16,25 +16,23 @@ Write a LeetCode-style solution, run one command, and get:
 - **Two readings of everything** — what the run measured, and what the code says — with
   the disagreements explained, because the gap is usually the lesson
 
-## Run it
+## Install it
 
-**Install it** (no .NET needed — the engine is inside the package):
+From the VS Code Marketplace or Open VSX: search for **DSA Playback**. Or build a package
+for this machine (no .NET needed by whoever installs it):
 
 ```
 cd extension && npm install && npm run package
 ```
 
 ```
-code --install-extension extension/dist/dsa-visualizer-darwin-arm64.vsix
+code --install-extension extension/dist/dsa-playback-darwin-arm64.vsix
 ```
 
-Then open any C# solution and press **▶ Visualize** above a method. Values from LeetCode
-example comments (`// Input: nums = [2,7,11,15], target = 9`) or from a call in `Main`
-are used automatically.
+Then open a C# or Python solution and press **▶ Visualize** above a method.
 
-**Or run it from source:** open this folder in VS Code, press **F5** and pick **Run DSA
-Visualizer**. From source it uses the engine's debug build, so build that first with
-`dotnet build engine/DsaViz.sln`.
+**From source:** open this folder in VS Code, press **F5** and pick **Run DSA Playback**.
+From source it uses the engine's debug build: `dotnet build engine/DsaViz.sln` first.
 
 ## Test it
 
@@ -58,7 +56,7 @@ real engine. To check a built package the way a student gets it — unpacked, wi
 anywhere:
 
 ```
-cd extension && npm run verify-package dist/dsa-visualizer-darwin-arm64.vsix
+cd extension && npm run verify-package dist/dsa-playback-darwin-arm64.vsix
 ```
 
 ## Layout
@@ -72,3 +70,18 @@ cd extension && npm run verify-package dist/dsa-visualizer-darwin-arm64.vsix
 | `extension/` | The VS Code extension and its panel |
 | `samples/` | Solutions used as test fixtures — `samples/leetcode/` (C#) and `samples/python/` are written the way LeetCode is |
 | `REQUIREMENTS.md` | What was asked for, what is met, and the known limitations |
+
+## Release
+
+CI (`.github/workflows/ci.yml`) builds and tests everything on Windows, macOS and Linux on
+every push. To release, set `version` in `extension/package.json`, add it to
+`extension/CHANGELOG.md`, and push a matching tag:
+
+```
+git tag v1.0.0 && git push origin v1.0.0
+```
+
+`.github/workflows/release.yml` then builds each platform's package on that platform,
+tests and verifies it there, attaches all four to a GitHub release, and publishes them to
+the VS Code Marketplace and Open VSX — the last two only once the repository has the
+`VSCE_PAT` and `OVSX_PAT` secrets.

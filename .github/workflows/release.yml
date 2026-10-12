@@ -1,0 +1,114 @@
+# Pushing a tag like v1.0.0: build every platform's package on that platform, test and
+# verify it there, then publish all of them to the VS Code Marketplace and Open VSX and
+# attach them to a GitHub release.
+#
+# Needs two repository secrets, created by the publisher:
+#   VSCE_PAT  an Azure DevOps token with Marketplace > Manage scope, for publisher codewrapper12
+#   OVSX_PAT  an Open VSX access token, for namespace codewrapper12
+# Without them the packages are still built, tested and attached to the GitHub release.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { os: windows-latest, target: win32-x64 }
+          - { os: macos-15-intel, target: darwin-x64 }
+          - { os: macos-latest, target: darwin-arm64 }
+          - { os: ubuntu-latest, target: linux-x64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: The tag matches the version being released
+        shell: bash
+        run: |
+          version=$(node -p "require('./extension/package.json').version")
+          test "v$version" = "${GITHUB_REF_NAME}" || { echo "Tag ${GITHUB_REF_NAME} does not match package.json version $version"; exit 1; }
+
+      - name: Engine tests
+        run: dotnet test engine/DsaViz.sln
+
+      - name: Extension tests
+        working-directory: extension
+        run: |
+          npm ci
+          npm test
+
+      - name: Package
+        working-directory: extension
+        run: npm run package -- ${{ matrix.target }}
+
+      # The package as a student gets it: unpacked, its engine run with .NET removed from
+      # the environment — on the platform it is for.
+      - name: Verify the package
+        working-directory: extension
+        shell: bash
+        run: npm run verify-package -- dist/dsa-playback-${{ matrix.target }}.vsix
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dsa-playback-${{ matrix.target }}
+          path: extension/dist/dsa-playback-${{ matrix.target }}.vsix
+          if-no-files-found: error
+
+  publish:
+    needs: package
+    runs-on: ubuntu-latest
+    env:
+      VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      OVSX_PAT: ${{ secrets.OVSX_PAT }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
+      - working-directory: extension
+        run: npm ci
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: packages
+          merge-multiple: true
+
+      - name: Attach the packages to a GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" packages/*.vsix --title "DSA Playback $GITHUB_REF_NAME" --notes-file extension/CHANGELOG.md
+
+      - name: Publish to the VS Code Marketplace
+        if: env.VSCE_PAT != ''
+        working-directory: extension
+        run: for file in ../packages/*.vsix; do npx vsce publish --packagePath "$file"; done
+
+      - name: Publish to Open VSX
+        if: env.OVSX_PAT != ''
+        working-directory: extension
+        run: for file in ../packages/*.vsix; do npx ovsx publish "$file" -p "$OVSX_PAT"; done
+
+      - name: Say what was skipped
+        if: env.VSCE_PAT == '' || env.OVSX_PAT == ''
+        run: echo "::warning::VSCE_PAT or OVSX_PAT is not set, so publishing to that store was skipped. The packages are on the GitHub release."

@@ -5,12 +5,12 @@ import { log } from "./log";
 export const PYTHON_DOWNLOAD = "https://www.python.org/downloads/";
 
 /**
- * The Python to run a student's file with. An explicit dsaViz.pythonPath wins; otherwise
+ * The Python to run a student's file with. An explicit dsaPlayback.pythonPath wins; otherwise
  * the interpreter selected in VS Code's Python extension, so a student's virtual
  * environment is the one used. Undefined means "let the engine find python3 on the path".
  */
 export async function pythonInterpreter(resource?: vscode.Uri): Promise<string | undefined> {
-  const configured = vscode.workspace.getConfiguration("dsaViz").get<string>("pythonPath")?.trim();
+  const configured = vscode.workspace.getConfiguration("dsaPlayback").get<string>("pythonPath")?.trim();
   if (configured) return configured;
 
   const extension = vscode.extensions.getExtension("ms-python.python");
