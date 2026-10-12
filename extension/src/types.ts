@@ -166,6 +166,7 @@ export interface ParameterDescription {
 export interface JobResponse {
   primary: MeasurementResult | null;
   comparison: MeasurementResult | null;
+  steps: StepTrace | null;
   source: string | null;
   comparisonSource: string | null;
   label: string | null;
@@ -194,6 +195,51 @@ export interface JobRequest {
   budget?: number;
   inputs?: InputSpec[];
   strategy?: GenerationStrategy;
+  stepSize?: number;
+  maxSteps?: number;
   compareFile?: string;
   compareEntry?: string;
+}
+
+// ---- step-through -------------------------------------------------------------
+
+export interface StepVariable {
+  name: string;
+  display: string;
+  /** scalar, string, array, grid, collection, tree, list, null, object, function or error. */
+  kind: string;
+  items: string[] | null;
+  number: number | null;
+}
+
+export interface ExecutionStep {
+  index: number;
+  statementId: number;
+  line: number;
+  column: number;
+  depth: number;
+  method: string;
+  variables: StepVariable[];
+}
+
+export interface StatementInfo {
+  id: number;
+  line: number;
+  column: number;
+  length: number;
+  snippet: string;
+  method: string;
+  variables: string[];
+}
+
+export interface StepTrace {
+  status: RunStatus;
+  size: number;
+  steps: ExecutionStep[];
+  statements: StatementInfo[];
+  truncated: boolean;
+  maxSteps: number;
+  arguments: StepVariable[];
+  returnValue: string | null;
+  errors: string[];
 }

@@ -20,6 +20,13 @@ public sealed record JobRequest
     /// </summary>
     public GenerationStrategy? Strategy { get; init; }
 
+    /// <summary>
+    /// Record a step-through at this size instead of measuring. Asked for separately, when
+    /// the user opens the step view, so a measurement never pays for recording steps.
+    /// </summary>
+    public int? StepSize { get; init; }
+    public int MaxSteps { get; init; } = DsaViz.Engine.Measurement.Stepper.DefaultMaxSteps;
+
     /// <summary>A second solution to measure alongside the first, for comparison.</summary>
     public string? CompareFile { get; init; }
     public string? CompareEntry { get; init; }
@@ -49,6 +56,9 @@ public sealed record JobResponse
 {
     public MeasurementResult? Primary { get; init; }
     public MeasurementResult? Comparison { get; init; }
+
+    /// <summary>Set when the request asked for a step-through rather than a measurement.</summary>
+    public StepTrace? Steps { get; init; }
 
     /// <summary>Source text, so the view can lay costs over the code without re-reading it.</summary>
     public string? Source { get; init; }

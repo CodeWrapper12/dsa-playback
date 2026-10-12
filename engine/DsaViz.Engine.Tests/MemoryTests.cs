@@ -11,6 +11,7 @@ namespace DsaViz.Engine.Tests;
 /// tests assert against known object sizes rather than merely "greater than zero" —
 /// which would pass even if attribution were badly wrong.
 /// </summary>
+[Collection(ExactMemoryCollection.Name)]
 public class MemoryTests
 {
     private const string Allocations = """

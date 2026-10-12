@@ -25,13 +25,22 @@ public sealed class TraceRewriter : CSharpSyntaxRewriter
     private const int MaxSnippetLength = 80;
 
     private readonly SourceText _source;
+    private readonly bool _stepping;
     private readonly List<StatementInfo> _statements = new();
 
-    public TraceRewriter(SourceText source) => _source = source;
+    /// <param name="stepping">
+    /// Emit Step calls carrying each statement's variables instead of plain Hit calls.
+    /// Only the step-through build does this; the measurement build stays exactly as cheap.
+    /// </param>
+    public TraceRewriter(SourceText source, bool stepping = false)
+    {
+        _source = source;
+        _stepping = stepping;
+    }
 
     public IReadOnlyList<StatementInfo> Statements => _statements;
 
-    private StatementSyntax HitCall(int line, int start, int length)
+    private StatementSyntax HitCall(int line, int start, int length, SyntaxNode statement)
     {
         int id = _statements.Count;
         int column = _source.Lines.GetLinePosition(start).Character + 1;
@@ -39,8 +48,19 @@ public sealed class TraceRewriter : CSharpSyntaxRewriter
         string snippet = Regex.Replace(_source.ToString(new TextSpan(start, length)), @"\s+", " ").Trim();
         if (snippet.Length > MaxSnippetLength) snippet = snippet[..(MaxSnippetLength - 1)] + "…";
 
-        _statements.Add(new StatementInfo(id, line, column, length, snippet));
-        return ParseStatement($"{TraceCalls.Prefix}Hit({id});");
+        var step = _stepping ? StepVariables.Read(statement) : null;
+        _statements.Add(new StatementInfo(id, line, column, length, snippet)
+        {
+            Method = step?.Method ?? "",
+            Variables = step?.Variables.Select(v => v.Name).ToList() ?? (IReadOnlyList<string>)Array.Empty<string>()
+        });
+
+        if (step is null) return ParseStatement($"{TraceCalls.Prefix}Hit({id});");
+
+        // An explicit array, never params: a single object[] variable passed to a params
+        // parameter would be taken as the array itself rather than as one value.
+        string values = string.Join(", ", step.Value.Variables.Select(v => v.Expression));
+        return ParseStatement($"{TraceCalls.Prefix}Step({id}, new object[] {{ {values} }});");
     }
 
     private SyntaxList<StatementSyntax> Interleave(SyntaxList<StatementSyntax> statements)
@@ -49,7 +69,7 @@ public sealed class TraceRewriter : CSharpSyntaxRewriter
         foreach (var statement in statements)
         {
             if (LineAnnotations.Read(statement) is { } position)
-                result.Add(HitCall(position.Line, position.Start, position.Length));
+                result.Add(HitCall(position.Line, position.Start, position.Length, statement));
             result.Add(statement);
         }
         return List(result);

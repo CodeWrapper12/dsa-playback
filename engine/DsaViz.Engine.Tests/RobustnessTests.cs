@@ -160,6 +160,7 @@ public class RobustnessTests
 }
 
 /// <summary>Where bytes and work are attributed when calls return and the tracer itself allocates.</summary>
+[Collection(ExactMemoryCollection.Name)]
 public class AttributionTests
 {
     [Fact]

@@ -72,12 +72,14 @@
   "scripts": {
     "compile": "tsc -p ./",
     "test": "tsc -p ./ && node --test out/test/*.test.js",
+    "test:integration": "tsc -p ./ && node out/test/integration/runTest.js",
     "watch": "tsc -watch -p ./"
   },
   "devDependencies": {
     "@types/jsdom": "^21.1.7",
     "@types/node": "^20.11.0",
     "@types/vscode": "^1.85.0",
+    "@vscode/test-electron": "^2.5.2",
     "jsdom": "^24.1.3",
     "typescript": "^5.4.0"
   }

@@ -156,6 +156,8 @@ public static class Derivations
 
         if (!allocates)
             lines.Add("Nothing allocated grows with the input.");
+        else if (allocation.Best == ComplexityClass.Constant)
+            lines.Add($"Allocates only a fixed amount ({Bytes(last.TotalBytesAllocated)}), whatever the input size.");
         else if (churn)
         {
             var culprit = derivation?.Statements

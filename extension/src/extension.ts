@@ -2,11 +2,26 @@ import * as path from "path";
 import * as vscode from "vscode";
 import { CostDecorations } from "./decorations";
 import { EngineCancelledError, EngineNotFoundError, listEntryPoints, measure } from "./engine";
-import { EntryPoint, InputSpec, JobRequest, JobResponse } from "./types";
+import { EntryPoint, InputSpec, JobRequest, JobResponse, StepTrace } from "./types";
 
 let decorations: CostDecorations;
 
-export function activate(context: vscode.ExtensionContext) {
+/**
+ * What the integration tests can observe. Decorations and webviews are not readable
+ * through VS Code's API, so without this the only way to check the extension really works
+ * is to look at it — which is how criterion 1 stayed unverified for three milestones.
+ */
+export interface TestApi {
+  lastResponse(): JobResponse | undefined;
+  lastSteps(): StepTrace | undefined;
+  lastError(): string | undefined;
+  linesDecoratedIn(uri: vscode.Uri): number;
+  sendPanelMessage(message: unknown): Promise<void>;
+}
+
+const observed: { response?: JobResponse; steps?: StepTrace; error?: string } = {};
+
+export function activate(context: vscode.ExtensionContext): TestApi {
   decorations = new CostDecorations();
 
   context.subscriptions.push(
@@ -14,6 +29,14 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand("dsaViz.measure", () => start(context, false)),
     vscode.commands.registerCommand("dsaViz.compare", () => start(context, true)),
     vscode.commands.registerCommand("dsaViz.clearAnnotations", () => decorations.clear()));
+
+  return {
+    lastResponse: () => observed.response,
+    lastSteps: () => observed.steps,
+    lastError: () => observed.error,
+    linesDecoratedIn: uri => decorations.linesDecoratedIn(uri),
+    sendPanelMessage: async message => { await ReportPanel.deliver(message); }
+  };
 }
 
 export function deactivate() {}
@@ -101,6 +124,7 @@ async function pickEntryPoint(file: string, title: string): Promise<EntryPoint |
 function reportError(error: unknown) {
   if (error instanceof EngineCancelledError) return;
   const message = error instanceof Error ? error.message : String(error);
+  observed.error = message;
   if (error instanceof EngineNotFoundError) {
     vscode.window.showErrorMessage(message, "Open Settings").then(choice => {
       if (choice === "Open Settings") {
@@ -123,6 +147,16 @@ interface RevealMessage {
   line: number;
 }
 
+interface StepsMessage {
+  type: "steps";
+  size: number;
+}
+
+interface StepAtMessage {
+  type: "stepAt";
+  line: number;
+}
+
 class ReportPanel {
   private static current: ReportPanel | undefined;
 
@@ -140,6 +174,11 @@ class ReportPanel {
       message => this.onMessage(message), null, this.disposables);
 
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
+  }
+
+  /** Routes a message as if the webview had sent it. For integration tests. */
+  static async deliver(message: unknown) {
+    await ReportPanel.current?.onMessage(message as RerunMessage | RevealMessage | StepsMessage | StepAtMessage);
   }
 
   static show(context: vscode.ExtensionContext, request: JobRequest) {
@@ -164,7 +203,10 @@ class ReportPanel {
     void ReportPanel.current.run();
   }
 
-  private async onMessage(message: RerunMessage | RevealMessage) {
+  private async onMessage(message: RerunMessage | RevealMessage | StepsMessage | StepAtMessage) {
+    if (message.type === "steps") { await this.recordSteps(message.size); return; }
+    if (message.type === "stepAt") { await decorations.showStep(this.request.file, message.line); return; }
+
     if (message.type === "reveal") {
       // The panel ranks the costliest statements; clicking one lands the cursor on it,
       // since the annotated source is the thing the user actually works in.
@@ -204,6 +246,7 @@ class ReportPanel {
 
       this.panel.title = response.label ? `DSA: ${response.label}` : "DSA Visualizer";
       this.panel.webview.postMessage({ type: "result", response, request });
+      observed.response = response;
 
       // The costs belong on the user's own file, not on a copy of it inside a panel.
       const detail = response.primary?.detail;
@@ -221,6 +264,27 @@ class ReportPanel {
       reportError(error);
     } finally {
       if (this.inFlight === controller) this.inFlight = undefined;
+    }
+  }
+
+  /**
+   * Records a step-through on request rather than with every measurement: it is a second
+   * build and a second run, and most measurements never open the step view.
+   */
+  private async recordSteps(size: number) {
+    this.panel.webview.postMessage({ type: "stepsLoading" });
+    try {
+      const response = await measure({
+        file: this.request.file,
+        entry: this.request.entry,
+        inputs: this.request.inputs,
+        stepSize: size
+      });
+      this.panel.webview.postMessage({ type: "steps", trace: response.steps, errors: response.errors });
+      observed.steps = response.steps ?? undefined;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.panel.webview.postMessage({ type: "stepsError", message });
     }
   }
 
@@ -252,6 +316,7 @@ class ReportPanel {
 
   private dispose() {
     this.inFlight?.abort();
+    decorations.clearStep();
     ReportPanel.current = undefined;
     this.panel.dispose();
     while (this.disposables.length) this.disposables.pop()?.dispose();

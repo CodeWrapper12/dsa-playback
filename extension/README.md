@@ -55,6 +55,24 @@ linear axes do.
 **Comparison** puts two solutions on one chart, measured over the same sizes and the
 same generated data, so the gap between the curves is the algorithms and nothing else.
 
+## Step through
+
+The **Step through** tab records a run at a small size — n = 8 unless you change it — and
+replays it one statement at a time. Every variable that is in scope and has a value is
+shown at every step; changed values are highlighted. Arrays and strings are drawn as
+cells, with index variables (`i`, `j`, `left`, `right`, `mid`, `lo`, `hi`, `slow`, `fast`
+and the like) drawn as pointers under the cell they point at; a grid shows the cell at
+`[r][c]`. The editor highlights the line the step is on as you scrub. ← and → step.
+
+Recording uses a separate build, made only when the tab is opened, so measuring is never
+slowed down by it.
+
+## Tests
+
+`npm test` runs unit tests and smoke tests that load the panel's script into a DOM, feed
+it real engine output, and click every tab and control. `npm run test:integration`
+launches the installed VS Code and drives the real command against the real engine.
+
 ## Input arrangement
 
 The arrangement of the generated data often decides the complexity you observe, so it

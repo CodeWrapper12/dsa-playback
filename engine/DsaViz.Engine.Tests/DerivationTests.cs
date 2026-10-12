@@ -9,6 +9,7 @@ namespace DsaViz.Engine.Tests;
 /// dropped. A Big-O label says what; the derivation says why: which statement makes the
 /// method that class, and by what formula.
 /// </summary>
+[Collection(ExactMemoryCollection.Name)]
 public class DerivationTests
 {
     [Fact]
@@ -80,6 +81,7 @@ public class DerivationTests
 /// three ways from the measurement, because total allocation and space held at once are
 /// different things, and confusing them is a common interview mistake.
 /// </summary>
+[Collection(ExactMemoryCollection.Name)]
 public class SpaceTests
 {
     private static SpaceReading Space(string sample, string entry, GenerationStrategy? strategy = null)
@@ -196,6 +198,7 @@ public class StaticSpaceTests
     }
 }
 
+[Collection(ExactMemoryCollection.Name)]
 public class LargestAllocationTests
 {
     [Fact]

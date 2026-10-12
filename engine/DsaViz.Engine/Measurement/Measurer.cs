@@ -166,10 +166,9 @@ public static class Measurer
 
         foreach (int size in sizes.Distinct().OrderBy(s => s))
         {
-            object?[] arguments;
             try
             {
-                arguments = ParameterBinder.Bind(specs, parameters, size);
+                ParameterBinder.Bind(specs, parameters, size);
             }
             catch (Exception ex)
             {
@@ -177,7 +176,9 @@ public static class Measurer
                 continue;
             }
 
-            var trace = Runner.Invoke(solution, arguments, budget);
+            // Inputs are rebuilt for every attempt: a repeated run must start from the same
+            // data, and many solutions sort or mark their input in place.
+            var trace = Runner.Cleanest(() => Runner.Invoke(solution, ParameterBinder.Bind(specs, parameters, size), budget));
 
             if (trace.Status is RunStatus.BudgetExceeded or RunStatus.RecursionLimitExceeded or RunStatus.TimedOut)
             {

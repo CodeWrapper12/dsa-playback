@@ -70,6 +70,19 @@ public static class CostKind
     public const int CountArgument = 5;
 }
 
+/// <summary>
+/// A variable's value at one step, rendered when it was captured. Rendering at capture
+/// time is the whole point: an array captured by reference would show its final state at
+/// every step, and a step-through where nothing changes teaches nothing.
+/// </summary>
+/// <param name="Kind">scalar, string, array, grid, collection, tree, list, null, object or function.</param>
+/// <param name="Items">Elements, for anything with positions a pointer can point into.</param>
+/// <param name="Number">The value, for integers — what lets an index be drawn as a pointer.</param>
+public sealed record CapturedValue(string Display, string Kind, IReadOnlyList<string>? Items = null, long? Number = null);
+
+/// <summary>One recorded step: which statement was about to run, how deep, and what every variable held.</summary>
+public sealed record RecordedStep(int StatementId, int Depth, IReadOnlyList<CapturedValue> Values);
+
 public sealed record TraceSnapshot(
     long[] Hits,
     long[] Bytes,
@@ -129,10 +142,23 @@ public sealed class TraceState
 
     // Allocation is attributed to the *pending* statement — the one whose Hit came last —
     // because Hit(n) runs before statement n executes. GetAllocatedBytesForCurrentThread
-    // is a monotonic count of bytes allocated, so a collection cannot shift bytes between
-    // statements, and the deltas are exact.
+    // is a monotonic count of bytes allocated, so bytes are never moved between statements.
+    //
+    // It is exact with one exception, found under parallel load: a garbage collection
+    // triggered by *another* thread retires this thread's half-used allocation block and
+    // counts the unused remainder — up to about 8 KB — as allocated by whichever statement
+    // is running. Collections during the run are therefore counted, so the runner can tell
+    // a clean measurement from one that may carry that phantom, and repeat it.
     private long _allocatedAtLastHit;
     private int _pendingStatement = -1;
+    private int _collectionsAtBegin;
+
+    // Step recording, used only by the step-through build. The measurement build never
+    // calls Step, so none of this can affect a measured number.
+    private List<RecordedStep>? _steps;
+    private Func<object?, CapturedValue>? _capture;
+    private int _maxSteps;
+    private bool _truncated;
 
     private static readonly ConcurrentDictionary<Type, Func<object, int>?> CountReaders = new();
 
@@ -165,8 +191,58 @@ public sealed class TraceState
         };
 
         // Last, so the arrays allocated above are not charged to the solution.
+        state._collectionsAtBegin = GC.CollectionCount(0);
         state._allocatedAtLastHit = GC.GetAllocatedBytesForCurrentThread();
         return state;
+    }
+
+    /// <summary>
+    /// Begins a run that also records every step. Only the step-through build calls Step,
+    /// and it runs at a small n, so the cost of rendering every variable at every
+    /// statement is paid where it is wanted and nowhere else.
+    /// </summary>
+    public static TraceState BeginStepping(
+        int statementCount, int siteCount, long budget, int maxSteps,
+        Func<object?, CapturedValue> capture, int depthLimit = DefaultDepthLimit)
+    {
+        if (maxSteps <= 0) throw new ArgumentOutOfRangeException(nameof(maxSteps));
+        var state = Begin(statementCount, siteCount, budget, depthLimit);
+        state._steps = new List<RecordedStep>(Math.Min(maxSteps, 4_096));
+        state._capture = capture;
+        state._maxSteps = maxSteps;
+        state._allocatedAtLastHit = GC.GetAllocatedBytesForCurrentThread();
+        return state;
+    }
+
+    public IReadOnlyList<RecordedStep> Steps => (IReadOnlyList<RecordedStep>?)_steps ?? Array.Empty<RecordedStep>();
+
+    /// <summary>True when more steps ran than were kept.</summary>
+    public bool StepsTruncated => _truncated;
+
+    /// <summary>
+    /// Called by the step-through build before each statement, with the value of every
+    /// variable in scope and definitely assigned at that point. Does everything Hit does,
+    /// so the budget and depth limits still apply, then records the step.
+    /// </summary>
+    public void Step(int statementId, object[] values)
+    {
+        Hit(statementId);
+        if (_steps is null || _capture is null) return;
+
+        if (_steps.Count >= _maxSteps) { _truncated = true; return; }
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        var captured = new CapturedValue[values.Length];
+        for (int i = 0; i < values.Length; i++)
+        {
+            // Observing a run must never be able to break it. A rendering failure is a bug
+            // in the recorder, and letting it escape would report it as an error in the
+            // user's own code — the most misleading thing this tool could do.
+            try { captured[i] = _capture(values[i]); }
+            catch (Exception ex) { captured[i] = new CapturedValue($"<unavailable: {ex.GetType().Name}>", "error"); }
+        }
+        _steps.Add(new RecordedStep(statementId, _depth, captured));
+        ExcludeOwnAllocation(before);
     }
 
     /// <summary>Called by instrumented code immediately before each statement.</summary>
@@ -267,9 +343,13 @@ public sealed class TraceState
     {
         if (!_active) return;
         FlushAllocation();
+        CollectionsDuringRun = GC.CollectionCount(0) - _collectionsAtBegin;
         _pendingStatement = -1;
         _active = false;
     }
+
+    /// <summary>Garbage collections, of any generation, that happened while this run was traced.</summary>
+    public int CollectionsDuringRun { get; private set; }
 
     public TraceSnapshot Snapshot() => new(
         (long[])_hits.Clone(), (long[])_bytes.Clone(), (long[])_libraryWork.Clone(),

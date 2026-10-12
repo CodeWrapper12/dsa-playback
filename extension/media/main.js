@@ -83,7 +83,7 @@
 
     parts.push(controls(primary));
 
-    const tabs = [["cost", "Statement cost"], ["growth", "Growth"]];
+    const tabs = [["cost", "Statement cost"], ["growth", "Growth"], ["steps", "Step through"]];
     if (response.comparison) tabs.push(["compare", "Comparison"]);
     if (!tabs.some(t => t[0] === state.tab)) state.tab = "cost";
 
@@ -94,6 +94,7 @@
     parts.push('<div class="panel">' +
       (state.tab === "cost" ? costPanel(response, primary)
         : state.tab === "growth" ? growthPanel(primary)
+        : state.tab === "steps" ? stepPanel()
         : comparePanel(response)) +
       "</div>");
 
@@ -541,6 +542,153 @@
       <th>memory allocated</th></tr></thead><tbody>${rows}</tbody></table>`;
   }
 
+  // ---- step through --------------------------------------------------------------
+
+  // Integer variables drawn as pointers into arrays and strings. A fixed list of the names
+  // people give indices, rather than "any int that happens to be in range": a `target` of
+  // 3 is not an index, and drawing it under cell 3 would mislead.
+  const INDEX_NAMES = new Set(["i", "j", "k", "l", "r", "left", "right", "lo", "hi", "low", "high", "mid",
+    "start", "end", "slow", "fast", "p", "q", "idx", "index", "pos", "ptr", "cur", "write", "read"]);
+  const ROW_NAMES = new Set(["r", "row", "i", "y"]);
+  const COL_NAMES = new Set(["c", "col", "j", "x"]);
+
+  function isIndexName(name) {
+    return INDEX_NAMES.has(name) || /(Index|Idx|Ptr|Pointer)$/.test(name);
+  }
+
+  function stepPanel() {
+    const st = state.stepping || {};
+    const size = st.size || 8;
+
+    const header = `<div class="controls step-controls">
+      <div class="control">
+        <label for="step-size">Step through at n =</label>
+        <input type="text" id="step-size" value="${size}" class="narrow">
+      </div>
+      <button id="record">${st.trace ? "Record again" : "Record"}</button>
+      <div class="footnote inline-note">A separate run at a small size, recorded statement by statement.
+        Measurement is never slowed down by it.</div>
+    </div>`;
+
+    if (st.loading) return header + '<p class="placeholder">Recording…</p>';
+    if (st.error) return header + banner("The run could not be recorded", escapeHtml(st.error), true);
+    if (!st.trace) return header + '<p class="placeholder">Record a run to step through it.</p>';
+
+    const trace = st.trace;
+    if (trace.steps.length === 0) {
+      return header + banner("Nothing was recorded", (trace.errors || []).map(escapeHtml).join("<br>") || "No steps.", true);
+    }
+
+    const index = Math.max(0, Math.min(st.index || 0, trace.steps.length - 1));
+    const step = trace.steps[index];
+    const previous = index > 0 ? trace.steps[index - 1] : null;
+    const statement = trace.statements.find(s => s.id === step.statementId) || { snippet: "", method: "" };
+
+    const transport = `<div class="transport">
+      <button class="ghost" data-step="first" title="First step">⏮</button>
+      <button class="ghost" data-step="prev" title="Previous step (←)">◀</button>
+      <button class="ghost" data-step="play" title="Play / pause">${st.playing ? "⏸" : "▶"}</button>
+      <button class="ghost" data-step="next" title="Next step (→)">▶</button>
+      <button class="ghost" data-step="last" title="Last step">⏭</button>
+      <input type="range" id="scrubber" min="0" max="${trace.steps.length - 1}" value="${index}">
+      <span class="muted">step ${num(index + 1)} of ${num(trace.steps.length)}${trace.truncated ? "+" : ""}</span>
+    </div>`;
+
+    const stack = `<div class="stack">${Array.from({ length: step.depth }, (_, d) =>
+      `<span class="frame ${d === step.depth - 1 ? "current" : ""}"></span>`).join("")}
+      <span class="muted">depth ${step.depth}${step.method ? " · " + escapeHtml(step.method) : ""}</span></div>`;
+
+    const current = `<div class="current-step">
+      <div class="label">About to run · line ${step.line}</div>
+      <code class="statement">${escapeHtml(statement.snippet)}</code>
+      ${stack}
+    </div>`;
+
+    const before = previous ? new Map(previous.variables.map(v => [v.name, v.display])) : new Map();
+    const scalars = step.variables.filter(v => v.kind === "scalar" && v.number !== null);
+
+    const rows = step.variables.length === 0
+      ? '<p class="placeholder">No variables are in scope here yet.</p>'
+      : step.variables.map(v => {
+          const changed = previous && before.has(v.name) && before.get(v.name) !== v.display;
+          const appeared = previous && !before.has(v.name);
+          return `<div class="variable ${changed ? "changed" : ""} ${appeared ? "appeared" : ""}">
+            <div class="var-name">${escapeHtml(v.name)}</div>
+            <div class="var-value">${renderValue(v, scalars)}</div>
+          </div>`;
+        }).join("");
+
+    const notes = [];
+    if (trace.truncated) notes.push(`Only the first ${num(trace.maxSteps)} steps were kept; the run itself completed.`);
+    if (index === trace.steps.length - 1 && trace.returnValue !== null)
+      notes.push(`Returned <code>${escapeHtml(trace.returnValue)}</code>.`);
+
+    const args = trace.arguments.length === 0 ? "" :
+      `<details class="arguments"><summary>Called with</summary>${trace.arguments.map(a =>
+        `<div class="variable"><div class="var-name">${escapeHtml(a.name)}</div>
+         <div class="var-value">${renderValue(a, [])}</div></div>`).join("")}</details>`;
+
+    return header + transport + current + `<div class="variables">${rows}</div>` + args +
+      (notes.length ? `<div class="footnote">${notes.join(" ")}</div>` : "") +
+      `<div class="footnote">← and → step through. Changed values are highlighted; integer variables named like
+        indices are drawn as pointers into the arrays and strings they fall inside.</div>`;
+  }
+
+  /** Arrays and strings as cells with index pointers, grids as cells with a [r][c] marker. */
+  function renderValue(variable, scalars) {
+    const items = variable.items;
+
+    if ((variable.kind === "array" || variable.kind === "string") && items && items.length > 0) {
+      const pointers = scalars.filter(s => isIndexName(s.name) && s.number >= 0 && s.number < items.length);
+      const cells = items.map((item, i) => {
+        const here = pointers.filter(p => p.number === i).map(p => escapeHtml(p.name));
+        return `<div class="cell ${here.length ? "pointed" : ""}">
+          <div class="cell-value">${escapeHtml(item)}</div>
+          <div class="cell-index">${i}</div>
+          <div class="cell-pointers">${here.join(" ")}</div>
+        </div>`;
+      }).join("");
+      return `<div class="cells">${cells}</div>`;
+    }
+
+    if (variable.kind === "grid" && items && items.length > 0) {
+      const row = scalars.find(s => ROW_NAMES.has(s.name));
+      const col = scalars.find(s => COL_NAMES.has(s.name) && s !== row);
+      return `<div class="grid">${items.map((line, r) =>
+        `<div class="grid-row">${[...line].map((ch, c) =>
+          `<span class="${row && col && row.number === r && col.number === c ? "grid-here" : ""}">${escapeHtml(ch)}</span>`
+        ).join("")}</div>`).join("")}</div>`;
+    }
+
+    return `<code>${escapeHtml(variable.display)}</code>`;
+  }
+
+  function setStep(index) {
+    const st = state.stepping;
+    if (!st || !st.trace || st.trace.steps.length === 0) return;
+    st.index = Math.max(0, Math.min(index, st.trace.steps.length - 1));
+    render();
+    // Keep the real editor on the same line, so scrubbing reads like stepping in a debugger.
+    if (vscode) vscode.postMessage({ type: "stepAt", line: st.trace.steps[st.index].line });
+  }
+
+  function togglePlay() {
+    const st = state.stepping;
+    if (!st || !st.trace) return;
+    if (st.playing) { clearInterval(st.playing); st.playing = null; render(); return; }
+    st.playing = setInterval(() => {
+      if (st.index >= st.trace.steps.length - 1) { clearInterval(st.playing); st.playing = null; render(); return; }
+      setStep(st.index + 1);
+    }, 450);
+    render();
+  }
+
+  function requestSteps(size) {
+    state.stepping = { ...(state.stepping || {}), size, loading: true, error: null };
+    render();
+    if (vscode) vscode.postMessage({ type: "steps", size });
+  }
+
   // ---- events ------------------------------------------------------------------
 
   function wire() {
@@ -564,6 +712,32 @@
 
     const toggle = document.getElementById("toggle-log");
     if (toggle) toggle.addEventListener("click", () => { state.log = !state.log; render(); });
+
+    // The step view records lazily, the first time it is opened.
+    if (state.tab === "steps" && !(state.stepping && (state.stepping.trace || state.stepping.loading || state.stepping.error)) && vscode) {
+      requestSteps((state.stepping && state.stepping.size) || 8);
+    }
+
+    const record = document.getElementById("record");
+    if (record) record.addEventListener("click", () => {
+      const size = parseInt(document.getElementById("step-size").value, 10);
+      requestSteps(Number.isFinite(size) && size >= 0 ? Math.min(size, 64) : 8);
+    });
+
+    app.querySelectorAll("[data-step]").forEach(button => button.addEventListener("click", () => {
+      const st = state.stepping;
+      if (!st || !st.trace) return;
+      switch (button.dataset.step) {
+        case "first": setStep(0); break;
+        case "prev": setStep(st.index - 1); break;
+        case "next": setStep(st.index + 1); break;
+        case "last": setStep(st.trace.steps.length - 1); break;
+        case "play": togglePlay(); break;
+      }
+    }));
+
+    const scrubber = document.getElementById("scrubber");
+    if (scrubber) scrubber.addEventListener("input", () => setStep(Number(scrubber.value)));
 
     const sizesField = document.getElementById("sizes");
     if (sizesField) sizesField.addEventListener("input", () => { state.sizesEdited = true; });
@@ -604,16 +778,41 @@
     });
   }
 
+  document.addEventListener("keydown", event => {
+    if (state.tab !== "steps" || !state.stepping || !state.stepping.trace) return;
+    if (event.target && event.target.tagName === "INPUT" && event.target.type === "text") return;
+    if (event.key === "ArrowRight") { setStep(state.stepping.index + 1); event.preventDefault(); }
+    if (event.key === "ArrowLeft") { setStep(state.stepping.index - 1); event.preventDefault(); }
+  });
+
   window.addEventListener("message", event => {
     const message = event.data;
+    if (message.type === "stepsLoading") { state.stepping = { ...(state.stepping || {}), loading: true, error: null }; if (state.tab === "steps") render(); return; }
+    if (message.type === "steps") {
+      const trace = message.trace;
+      state.stepping = { ...(state.stepping || {}), trace, index: 0, loading: false,
+        error: trace ? null : ((message.errors || []).join(" ") || "The engine returned no steps.") };
+      if (state.tab === "steps") render();
+      if (trace && trace.steps.length && vscode) vscode.postMessage({ type: "stepAt", line: trace.steps[0].line });
+      return;
+    }
+    if (message.type === "stepsError") { state.stepping = { ...(state.stepping || {}), loading: false, error: message.message }; render(); return; }
     if (message.type === "loading") { state.response = null; render(); }
     else if (message.type === "result") {
-      state = { ...state, response: message.response, request: message.request, expanded: new Set(), sizesEdited: false };
+      if (state.stepping && state.stepping.playing) clearInterval(state.stepping.playing);
+      state = { ...state, response: message.response, request: message.request, expanded: new Set(), sizesEdited: false,
+        stepping: { size: (state.stepping && state.stepping.size) || 8 } };
       render();
     } else if (message.type === "error") {
       app.innerHTML = banner("The engine could not be run", escapeHtml(message.message), true);
     }
   });
+
+  // Development and test entry point for a recorded step trace.
+  window.__steps = trace => {
+    state.stepping = { size: trace.size, trace, index: 0, loading: false, error: null };
+    render();
+  };
 
   // Development entry point: feed a recorded engine response straight in.
   window.__render = (response, request) => {

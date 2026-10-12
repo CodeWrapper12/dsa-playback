@@ -67,7 +67,7 @@ function exercise(response: unknown, entry: string) {
 
 test("a single solution renders every tab without error", () => {
   const { document, tabs } = exercise(measure({ file: sample("SortParamSample.cs"), entry: "SortParamSample.Sort" }), "Sort");
-  assert.deepEqual(tabs, ["cost", "growth"]);
+  assert.deepEqual(tabs, ["cost", "growth", "steps"]);
 
   // The derivation and the per-statement formulas live on the cost tab.
   document.querySelector<HTMLElement>('.tab[data-tab="cost"]')!.click();
@@ -79,7 +79,7 @@ test("a comparison renders every tab and metric without error", () => {
     file: sample("leetcode/TwoSum.cs"), entry: "Solution.TwoSum", strategy: "Distinct",
     compareFile: sample("leetcode/TwoSumBrute.cs"), compareEntry: "Solution.TwoSum"
   }), "TwoSum");
-  assert.deepEqual(tabs, ["cost", "growth", "compare"]);
+  assert.deepEqual(tabs, ["cost", "growth", "steps", "compare"]);
 });
 
 test("an exponential solution on small sizes renders", () => {
@@ -106,4 +106,63 @@ test("a missing base case renders as an explanation, not a crash", () => {
   fs.writeFileSync(recursive, "public class Solution { public int Go(int n) { return Go(n + 1) + 1; } }");
   const { document } = exercise(measure({ file: recursive, entry: "Solution.Go" }), "Go");
   assert.match(document.body.textContent ?? "", /base case/);
+});
+
+test("the step view draws pointers and steps through a recorded run", () => {
+  const measured = measure({ file: sample("leetcode/TwoSumSorted.cs"), entry: "Solution.TwoSum", strategy: "Sorted" });
+  const recorded = measure({
+    file: sample("leetcode/TwoSumSorted.cs"), entry: "Solution.TwoSum", stepSize: 8,
+    inputs: [
+      { shape: "IntArray", strategy: "Sorted", minValue: 0, maxValue: 1000, scalesWithSize: true, fixedValue: 0, seed: 20260909 },
+      { shape: "IntScalar", strategy: "Random", minValue: 0, maxValue: 1000, scalesWithSize: false, fixedValue: 9, seed: 20260909 }
+    ]
+  }) as { steps: { steps: unknown[]; returnValue: string } };
+
+  assert.equal(recorded.steps.returnValue, "[3, 8]");
+
+  const { dom, errors } = load();
+  const window = dom.window as unknown as { __render(r: unknown, q: unknown): void; __steps(t: unknown): void };
+  const document = dom.window.document;
+
+  window.__render(measured, { entry: "TwoSum" });
+  document.querySelector<HTMLElement>('.tab[data-tab="steps"]')!.click();
+  window.__steps(recorded.steps);
+  assert.deepEqual(errors, []);
+
+  // Which cell each pointer sits under, e.g. "1:left 7:right" — positions, not just labels.
+  const pointersNow = () => Array.from(document.querySelectorAll(".cell"))
+    .map(cell => [cell.querySelector(".cell-index")!.textContent!.trim(), cell.querySelector(".cell-pointers")!.textContent!.trim()])
+    .filter(([, labels]) => labels)
+    .map(([index, labels]) => `${index}:${labels}`);
+
+  // Walk the whole run with the transport, checking it never errors and the pointers move.
+  const seen = new Set<string>();
+  for (let i = 0; i < recorded.steps.steps.length; i++) {
+    seen.add(pointersNow().join(","));
+    document.querySelector<HTMLElement>('[data-step="next"]')!.click();
+    assert.deepEqual(errors, [], `step ${i}`);
+  }
+
+  assert.ok(seen.has("0:left,7:right"), "left and right start at the two ends of the array");
+  assert.ok(seen.size > 2, "the pointers move as the run proceeds");
+  assert.match(document.body.textContent ?? "", /Returned/);
+
+  document.querySelector<HTMLElement>('[data-step="first"]')!.click();
+  document.querySelector<HTMLElement>('[data-step="last"]')!.click();
+  assert.deepEqual(errors, []);
+});
+
+test("the step view shows a flood fill's position on its grid", () => {
+  const recorded = measure({ file: sample("leetcode/NumIslands.cs"), entry: "Solution.NumIslands", stepSize: 4 }) as {
+    steps: unknown;
+  };
+  const { dom, errors } = load();
+  const window = dom.window as unknown as { __render(r: unknown, q: unknown): void; __steps(t: unknown): void };
+  window.__render(measure({ file: sample("leetcode/NumIslands.cs"), entry: "Solution.NumIslands" }), { entry: "NumIslands" });
+  dom.window.document.querySelector<HTMLElement>('.tab[data-tab="steps"]')!.click();
+  window.__steps(recorded.steps);
+
+  for (let i = 0; i < 40; i++) dom.window.document.querySelector<HTMLElement>('[data-step="next"]')!.click();
+  assert.deepEqual(errors, []);
+  assert.ok(dom.window.document.querySelector(".grid"), "the grid is drawn");
 });

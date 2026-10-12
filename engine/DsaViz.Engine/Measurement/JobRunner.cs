@@ -20,6 +20,20 @@ public static class JobRunner
         var errors = new List<string>();
 
         string primarySource = read(request.File);
+
+        if (request.StepSize is { } stepSize)
+        {
+            var steps = Stepper.Record(
+                DsaViz.Engine.Analysis.SourceAnalysis.Create(primarySource), request.Entry, request.Inputs,
+                stepSize, request.MaxSteps, request.Strategy, request.Budget);
+            return new JobResponse
+            {
+                Steps = steps,
+                Source = primarySource,
+                Label = Path.GetFileNameWithoutExtension(request.File)
+            };
+        }
+
         var primary = Measurer.Measure(
             primarySource, request.Entry, request.Inputs, request.Sizes, request.Budget, request.Strategy);
 

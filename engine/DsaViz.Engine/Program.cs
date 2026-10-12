@@ -42,6 +42,7 @@ bool measure = false;
 bool listEntries = false;
 string? jobPath = null;
 int[]? sizes = null;
+int? stepSize = null;
 GenerationStrategy? strategy = null;
 
 for (int i = 0; i < args.Length; i++)
@@ -53,6 +54,12 @@ for (int i = 0; i < args.Length; i++)
         case "--job" when i + 1 < args.Length: jobPath = args[++i]; break;
         case "--measure": measure = true; break;
         case "--list-entries": listEntries = true; break;
+
+        case "--steps" when i + 1 < args.Length:
+            if (!int.TryParse(args[++i], NumberStyles.Integer, CultureInfo.InvariantCulture, out int n) || n < 0)
+                return Fail("--steps needs a non-negative input size.");
+            stepSize = n;
+            break;
 
         case "--sizes" when i + 1 < args.Length:
             var parsed = new List<int>();
@@ -102,6 +109,7 @@ if (file is null)
         "  DsaViz.Engine --file <solution.cs> [--entry <Method|Type.Method>] [--measure]\n" +
         "                [--sizes 10,100,1000] [--strategy <" + string.Join("|", Enum.GetNames<GenerationStrategy>()) + ">]\n" +
         "                [--budget <n>]\n" +
+        "  DsaViz.Engine --file <solution.cs> --entry <Method> --steps <n> [--strategy <...>]\n" +
         "  DsaViz.Engine --file <solution.cs> --list-entries\n" +
         "  DsaViz.Engine --job <request.json|->");
 
@@ -109,6 +117,12 @@ if (!File.Exists(file)) return Fail($"File not found: {file}");
 string source = File.ReadAllText(file);
 
 if (listEntries) return Emit(new { Entries = EntryPointScanner.Scan(source) }, 0);
+
+if (stepSize is { } stepAt)
+{
+    var steps = Stepper.Record(SourceAnalysis.Create(source), entry, inputs: null, stepAt, Stepper.DefaultMaxSteps, strategy, budget);
+    return Emit(steps, steps.Status == RunStatus.Completed ? 0 : 1);
+}
 
 if (!measure)
 {

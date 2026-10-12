@@ -90,7 +90,7 @@ public static class Runner
     public static CompileOutcome Compile(string source, string entryMethod, bool instrument = true)
         => Compile(SourceAnalysis.Create(source), entryMethod, instrument);
 
-    public static CompileOutcome Compile(SourceAnalysis analysis, string entryMethod, bool instrument = true)
+    public static CompileOutcome Compile(SourceAnalysis analysis, string entryMethod, bool instrument = true, bool stepping = false)
     {
         // Errors come from the user's own file, so the line numbers are the ones they see.
         if (analysis.HasErrors)
@@ -102,7 +102,7 @@ public static class Runner
 
         if (instrument)
         {
-            var instrumented = Instrumenter.Instrument(analysis);
+            var instrumented = Instrumenter.Instrument(analysis, stepping);
             trees = instrumented.Trees;
             statements = instrumented.Statements;
             sites = instrumented.Sites;
@@ -152,7 +152,8 @@ public static class Runner
         object?[]? arguments = null,
         long budget = DefaultBudget,
         TimeSpan? timeout = null,
-        int depthLimit = TraceState.DefaultDepthLimit)
+        int depthLimit = TraceState.DefaultDepthLimit,
+        int? recordSteps = null)
     {
         if (solution.Abandoned)
             return Failure(RunStatus.RuntimeError, new[]
@@ -167,7 +168,7 @@ public static class Runner
             Console.SetOut(capturedOutput);
 
             var outcome = new RunOutcome();
-            var worker = new Thread(() => Execute(solution, arguments, budget, depthLimit, outcome), StackSize)
+            var worker = new Thread(() => Execute(solution, arguments, budget, depthLimit, recordSteps, outcome), StackSize)
             {
                 IsBackground = true,
                 Name = "DsaViz solution",
@@ -210,7 +211,7 @@ public static class Runner
     }
 
     private static void Execute(
-        CompiledSolution solution, object?[]? arguments, long budget, int depthLimit, RunOutcome outcome)
+        CompiledSolution solution, object?[]? arguments, long budget, int depthLimit, int? recordSteps, RunOutcome outcome)
     {
         try
         {
@@ -222,7 +223,10 @@ public static class Runner
             if (solution.Slot is { } slot)
             {
                 // Begun on this thread: the allocation baseline is per thread.
-                state = TraceState.Begin(solution.Statements.Count, solution.Sites.Count, budget, depthLimit);
+                state = recordSteps is { } maxSteps
+                    ? TraceState.BeginStepping(solution.Statements.Count, solution.Sites.Count, budget, maxSteps,
+                        ValueCapture.Capture, depthLimit)
+                    : TraceState.Begin(solution.Statements.Count, solution.Sites.Count, budget, depthLimit);
                 outcome.State = state;
                 slot.SetValue(null, state);
             }
@@ -327,11 +331,14 @@ public static class Runner
             TotalStatements = hits.Sum(),
             TotalBytesAllocated = bytes.Sum(),
             MaxRecursionDepth = snapshot?.MaxDepth ?? 0,
+            CollectionsDuringRun = outcome.State?.CollectionsDuringRun ?? 0,
             LibraryCalls = libraryCalls,
             ElapsedMs = outcome.ElapsedMs,
             Errors = outcome.Errors,
             Output = output,
-            ReturnValue = outcome.Status == RunStatus.Completed ? Render(outcome.ReturnValue) : null
+            ReturnValue = outcome.Status == RunStatus.Completed ? Render(outcome.ReturnValue) : null,
+            RecordedSteps = outcome.State?.Steps ?? Array.Empty<RecordedStep>(),
+            StepsTruncated = outcome.State?.StepsTruncated ?? false
         };
     }
 
@@ -348,12 +355,44 @@ public static class Runner
 
     private static TraceResult CompileAndInvoke(string source, string entryMethod, bool instrument, long budget)
     {
-        var outcome = Compile(source, entryMethod, instrument);
-        if (!outcome.Success) return Failure(outcome.Status, outcome.Errors);
-
-        using var solution = outcome.Solution!;
-        return Invoke(solution, arguments: null, budget);
+        // Each attempt gets a fresh compile, so static state cannot carry over between them.
+        return Cleanest(() =>
+        {
+            var outcome = Compile(source, entryMethod, instrument);
+            if (!outcome.Success) return Failure(outcome.Status, outcome.Errors);
+            using var solution = outcome.Solution!;
+            return Invoke(solution, arguments: null, budget);
+        });
     }
+
+    /// <summary>Above this, an 8 KB phantom is under 1% of the reading and not worth repeating for.</summary>
+    public const long PhantomSensitiveBytes = 1_024 * 1_024;
+
+    private const int MaxAttempts = 5;
+
+    /// <summary>
+    /// Repeats a run that saw a garbage collection while allocating little, and keeps the
+    /// smallest reading. A collection set off by another thread can only ever add phantom
+    /// bytes, never remove real ones, so for a deterministic solution the smallest reading
+    /// is the faithful one. <paramref name="attempt"/> must build fresh inputs each time:
+    /// many solutions change their arguments in place.
+    /// </summary>
+    public static TraceResult Cleanest(Func<TraceResult> attempt)
+    {
+        var best = attempt();
+        for (int i = 1; i < MaxAttempts && NeedsAnotherAttempt(best); i++)
+        {
+            var next = attempt();
+            if (next.Status != best.Status) break;     // behaving differently is not noise
+            if (next.CollectionsDuringRun == 0 || next.TotalBytesAllocated < best.TotalBytesAllocated) best = next;
+        }
+        return best;
+    }
+
+    private static bool NeedsAnotherAttempt(TraceResult trace)
+        => trace.Status == RunStatus.Completed
+           && trace.CollectionsDuringRun > 0
+           && trace.TotalBytesAllocated < PhantomSensitiveBytes;
 
     /// <summary>
     /// Accepts "Method" or "Type.Method". Instance methods are measured too: LeetCode's C#

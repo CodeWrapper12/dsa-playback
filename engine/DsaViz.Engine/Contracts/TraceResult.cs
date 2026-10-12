@@ -19,7 +19,14 @@ public enum RunStatus
 }
 
 /// <summary>Where an instrumented statement sits in the original source.</summary>
-public sealed record StatementInfo(int Id, int Line, int Column, int Length, string Snippet);
+public sealed record StatementInfo(int Id, int Line, int Column, int Length, string Snippet)
+{
+    /// <summary>The method or local function the statement belongs to.</summary>
+    public string Method { get; init; } = "";
+
+    /// <summary>The variables a step-through build captures before this statement.</summary>
+    public IReadOnlyList<string> Variables { get; init; } = Array.Empty<string>();
+}
 
 /// <summary>
 /// The cost of one statement. Several statements can share a line, which is why this
@@ -85,7 +92,20 @@ public sealed record TraceResult
     /// <summary>The deepest the call stack went, counting only the solution's own methods.</summary>
     public int MaxRecursionDepth { get; init; }
 
+    /// <summary>
+    /// Garbage collections during the run. Non-zero means the byte counts may include a
+    /// phantom of up to about 8 KB from a collection another thread triggered.
+    /// </summary>
+    public int CollectionsDuringRun { get; init; }
+
     public IReadOnlyList<LibraryCall> LibraryCalls { get; init; } = Array.Empty<LibraryCall>();
+
+    /// <summary>Raw steps from a step-through build. Internal plumbing, never serialised.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public IReadOnlyList<DsaViz.Runtime.RecordedStep> RecordedSteps { get; init; } = Array.Empty<DsaViz.Runtime.RecordedStep>();
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool StepsTruncated { get; init; }
 
     public IReadOnlyList<string> Errors { get; init; } = Array.Empty<string>();
     public string Output { get; init; } = "";
@@ -97,7 +117,9 @@ public sealed record TraceResult
     /// honest caveats are about scope, not precision.
     /// </summary>
     public string MemoryModel =>
-        "Bytes allocated on the GC heap by the executing thread, measured exactly per statement. " +
-        "This counts allocation, not retention: a temporary that is immediately garbage still " +
-        "appears. Stack allocations and any work on other threads are not counted.";
+        "Bytes allocated on the GC heap by the executing thread, measured per statement. Exact, with one " +
+        "exception: a garbage collection set off by another thread can add up to about 8 KB to whichever " +
+        "statement is running, so a small run that sees a collection is repeated and its cleanest result kept. " +
+        "This counts allocation, not retention: a temporary that is immediately garbage still appears. " +
+        "Stack allocations and any work on other threads are not counted.";
 }

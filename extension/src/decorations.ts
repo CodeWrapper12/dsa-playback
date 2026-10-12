@@ -15,7 +15,10 @@ export class CostDecorations {
   private readonly costText: vscode.TextEditorDecorationType;
   private readonly heat: vscode.TextEditorDecorationType;
 
+  private readonly step: vscode.TextEditorDecorationType;
+
   private decoratedUri: string | undefined;
+  private decoratedLines = 0;
   private readonly watcher: vscode.Disposable;
 
   constructor() {
@@ -31,6 +34,18 @@ export class CostDecorations {
       isWholeLine: true,
       overviewRulerLane: vscode.OverviewRulerLane.Right,
       rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed
+    });
+
+    // The line a step-through is currently on, so scrubbing in the panel moves through
+    // the real file — the "debugging" half of the original request.
+    this.step = vscode.window.createTextEditorDecorationType({
+      isWholeLine: true,
+      backgroundColor: new vscode.ThemeColor("editor.stackFrameHighlightBackground"),
+      borderColor: new vscode.ThemeColor("editorInfo.foreground"),
+      borderStyle: "solid",
+      borderWidth: "0 0 0 3px",
+      overviewRulerColor: new vscode.ThemeColor("editorInfo.foreground"),
+      overviewRulerLane: vscode.OverviewRulerLane.Left
     });
 
     this.watcher = vscode.workspace.onDidChangeTextDocument(event => {
@@ -110,6 +125,7 @@ export class CostDecorations {
     editor.setDecorations(this.costText, costs);
     editor.setDecorations(this.heat, heat);
     this.decoratedUri = document.uri.toString();
+    this.decoratedLines = costs.length;
   }
 
   private hover(
@@ -169,17 +185,39 @@ export class CostDecorations {
     return markdown;
   }
 
+  /** Highlights the line a step-through is on and brings it into view without taking focus. */
+  async showStep(file: string, line: number): Promise<void> {
+    const document = await vscode.workspace.openTextDocument(file);
+    const editor = await vscode.window.showTextDocument(document, { preserveFocus: true, preview: false });
+    const index = Math.max(0, Math.min(line - 1, document.lineCount - 1));
+    const range = document.lineAt(index).range;
+    editor.setDecorations(this.step, [range]);
+    editor.revealRange(range, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+  }
+
+  clearStep(): void {
+    for (const editor of vscode.window.visibleTextEditors) editor.setDecorations(this.step, []);
+  }
+
   clear(): void {
     for (const editor of vscode.window.visibleTextEditors) {
       editor.setDecorations(this.costText, []);
       editor.setDecorations(this.heat, []);
+      editor.setDecorations(this.step, []);
     }
     this.decoratedUri = undefined;
+    this.decoratedLines = 0;
+  }
+
+  /** How many lines of a file currently carry cost annotations. For integration tests. */
+  linesDecoratedIn(uri: vscode.Uri): number {
+    return this.decoratedUri === uri.toString() ? this.decoratedLines : 0;
   }
 
   dispose(): void {
     this.watcher.dispose();
     this.costText.dispose();
     this.heat.dispose();
+    this.step.dispose();
   }
 }

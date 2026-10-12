@@ -3,6 +3,7 @@ using Xunit;
 
 namespace DsaViz.Engine.Tests;
 
+[Collection(ExactMemoryCollection.Name)]
 public class MeasurementTests
 {
     [Fact]

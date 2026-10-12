@@ -30,10 +30,17 @@ public static class Instrumenter
     public static SyntaxTree Parse(string source, string path = "solution.cs")
         => CSharpSyntaxTree.ParseText(source, path: path);
 
-    public static InstrumentedSource Instrument(SourceAnalysis analysis)
+    /// <param name="stepping">
+    /// Build for step-through rather than measurement: every statement records the
+    /// variables it can see, and library costs are not charged. The two builds are kept
+    /// apart so that recording variables can never change a measured number.
+    /// </param>
+    public static InstrumentedSource Instrument(SourceAnalysis analysis, bool stepping = false)
     {
         var tree = analysis.Tree;
-        var charged = analysis.CostCalls.Calls.Where(call => call.Charged).ToList();
+        var charged = stepping
+            ? new List<CostCall>()
+            : analysis.CostCalls.Calls.Where(call => call.Charged).ToList();
 
         var wrapsByTarget = charged
             .SelectMany(call => call.Wraps.Select(wrap => (wrap, call)))
@@ -46,12 +53,17 @@ public static class Instrumenter
                 wrapsByTarget[original].Select(pair =>
                     CostRewriter.Annotation(pair.wrap.Kind, pair.call.Site, pair.call.Cost.Kind))));
 
+        // The step build charges nothing, so it annotates the original root directly: the
+        // data-flow analysis it relies on only works on nodes of the tree the semantic
+        // model was built from.
+        if (stepping) marked = StepVariables.Annotate(tree.GetRoot(), analysis.Model);
+
         var annotated = new LineAnnotator(tree).Visit(marked)!;
         var normalised = new BraceNormalizer().Visit(annotated)!;
         var depthTracked = new DepthWrapper().Visit(normalised)!;
         var costed = new CostRewriter().Visit(depthTracked)!;
 
-        var rewriter = new TraceRewriter(tree.GetText());
+        var rewriter = new TraceRewriter(tree.GetText(), stepping);
         var instrumented = rewriter.Visit(costed)!;
 
         return new InstrumentedSource(

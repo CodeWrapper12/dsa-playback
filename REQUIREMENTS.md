@@ -1,97 +1,136 @@
 # DSA Visualizer
 
+## What was asked
+
+> "I want to build an application which helps me to visualise how it works based on my
+> code — like when debugging or running. And I want to know the time complexity and how
+> the calculation is happening, and based on the code how the memory is assigned and
+> allocated — how each declaration and operation affects these two things."
+
+Three requests in one sentence: **see the code run**, **see how the complexity is
+derived**, and **see how memory is allocated** — each attributed to the line that causes
+it. The first specification of this project captured the third only as "bytes per
+statement" and dropped the derivation entirely. This version restores all three.
+
 ## Problem
 
-When practising data-structures and algorithms, complexity arrives as a **verdict** — "this is O(n²)" — rather than a **derivation**. There is no way to see which line produced the cost, or how a particular declaration or operation affected time and memory.
-
-The consequence is that complexity stays memorised instead of predictable: the next unfamiliar problem still requires someone else to supply the answer. The need is to make the causal link between a written line and its cost directly visible, so complexity becomes something derived rather than recalled.
+When practising data structures and algorithms, complexity arrives as a **verdict** —
+"this is O(n²)" — rather than a **derivation**. There is no way to see which line
+produced the cost, why a one-line library call can be the most expensive line in the
+file, or how a particular declaration affects time and memory. Complexity stays
+memorised instead of predictable.
 
 ## Users
 
-A single user, practising DSA problems in C# inside VS Code, alongside an existing Claude chat workflow that supplies problems and reviews solutions. This tool does not replace that loop — it fills the gap in it, after a solution is written.
+One person practising DSA problems in C# inside VS Code, alongside a Claude chat that
+supplies problems in rotation — two pointers and sliding windows, binary search, trees and
+graphs, heaps, dynamic programming — and reviews solutions. This tool fills the gap in
+that loop, after a solution is written. Solutions are written in LeetCode's own C#
+template.
 
-## In scope (v1)
+## In scope
 
-- A **VS Code extension**, running entirely locally
-- **C# solutions**
-- **Both** complexity methods, shown side by side: empirical measurement and a static loop-structure estimate
-- Four views over one shared trace:
-  1. **Per-line cost table** — execution count and memory allocated, per line
-  2. **Growth curve** — operations vs input size, with the fitted complexity class
-  3. **Step-through** — local variable state at each executed step, navigable both directions
-  4. **Comparison** — two solutions plotted on one chart
+- A **VS Code extension**, entirely local, over a **C# engine** that instruments the
+  solution with Roslyn, runs it at a ladder of input sizes, and reports what happened.
+- **Time**: measured growth, a reading of the code, and the derivation between them.
+- **Space**: allocation, largest single allocation, call depth, and a reading of the code.
+- **Step-through**: a recorded run at a small size, one statement at a time.
+- **Comparison** of two solutions, on time and on memory.
 
 ## Non-goals
 
-Explicitly excluded, to keep v1 finishable:
-
-- **No VPS, hosting, or multi-user access.** Dropped deliberately; the extension runs locally, which also removes the arbitrary-code-execution risk that a public instance would have created.
-- **No Python engine in v1.** Python is phase 2, behind the same UI.
-- **No Java or C++.**
-- **No problem catalogue or scheduling.** Problems come from the existing Claude chat.
-- **No accounts, auth, or sharing.**
-- **Not a replacement for the debugger.** This measures cost; it does not do breakpoints or expression evaluation.
+- No hosting, accounts or sharing. It runs locally, which also means a solution is never
+  executed on anyone else's machine.
+- No Python, Java or C++. C# is the language practised in; the engine is C#-specific.
+- No problem catalogue. Problems come from the Claude chat.
+- Not a debugger. No breakpoints or expression evaluation — the step-through replays a
+  recorded run rather than pausing a live one.
 
 ## Acceptance criteria
 
-Each is objectively checkable by someone who was not part of this conversation.
+Each is objectively checkable by someone who was not part of the conversation that
+produced it, and each names the tests that check it.
 
-1. Given a C# file containing a solution method, a single VS Code command produces a report without the user leaving the editor. No generator method or boilerplate is required in the solution file.
-2. The report shows, for every executed **statement**, its execution count and the bytes it allocated, with the source snippet, line, and column. Per-line totals are also given, each carrying the number of statements it sums so a shared line is never reported ambiguously.
-2b. Inputs are supplied through a **configuration panel**, not code: the user selects an input shape (integer array, string, matrix, tree, linked list, graph), a generation strategy (random, sorted, reverse-sorted, all-duplicates, nearly-sorted), a value range, and the set of input sizes to measure. Changing the strategy and re-running produces different measured curves for the same solution.
-3. Running at n ∈ {10, 100, 1000} produces a chart of operation count against n.
-4. The report shows a complexity class fitted from measured data **and** a separately labelled static estimate derived from loop structure. Where the two disagree, both are shown and the disagreement is flagged rather than silently resolved.
-5. Step-through displays the values of declared locals at each executed step and can move forward and backward through them.
-6. Two solution files can be run over the same input sizes and their growth curves drawn on one chart.
-7. A solution containing an infinite loop is terminated by a timeout and reported as timed out — VS Code does not hang.
-8. **Instrumentation does not alter behaviour**: for a set of sample solutions, instrumented and uninstrumented runs produce identical output.
-
-Criterion 8 is the one that protects every other number in the report. If instrumentation changes what the program does, all measurements are describing a program that does not exist.
+1. **One command, real code.** A single VS Code command measures a solution with no
+   boilerplate in the file, including LeetCode's `public class Solution` template.
+   — `LeetCodeTests`; integration: *the measure command runs a LeetCode solution end to end*.
+2. **Per-statement cost.** Every executed statement reports how often it ran, the work
+   hidden in library calls it made, and the bytes it allocated, with its snippet, line
+   and column. Line totals declare how many statements they sum.
+   — `MeasurementTests`, `HiddenCostTests`.
+3. **Inputs configured, not coded.** Each parameter gets the arrangements that apply to
+   it (Skewed for a tree, never for an array); fixed values are editable; sizes are
+   optional and adapt to the algorithm. — `ParameterBinderTests`, `MeasurerTests`.
+4. **The practice topics' inputs.** Arrays, strings, lists, `char[][]` grids, LeetCode's
+   `TreeNode` and `ListNode`, graphs as `(int n, int[][] edges)` and as adjacency lists,
+   and scalars can all be generated. — `LeetCodeTests`, `InputGeneratorTests`.
+5. **Growth chart.** Operations against n, including 10, 100 and 1000, on linear and
+   log-log axes. — `MeasurerTests`; panel smoke tests.
+6. **Two readings of time.** A class fitted from measurement and a separately labelled
+   reading of the code; where they disagree, both are shown with an explanation.
+   — `MeasurerTests`, `StaticEstimatorTests`, `StaticRecursionTests`.
+7. **Hidden cost counted.** Library calls with known costs — `List.Contains` O(n),
+   `RemoveAt(0)` O(n) but `RemoveAt(Count − 1)` O(1), `string +=` O(n), sorting
+   O(n log n), heap operations O(log n), `new T[n]` O(n) — are charged as they execute,
+   so a trap and its fix measure as different classes. — `HiddenCostTests`.
+8. **The derivation.** Each statement carries its own growth class and formula, and a
+   summary names the statement that sets the method's class — bubble sort's comparison
+   runs ≈ 0.5·n² times. — `DerivationTests`.
+9. **Space.** Total allocation, largest single allocation and call depth are each
+   fitted; churn (O(n²) allocated, O(n) held) is told apart from data that is kept; a
+   reading of the code gives the worst-case answer. — `SpaceTests`, `StaticSpaceTests`.
+10. **Step-through.** Every variable that is in scope and definitely assigned is shown at
+    every step, forward and back. Arrays and strings are drawn with index variables as
+    pointers, grids with the current cell; the editor follows the current line.
+    — `StepThroughTests`; panel smoke tests; integration: *the step view records a run*.
+11. **Comparison.** Two solutions over the same sizes and data, on time or memory.
+    — `JobRunnerTests`; panel smoke tests.
+12. **Nothing hangs or crashes.** Infinite loops stop at the statement budget, a single
+    endless statement at the wall-clock limit, runaway recursion at the depth limit — each
+    with a readable explanation, and the editor never waits forever. — `RobustnessTests`,
+    `BudgetTests`; integration: *a wrong engine path is reported, not hung on*.
+13. **Instrumentation does not alter behaviour**, in the measurement build and the step
+    build alike. This protects every other number: a measurement of a changed program
+    describes code nobody wrote. — `DifferentialTests`, `BehaviourPreservedTests`,
+    `StepThroughTests`.
+14. **Errors point at the user's own lines**, not at the instrumented copy.
+    — `RobustnessTests`.
 
 ## Status
 
-Verified against the engine as of M2. UNVERIFIED is used where a criterion's data
-exists but the interface that presents it does not, so nothing is claimed that has
-not actually been demonstrated.
+All fourteen criteria are met. 251 engine tests, 19 extension tests including panel
+smoke tests that render real engine output and click every control, and 4 integration
+checks that drive the real command inside a running VS Code.
 
-| # | Criterion | Status |
-|---|-----------|--------|
-| 1 | Single VS Code command produces a report | Built; **unverified end to end** — see below |
-| 2 | Per-statement execution count and bytes | Met — annotated on the source file itself, with a hover breakdown |
-| 2b | Inputs configured rather than coded | Met — arrangement and sizes are set in the panel and re-measured in place |
-| 3 | Chart across input sizes | Met — linear and log-log axes |
-| 4 | Measured class and static estimate, disagreement flagged | Met |
-| 5 | Step-through of local state | Not attempted (M4) |
-| 6 | Two solutions compared on one chart | Met |
-| 7 | Infinite loop terminated, editor survives | Met |
-| 8 | Instrumentation does not alter behaviour | Met |
+Two of the safety nets were tested by breaking what they guard: disabling brace
+normalisation (M1) and corrupting a charging wrapper (Phase A) each made exactly the
+tests that should fail, fail.
 
-Criterion 1 is marked unverified deliberately. The engine's `--list-entries` and `--job`
-modes were exercised directly, the webview was rendered against real engine output and
-inspected, the annotation maths is unit tested, and both TypeScript and C# compile
-clean — but the command, the method picker, the panel and the editor annotations have
-not been run inside a VS Code Extension Host. Until someone presses F5 on the extension
-folder and uses it, that path is untested rather than working, and it is recorded as
-such. The editor annotations in particular use VS Code APIs that no test here
-exercises: only their formatting and shading maths is covered.
+## Known limitations
+
+Recorded so that nothing here is mistaken for more than it is.
+
+- **The reading of the code is a heuristic.** It recognises loops, two-pointer
+  amortisation, and five kinds of recursion — structural, memoised, visited-marking,
+  divide and conquer, branching. Outside those it says *unknown* with a reason rather
+  than guessing. A BFS is reported as amortised O(V + E) in words, not as a class.
+- **Library cost is charged only for known members**, and a lazy LINQ chain has no size
+  until it is enumerated, so work inside one is under-counted. The reading of the code
+  still flags it.
+- **Memory is exact on a single thread.** A garbage collection set off by *another*
+  thread can add up to about 8 KB to whichever statement is running. The engine runs
+  alone in its own process, where that does not occur; small runs that see a collection
+  are repeated and the cleanest reading kept, and the panel states the caveat.
+- **Allocation, not retention.** A temporary that is immediately garbage still counts.
+  "Likely peak" is inferred from allocation, largest single allocation and depth; the
+  engine does not observe live heap size directly.
+- **Limits.** Recursion stops at 20,000 frames, a step-through keeps 2,000 steps, a run
+  is stopped after 30 seconds, and a whole measurement after 120 by default.
+- **Distinct** is not offered for strings: a 26-letter alphabet cannot supply unique
+  characters beyond 26.
 
 ## Constraints
 
-- **C# is the primary language** — it is what the user writes DSA solutions in day to day. The C# engine is the product; Python is a possible later addition, not a near-term commitment.
-- Requires the .NET SDK on the machine (Roslyn is used to instrument and compile)
-- Local only — no network service
-- VS Code extension in TypeScript; tracing engine as a separate .NET process communicating over JSON
-- The webview UI is written as an ordinary web page so it can be developed in a browser and later hosted unchanged inside the extension
-
-## Open questions and assumptions
-
-Recorded rather than resolved, so the choices are visible and can be revisited.
-
-1. **RESOLVED — inputs come from a configuration panel, not from user-written code.** The engine generates inputs from a declared shape and strategy and binds them to the solution's parameters by type. Remaining sub-question: what happens when a signature is ambiguous or unsupported (for example a custom class parameter). Assumption: the tool reports the signature as unsupported and names the shapes it can bind, rather than guessing.
-2. **RESOLVED — memory attribution is exact, not approximate.** The earlier assumption that a garbage collection could shift bytes between statements was wrong: `GC.GetAllocatedBytesForCurrentThread()` is a monotonic cumulative counter of bytes *allocated*, which a collection cannot decrease. Measured against known object sizes it reports `new int[100]` as exactly 424 bytes and `new int[1000]` as exactly 4,024, identically across repeated runs.
-
-   The honest caveats are about scope rather than precision, and the engine ships them in `MemoryModel` for the UI to display verbatim: the figures count **allocation, not retention** (a temporary that is immediately garbage still costs), and cover **the executing thread's GC heap only** — stack allocations and any work the solution moves onto other threads are not counted.
-3. **RESOLVED — statements sharing a line are measured separately.** Cost is attributed per statement rather than per line, so `if (a[j] > a[j+1]) { swap; }` reports the comparison and the swap as two entries of 1,770 rather than one ambiguous total of 3,540. Line totals remain available as a summed convenience and declare how many statements they cover.
-
-4. **Step-through capture cost.** Serialising every local at every line is expensive at large n. Assumption: step-through runs at small n only (default ≤ 50) as a separate run from the measurement runs.
-5. **Static estimate scope.** Assumption: a loop-nesting and recursion-depth heuristic over the Roslyn syntax tree. It will report "unknown" where it cannot tell, rather than guessing — a confident wrong answer is worse than no answer in a tool being learned from.
+- Requires the .NET SDK (8 or later) on the machine.
+- Local only — no network service.
+- VS Code extension in TypeScript; engine as a separate .NET process speaking JSON.
