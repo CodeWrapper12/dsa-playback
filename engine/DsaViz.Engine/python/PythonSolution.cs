@@ -18,7 +18,14 @@ public sealed class PythonSolution
     /// </summary>
     public const long DefaultBudget = 1_000_000;
 
-    public const int DepthLimit = 10_000;
+    /// <summary>
+    /// Deep enough for every solution in the measured range — a skewed tree at n = 1,000
+    /// recurses 1,001 deep — and three times Python's own default of 1,000. Not C#'s 20,000:
+    /// with tracemalloc running, CPython's recursion costs grow with the square of the
+    /// depth (measured: 0.4 s at 2,000 deep, 5.6 s at 8,000), so a runaway recursion must be
+    /// stopped early to be stopped quickly — at 3,000 it takes one to two seconds.
+    /// </summary>
+    public const int DepthLimit = 3_000;
 
     private static readonly TimeSpan DescribeTimeout = TimeSpan.FromSeconds(20);
     public static readonly TimeSpan RunTimeout = TimeSpan.FromSeconds(30);

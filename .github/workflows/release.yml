@@ -21,7 +21,9 @@ permissions:
 jobs:
   package:
     strategy:
-      fail-fast: true
+      # Every platform runs to the end, so one failure never hides another. Publishing
+      # still waits for all four.
+      fail-fast: false
       matrix:
         include:
           - { os: windows-latest, target: win32-x64 }

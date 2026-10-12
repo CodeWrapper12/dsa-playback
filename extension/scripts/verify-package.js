@@ -29,7 +29,9 @@ check(`package is at most ${MAX_PACKAGE_MEGABYTES} MB`, megabytes <= MAX_PACKAGE
 const unpacked = fs.mkdtempSync(path.join(os.tmpdir(), "dsaviz-package-"));
 try {
   // A .vsix is a zip. Windows' own tar reads zips; elsewhere unzip is standard.
-  if (process.platform === "win32") execFileSync("tar", ["-xf", vsix, "-C", unpacked]);
+  // Windows' own tar (bsdtar) by full path: under Git Bash, plain "tar" is GNU tar, which
+  // reads the "D:" of a Windows path as a remote host.
+  if (process.platform === "win32") execFileSync(path.join(process.env.SystemRoot, "System32", "tar.exe"), ["-xf", vsix, "-C", unpacked]);
   else execFileSync("unzip", ["-q", vsix, "-d", unpacked]);
   const root = path.join(unpacked, "extension");
   const files = fs.readdirSync(root, { recursive: true, withFileTypes: true })

@@ -281,3 +281,6 @@ precompiled, so it is about twice as fast to start.
 - **Python's budget** is one million operations, a fiftieth of C#'s: traced Python runs
   about 220,000 operations a second, so it stops a runaway loop in about the same time.
 - **Python's space reading of the code** is not attempted. The measured peak is the answer.
+- **Python's recursion limit** is 3,000 calls, not C#'s 20,000. With tracemalloc running,
+  CPython's recursion slows with the square of its depth, so a runaway recursion has to
+  be stopped early to be stopped quickly.

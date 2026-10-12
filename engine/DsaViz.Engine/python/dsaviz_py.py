@@ -38,7 +38,7 @@ MIN_VERSION = (3, 9)
 # ---- limits ----------------------------------------------------------------------------
 
 DEFAULT_BUDGET = 1_000_000
-DEFAULT_DEPTH_LIMIT = 10_000
+DEFAULT_DEPTH_LIMIT = 3_000  # see PythonSolution.DepthLimit: tracemalloc makes depth quadratic
 MAX_ITEMS = 1_000
 MAX_OBJECTS = 300
 MAX_PATCH = 8
