@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { annotationText, formatBytes, formatCount, heatIntensity } from "./costFormat";
-import { StatementCost, TraceResult } from "./types";
+import { LibraryCall, StatementCost, TraceResult } from "./types";
 
 const HOT = "rgba(224, 108, 43, 0.85)";
 
@@ -54,7 +54,18 @@ export class CostDecorations {
       else statementsByLine.set(statement.line, [statement]);
     }
 
-    const maxHits = Math.max(1, ...detail.lines.map(line => line.hits));
+    const callsByLine = new Map<number, LibraryCall[]>();
+    for (const call of detail.libraryCalls ?? []) {
+      const bucket = callsByLine.get(call.line);
+      if (bucket) bucket.push(call);
+      else callsByLine.set(call.line, [call]);
+    }
+
+    // Shaded by total cost, not execution count: a List.Contains line that runs 1,000
+    // times and scans 499,500 elements is the hottest line in the file, and shading it by
+    // its 1,000 would make it look cheap — the exact misreading this tool exists to fix.
+    const costOf = (line: { hits: number; libraryWork?: number }) => line.hits + (line.libraryWork ?? 0);
+    const maxCost = Math.max(1, ...detail.lines.map(costOf));
 
     const costs: vscode.DecorationOptions[] = [];
     const heat: vscode.DecorationOptions[] = [];
@@ -69,11 +80,12 @@ export class CostDecorations {
 
       costs.push({
         range,
-        renderOptions: { after: { contentText: annotationText(line.hits, line.bytesAllocated) } },
-        hoverMessage: this.hover(line.line, statementsByLine.get(line.line) ?? [], measuredAt, detail)
+        renderOptions: { after: { contentText: annotationText(line.hits, line.bytesAllocated, line.libraryWork ?? 0) } },
+        hoverMessage: this.hover(line.line, statementsByLine.get(line.line) ?? [],
+          callsByLine.get(line.line) ?? [], measuredAt, detail)
       });
 
-      const intensity = heatIntensity(line.hits, maxHits);
+      const intensity = heatIntensity(costOf(line), maxCost);
       if (intensity > 0.05) {
         heat.push({
           range,
@@ -91,6 +103,7 @@ export class CostDecorations {
   private hover(
     line: number,
     statements: StatementCost[],
+    calls: LibraryCall[],
     measuredAt: number | null,
     detail: TraceResult): vscode.MarkdownString {
 
@@ -113,6 +126,16 @@ export class CostDecorations {
       const bytes = formatBytes(statements[0].bytesAllocated);
       if (bytes) markdown.appendMarkdown(`, ${bytes} allocated`);
       markdown.appendMarkdown("\n");
+    }
+
+    if (calls.length > 0) {
+      // Where the hidden work comes from, and why: the per-call cost times the calls.
+      markdown.appendMarkdown("\n**Library calls on this line**\n\n");
+      for (const call of calls) {
+        markdown.appendMarkdown(
+          `- \`${call.member}\` is ${call.cost} per call: ${formatCount(call.calls)} calls did ` +
+          `${formatCount(call.work)} units of work between them.\n`);
+      }
     }
 
     markdown.appendMarkdown(

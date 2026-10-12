@@ -1,17 +1,22 @@
 // Mirrors the engine's JSON contracts. Kept deliberately close to the C# records so a
 // change on either side shows up as a type error rather than an undefined at runtime.
 
-export type RunStatus = "Completed" | "BudgetExceeded" | "CompileError" | "RuntimeError";
+export type RunStatus =
+  | "Completed" | "BudgetExceeded" | "CompileError" | "RuntimeError"
+  | "RecursionLimitExceeded" | "TimedOut";
 
 export type ComplexityClass =
   | "Unknown" | "Constant" | "Logarithmic" | "Linear"
   | "Linearithmic" | "Quadratic" | "Cubic" | "Exponential";
 
 export type GenerationStrategy =
-  | "Random" | "Distinct" | "Sorted" | "ReverseSorted" | "AllDuplicates" | "NearlySorted";
+  | "Random" | "Distinct" | "Sorted" | "ReverseSorted" | "AllDuplicates" | "NearlySorted"
+  | "Balanced" | "Skewed" | "Path";
 
 export type InputShape =
-  | "IntArray" | "IntList" | "StringValue" | "Matrix" | "IntScalar" | "BoolScalar";
+  | "IntArray" | "IntList" | "StringValue" | "Matrix" | "IntScalar" | "BoolScalar"
+  | "LongScalar" | "CharArray" | "StringArray" | "NestedIntList" | "Tree" | "LinkedList"
+  | "EdgeList" | "CharMatrix";
 
 export interface InputSpec {
   shape: InputShape;
@@ -31,6 +36,18 @@ export interface StatementCost {
   snippet: string;
   hits: number;
   bytesAllocated: number;
+  /** Work inside library calls this statement made — the scan inside List.Contains. */
+  libraryWork: number;
+}
+
+export interface LibraryCall {
+  site: number;
+  line: number;
+  column: number;
+  member: string;
+  cost: string;
+  calls: number;
+  work: number;
 }
 
 export interface LineCost {
@@ -38,6 +55,7 @@ export interface LineCost {
   hits: number;
   bytesAllocated: number;
   statementCount: number;
+  libraryWork: number;
 }
 
 export interface TraceResult {
@@ -45,7 +63,10 @@ export interface TraceResult {
   statements: StatementCost[];
   lines: LineCost[];
   totalOperations: number;
+  totalStatements: number;
   totalBytesAllocated: number;
+  maxRecursionDepth: number;
+  libraryCalls: LibraryCall[];
   elapsedMs: number;
   errors: string[];
   output: string;
@@ -58,6 +79,9 @@ export interface SizePoint {
   operations: number;
   bytesAllocated: number;
   elapsedMs: number;
+  statements: number;
+  libraryWork: number;
+  maxRecursionDepth: number;
 }
 
 export interface ClassFit {
@@ -90,8 +114,16 @@ export interface MeasurementResult {
   disagreementNote: string | null;
   detail: TraceResult | null;
   inputs: InputSpec[];
+  parameters: ParameterDescription[];
   errors: string[];
   sizeNote: string | null;
+}
+
+export interface ParameterDescription {
+  name: string;
+  type: string;
+  shape: InputShape;
+  applicableStrategies: GenerationStrategy[];
 }
 
 export interface JobResponse {
@@ -111,6 +143,10 @@ export interface EntryPoint {
   name: string;
   parameters: EntryParameter[];
   measurable: boolean;
+  /** Why it cannot be measured, in a sentence the user can act on. */
+  reason: string | null;
+  /** "Solution.TwoSum" — unambiguous even when classes share a method name. */
+  qualified: string;
   signature: string;
 }
 
@@ -120,6 +156,7 @@ export interface JobRequest {
   sizes?: number[];
   budget?: number;
   inputs?: InputSpec[];
+  strategy?: GenerationStrategy;
   compareFile?: string;
   compareEntry?: string;
 }

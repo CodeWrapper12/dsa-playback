@@ -13,6 +13,13 @@ public sealed record JobRequest
     public long Budget { get; init; } = Runner.DefaultBudget;
     public InputSpec[]? Inputs { get; init; }
 
+    /// <summary>
+    /// An arrangement to apply to every collection input it suits, when no full input
+    /// configuration is given. The engine decides which inputs it applies to, so the
+    /// editor never has to reproduce the engine's inference to change one setting.
+    /// </summary>
+    public GenerationStrategy? Strategy { get; init; }
+
     /// <summary>A second solution to measure alongside the first, for comparison.</summary>
     public string? CompareFile { get; init; }
     public string? CompareEntry { get; init; }
@@ -26,8 +33,13 @@ public sealed record EntryPoint(
     string Name,
     IReadOnlyList<EntryParameter> Parameters)
 {
-    /// <summary>False when any parameter is a type the engine cannot generate.</summary>
-    public bool Measurable => Parameters.All(p => p.Supported);
+    /// <summary>Why it cannot be measured, in a sentence the user can act on. Null when it can.</summary>
+    public string? Reason { get; init; }
+
+    public bool Measurable => Reason is null;
+
+    /// <summary>"Solution.TwoSum" — unambiguous even when two classes share a method name.</summary>
+    public string Qualified => $"{DeclaringType}.{Name}";
 
     public string Signature =>
         $"{DeclaringType}.{Name}({string.Join(", ", Parameters.Select(p => $"{p.Type} {p.Name}"))})";

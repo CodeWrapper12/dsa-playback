@@ -46,24 +46,32 @@ public static class InMemoryCompiler
             }
         }
 
-        // The instrumented code calls into Tracer, so its assembly must be referenced.
-        items.Add(MetadataReference.CreateFromFile(typeof(Tracer).Assembly.Location));
+        // Instrumented code calls into TraceState, so its assembly must be referenced.
+        items.Add(MetadataReference.CreateFromFile(typeof(TraceState).Assembly.Location));
 
         return new ReferenceSet(items.ToImmutable(), skipped);
     }
 
-    public static CompilationOutcome Compile(SyntaxTree tree, string assemblyName)
-    {
-        var references = References.Value;
+    public static CSharpCompilation CreateCompilation(SyntaxTree tree, string assemblyName)
+        => CreateCompilation(new[] { tree }, assemblyName);
 
-        var compilation = CSharpCompilation.Create(
+    public static CSharpCompilation CreateCompilation(IEnumerable<SyntaxTree> trees, string assemblyName)
+        => CSharpCompilation.Create(
             assemblyName,
-            new[] { tree },
-            references.Items,
+            trees,
+            References.Value.Items,
             new CSharpCompilationOptions(
                 OutputKind.DynamicallyLinkedLibrary,
                 optimizationLevel: OptimizationLevel.Debug,
                 allowUnsafe: true));
+
+    public static CompilationOutcome Compile(SyntaxTree tree, string assemblyName)
+        => Compile(new[] { tree }, assemblyName);
+
+    public static CompilationOutcome Compile(IEnumerable<SyntaxTree> trees, string assemblyName)
+    {
+        var references = References.Value;
+        var compilation = CreateCompilation(trees, assemblyName);
 
         using var stream = new MemoryStream();
         var result = compilation.Emit(stream);

@@ -1,0 +1,341 @@
+using System.Collections;
+using System.Collections.Concurrent;
+using System.Globalization;
+using System.Linq.Expressions;
+using System.Reflection;
+
+namespace DsaViz.Runtime;
+
+/// <summary>
+/// Thrown when instrumented code executes more work than its budget allows. Every
+/// instrumented statement and every charged library call checks the budget, which
+/// gives a safe interrupt point without aborting a thread.
+/// </summary>
+public sealed class ExecutionBudgetExceededException : Exception
+{
+    public long Budget { get; }
+
+    public ExecutionBudgetExceededException(long budget)
+        : base($"Execution budget of {budget.ToString("N0", CultureInfo.InvariantCulture)} operations was exceeded.")
+        => Budget = budget;
+}
+
+/// <summary>
+/// Thrown before the real stack overflows. A genuine StackOverflowException cannot be
+/// caught in .NET and takes the whole process down with it, so a missing base case —
+/// one of the commonest mistakes while practising recursion — would otherwise end in a
+/// crash with no explanation.
+/// </summary>
+public sealed class RecursionLimitExceededException : Exception
+{
+    public int Limit { get; }
+
+    public RecursionLimitExceededException(int limit)
+        : base($"Recursion went deeper than {limit.ToString("N0", CultureInfo.InvariantCulture)} calls. " +
+               "That almost always means a missing or unreachable base case.")
+        => Limit = limit;
+}
+
+/// <summary>
+/// Thrown into a run that was abandoned after timing out, the next time it reaches an
+/// instrumented statement. A thread cannot be aborted from outside, but it can be made
+/// to unwind itself at the first opportunity.
+/// </summary>
+public sealed class RunAbandonedException : Exception
+{
+    public RunAbandonedException() : base("This run was abandoned after it exceeded its time limit.") { }
+}
+
+/// <summary>How a charged library call's cost grows with the size it is applied to.</summary>
+public static class CostKind
+{
+    /// <summary>Proportional to the size — List.Contains, string.IndexOf.</summary>
+    public const int Linear = 1;
+
+    /// <summary>n log n — sorting.</summary>
+    public const int Linearithmic = 2;
+
+    /// <summary>log n — heap and balanced-tree operations, binary search.</summary>
+    public const int Logarithmic = 3;
+
+    /// <summary>
+    /// Elements after an index have to move — List.Insert, List.RemoveAt. The cost is
+    /// size minus index, which is why RemoveAt(Count - 1) is O(1) and RemoveAt(0) is
+    /// O(n). Charging the full size for both would teach the wrong lesson.
+    /// </summary>
+    public const int Shift = 4;
+
+    /// <summary>The cost is an explicit count argument — Substring(start, length).</summary>
+    public const int CountArgument = 5;
+}
+
+public sealed record TraceSnapshot(
+    long[] Hits,
+    long[] Bytes,
+    long[] LibraryWork,
+    long[] SiteCalls,
+    long[] SiteUnits,
+    long TotalOperations,
+    int MaxDepth);
+
+/// <summary>
+/// Per-statement execution counts, allocation, library work and call depth for one run.
+///
+/// Instrumented code reaches its state through a static field in its own compiled
+/// assembly — <c>__DsaVizTrace.S</c> — rather than through a shared static or
+/// thread-local storage. That one choice settles two problems at once. It keeps the hot
+/// path to a plain static field load, where thread-local access was measured at roughly
+/// 40× the cost on macOS and made exponential solutions time out. And it isolates
+/// runs: a solution abandoned after a timeout can only ever reach its own assembly's
+/// slot, which is then revoked, so it cannot write into any other measurement.
+/// </summary>
+public sealed class TraceState
+{
+    public const int DefaultDepthLimit = 100_000;
+
+    /// <summary>The slot's value outside a run: every call is a no-op.</summary>
+    public static readonly TraceState Inactive = new(active: false, revoked: false);
+
+    /// <summary>The slot's value after a timeout: every call unwinds the abandoned thread.</summary>
+    public static readonly TraceState Revoked = new(active: false, revoked: true);
+
+    private bool _active;
+    private readonly bool _revoked;
+
+    private long[] _hits = Array.Empty<long>();
+    private long[] _bytes = Array.Empty<long>();
+    private long[] _libraryWork = Array.Empty<long>();
+    private long[] _siteCalls = Array.Empty<long>();
+    private long[] _siteUnits = Array.Empty<long>();
+    private long[] _shiftSize = Array.Empty<long>();
+    private int[] _callerStatement = Array.Empty<int>();
+    private long _budget;
+    private long _totalOperations;
+    private int _depth;
+    private int _maxDepth;
+    private int _depthLimit;
+
+    // Allocation is attributed to the *pending* statement — the one whose Hit came last —
+    // because Hit(n) runs before statement n executes. GetAllocatedBytesForCurrentThread
+    // is a monotonic count of bytes allocated, so a collection cannot shift bytes between
+    // statements, and the deltas are exact.
+    private long _allocatedAtLastHit;
+    private int _pendingStatement = -1;
+
+    private static readonly ConcurrentDictionary<Type, Func<object, int>?> CountReaders = new();
+
+    private TraceState(bool active, bool revoked)
+    {
+        _active = active;
+        _revoked = revoked;
+    }
+
+    /// <summary>Must be called on the thread that will run the solution: the allocation baseline is per thread.</summary>
+    public static TraceState Begin(int statementCount, int siteCount, long budget, int depthLimit = DefaultDepthLimit)
+    {
+        if (statementCount < 0) throw new ArgumentOutOfRangeException(nameof(statementCount));
+        if (siteCount < 0) throw new ArgumentOutOfRangeException(nameof(siteCount));
+        if (budget <= 0) throw new ArgumentOutOfRangeException(nameof(budget));
+        if (depthLimit <= 0) throw new ArgumentOutOfRangeException(nameof(depthLimit));
+
+        var state = new TraceState(active: true, revoked: false)
+        {
+            _hits = new long[statementCount],
+            _bytes = new long[statementCount],
+            _libraryWork = new long[statementCount],
+            _siteCalls = new long[siteCount],
+            _siteUnits = new long[siteCount],
+            _shiftSize = new long[siteCount],
+            _callerStatement = new int[depthLimit + 2],
+            _budget = budget,
+            _depthLimit = depthLimit
+        };
+
+        // Last, so the arrays allocated above are not charged to the solution.
+        state._allocatedAtLastHit = GC.GetAllocatedBytesForCurrentThread();
+        return state;
+    }
+
+    /// <summary>Called by instrumented code immediately before each statement.</summary>
+    public void Hit(int statementId)
+    {
+        if (!_active) { if (_revoked) throw new RunAbandonedException(); return; }
+
+        FlushAllocation();
+        _pendingStatement = statementId;
+
+        if ((uint)statementId < (uint)_hits.Length) _hits[statementId]++;
+        if (++_totalOperations > _budget) throw new ExecutionBudgetExceededException(_budget);
+    }
+
+    /// <summary>
+    /// Called on entry to every instrumented method. Remembers which statement in the
+    /// caller made the call, so that when the callee returns, anything the rest of that
+    /// statement allocates is charged to the caller rather than to the callee's last line.
+    /// </summary>
+    public void Enter()
+    {
+        if (!_active) { if (_revoked) throw new RunAbandonedException(); return; }
+
+        _callerStatement[_depth] = _pendingStatement;
+        _depth++;
+        if (_depth > _maxDepth) _maxDepth = _depth;
+        if (_depth > _depthLimit) throw new RecursionLimitExceededException(_depthLimit);
+    }
+
+    /// <summary>
+    /// Called from a finally block on every exit from an instrumented method. Never
+    /// throws, even when revoked: it runs during unwinding, and throwing here would
+    /// replace whatever exception is already in flight.
+    /// </summary>
+    public void Exit()
+    {
+        if (!_active || _depth <= 0) return;
+
+        FlushAllocation();
+        _depth--;
+        _pendingStatement = _callerStatement[_depth];
+    }
+
+    /// <summary>
+    /// Charges a library call by the size of the object it operates on, then hands that
+    /// object back unchanged so the original call proceeds exactly as written. Evaluating
+    /// the receiver once, here, is what keeps the rewrite free of double evaluation.
+    /// </summary>
+    public T Through<T>(T value, int site, int kind) where T : class?
+    {
+        if (!_active) { if (_revoked) throw new RunAbandonedException(); return value; }
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        long size = SizeOf(value);
+        ExcludeOwnAllocation(before);
+
+        if (kind == CostKind.Shift) _shiftSize[site] = size;   // charged once the index is known
+        else Charge(site, UnitsFor(kind, size));
+
+        return value;
+    }
+
+    /// <summary>
+    /// Charges by the size of <paramref name="measured"/> and returns <paramref name="value"/>.
+    /// Used for <c>text += piece</c>, where the cost is the length of what is already there
+    /// but the expression that must be preserved is the piece being added.
+    /// </summary>
+    public T Before<T>(object? measured, int site, int kind, T value)
+    {
+        if (!_active) { if (_revoked) throw new RunAbandonedException(); return value; }
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        long size = SizeOf(measured);
+        ExcludeOwnAllocation(before);
+
+        Charge(site, UnitsFor(kind, size));
+        return value;
+    }
+
+    /// <summary>Completes a Shift charge: the elements after the index are the ones that move.</summary>
+    public int ShiftIndex(int index, int site)
+    {
+        if (!_active) { if (_revoked) throw new RunAbandonedException(); return index; }
+        Charge(site, Math.Max(0, _shiftSize[site] - index));
+        return index;
+    }
+
+    /// <summary>Charges an explicit count — the length argument of Substring, GetRange, Copy.</summary>
+    public int Units(int count, int site)
+    {
+        if (!_active) { if (_revoked) throw new RunAbandonedException(); return count; }
+        Charge(site, Math.Max(0, count));
+        return count;
+    }
+
+    /// <summary>Flushes the allocation owed to the last statement. Call on the run's own thread.</summary>
+    public void End()
+    {
+        if (!_active) return;
+        FlushAllocation();
+        _pendingStatement = -1;
+        _active = false;
+    }
+
+    public TraceSnapshot Snapshot() => new(
+        (long[])_hits.Clone(), (long[])_bytes.Clone(), (long[])_libraryWork.Clone(),
+        (long[])_siteCalls.Clone(), (long[])_siteUnits.Clone(), _totalOperations, _maxDepth);
+
+    private void FlushAllocation()
+    {
+        long now = GC.GetAllocatedBytesForCurrentThread();
+        if ((uint)_pendingStatement < (uint)_bytes.Length)
+            _bytes[_pendingStatement] += now - _allocatedAtLastHit;
+        _allocatedAtLastHit = now;
+    }
+
+    /// <summary>
+    /// Anything the tracer itself allocated is moved out of the solution's account, so a
+    /// statement that calls a charged library method still reports exactly what it
+    /// allocated and nothing the measurement machinery did.
+    /// </summary>
+    private void ExcludeOwnAllocation(long before)
+        => _allocatedAtLastHit += GC.GetAllocatedBytesForCurrentThread() - before;
+
+    private void Charge(int site, long units)
+    {
+        _siteCalls[site]++;
+        _siteUnits[site] += units;
+
+        if ((uint)_pendingStatement < (uint)_libraryWork.Length)
+            _libraryWork[_pendingStatement] += units;
+
+        _totalOperations += units;
+        if (_totalOperations > _budget) throw new ExecutionBudgetExceededException(_budget);
+    }
+
+    private static long UnitsFor(int kind, long size) => kind switch
+    {
+        CostKind.Linearithmic => size <= 1 ? size : (long)Math.Ceiling(size * Math.Log2(size)),
+        CostKind.Logarithmic => size <= 1 ? 1 : (long)Math.Ceiling(Math.Log2(size + 1)),
+        _ => size
+    };
+
+    /// <summary>
+    /// The number of elements in whatever a library call is operating on. Common shapes
+    /// are matched directly; anything else exposing an int Count is read through a
+    /// delegate compiled once per type. A lazy sequence has no size without enumerating
+    /// it, which would change what the program does, so it reports zero.
+    /// </summary>
+    public static long SizeOf(object? value)
+    {
+        switch (value)
+        {
+            case null: return 0;
+            case string text: return text.Length;
+            case System.Text.StringBuilder builder: return builder.Length;
+            case Array array: return array.Length;
+            case ICollection collection: return collection.Count;
+        }
+
+        var reader = CountReaders.GetOrAdd(value.GetType(), BuildCountReader);
+        return reader is null ? 0 : reader(value);
+    }
+
+    private static Func<object, int>? BuildCountReader(Type type)
+    {
+        var property = type.GetProperty("Count", BindingFlags.Public | BindingFlags.Instance);
+        if (property is null || property.PropertyType != typeof(int) || property.GetIndexParameters().Length > 0)
+            return null;
+
+        try
+        {
+            var parameter = Expression.Parameter(typeof(object), "value");
+            var body = Expression.Property(Expression.Convert(parameter, type), property);
+            return Expression.Lambda<Func<object, int>>(body, parameter).Compile();
+        }
+        catch (Exception)
+        {
+            // A type the expression compiler cannot reach — non-public, for instance.
+            // Reflection still works; it is slower, and its boxing is excluded from the
+            // solution's allocation by the caller either way.
+            return value => (int)property.GetValue(value)!;
+        }
+    }
+}

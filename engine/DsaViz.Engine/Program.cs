@@ -1,25 +1,35 @@
+using System.Globalization;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using DsaViz.Engine;
 using DsaViz.Engine.Analysis;
 using DsaViz.Engine.Contracts;
-using DsaViz.Engine.Inputs;
 using DsaViz.Engine.Measurement;
 
 // Three modes:
 //   --list-entries   what could be measured in this file, read without compiling
 //   --job <path|->   a full measurement request as JSON, used by the editor extension
 //   (default)        a single run, or --measure for the flag-driven curve
-//
-// The extension drives the JSON mode: flags cannot express a full input configuration,
-// and the editor needs the source text back with the result so it can lay costs over
-// the code without reading the file a second time and risking a mismatch.
+
+// Every number the engine prints is formatted the same way on every machine. Without
+// this, a machine in an Indian locale prints 50 million as 5,00,00,000 in one message
+// while the editor prints 50,000,000 in the next.
+CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
+CultureInfo.DefaultThreadCurrentUICulture = CultureInfo.InvariantCulture;
+CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+
+// The result goes out on its own handle to stdout. Console.Out is pointed at nothing, so
+// neither a solution printing outside a measured run nor a thread abandoned after a
+// timeout can write into the JSON the editor is about to parse.
+var output = new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false)) { AutoFlush = true };
+Console.SetOut(TextWriter.Null);
 
 var json = new JsonSerializerOptions
 {
     WriteIndented = true,
-    // camelCase on the wire so the TypeScript side reads naturally; case-insensitive
-    // on the way in so a hand-written job file can use either.
+    // camelCase on the wire so the TypeScript side reads naturally; case-insensitive on
+    // the way in so a hand-written job file can use either.
     PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     PropertyNameCaseInsensitive = true,
     Converters = { new JsonStringEnumConverter() }
@@ -48,130 +58,75 @@ for (int i = 0; i < args.Length; i++)
             var parsed = new List<int>();
             foreach (var part in args[++i].Split(',', StringSplitOptions.RemoveEmptyEntries))
             {
-                if (!int.TryParse(part.Trim(), out int size) || size < 0)
-                {
-                    Console.Error.WriteLine($"--sizes must be non-negative integers; got '{part}'.");
-                    return 2;
-                }
+                if (!int.TryParse(part.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int size) || size < 0)
+                    return Fail($"--sizes must be non-negative integers; got '{part}'.");
                 parsed.Add(size);
             }
-            if (parsed.Count == 0) { Console.Error.WriteLine("--sizes needs at least one value."); return 2; }
+            if (parsed.Count == 0) return Fail("--sizes needs at least one value.");
             sizes = parsed.ToArray();
             break;
 
         case "--strategy" when i + 1 < args.Length:
-            if (!Enum.TryParse<GenerationStrategy>(args[++i], ignoreCase: true, out var chosenStrategy))
-            {
-                Console.Error.WriteLine(
-                    $"Unknown strategy. Options: {string.Join(", ", Enum.GetNames<GenerationStrategy>())}");
-                return 2;
-            }
-            strategy = chosenStrategy;
+            if (!Enum.TryParse<GenerationStrategy>(args[++i], ignoreCase: true, out var chosen))
+                return Fail($"Unknown strategy. Options: {string.Join(", ", Enum.GetNames<GenerationStrategy>())}");
+            strategy = chosen;
             break;
 
         case "--budget" when i + 1 < args.Length:
-            if (!long.TryParse(args[++i], out budget) || budget <= 0)
-            {
-                Console.Error.WriteLine("--budget must be a positive integer.");
-                return 2;
-            }
+            if (!long.TryParse(args[++i], NumberStyles.Integer, CultureInfo.InvariantCulture, out budget) || budget <= 0)
+                return Fail("--budget must be a positive integer.");
             break;
 
         default:
-            Console.Error.WriteLine($"Unrecognised argument: {args[i]}");
-            return 2;
+            return Fail($"Unrecognised argument: {args[i]}");
     }
 }
-
-// ---- JSON job -------------------------------------------------------------------
 
 if (jobPath is not null)
 {
     string requestText;
-    try
-    {
-        requestText = jobPath == "-" ? Console.In.ReadToEnd() : File.ReadAllText(jobPath);
-    }
-    catch (Exception ex)
-    {
-        Console.Error.WriteLine($"Could not read the job: {ex.Message}");
-        return 2;
-    }
+    try { requestText = jobPath == "-" ? Console.In.ReadToEnd() : File.ReadAllText(jobPath); }
+    catch (Exception ex) { return Fail($"Could not read the job: {ex.Message}"); }
 
     JobRequest? request;
-    try
-    {
-        request = JsonSerializer.Deserialize<JobRequest>(requestText, json);
-    }
-    catch (JsonException ex)
-    {
-        Console.Error.WriteLine($"The job was not valid JSON: {ex.Message}");
-        return 2;
-    }
+    try { request = JsonSerializer.Deserialize<JobRequest>(requestText, json); }
+    catch (JsonException ex) { return Fail($"The job was not valid JSON: {ex.Message}"); }
 
-    if (request is null) { Console.Error.WriteLine("The job was empty."); return 2; }
-
-    Console.WriteLine(JsonSerializer.Serialize(JobRunner.Run(request), json));
-    return 0;
+    if (request is null) return Fail("The job was empty.");
+    return Emit(JobRunner.Run(request), 0);
 }
-
-// ---- everything else needs a file -----------------------------------------------
 
 if (file is null)
-{
-    Console.Error.WriteLine(
+    return Fail(
         "Usage:\n" +
-        "  DsaViz.Engine --file <solution.cs> [--entry <Method>] [--measure]\n" +
-        "                [--sizes 10,100,1000] [--strategy Random|Distinct|Sorted|\n" +
-        "                ReverseSorted|AllDuplicates|NearlySorted] [--budget <n>]\n" +
+        "  DsaViz.Engine --file <solution.cs> [--entry <Method|Type.Method>] [--measure]\n" +
+        "                [--sizes 10,100,1000] [--strategy <" + string.Join("|", Enum.GetNames<GenerationStrategy>()) + ">]\n" +
+        "                [--budget <n>]\n" +
         "  DsaViz.Engine --file <solution.cs> --list-entries\n" +
         "  DsaViz.Engine --job <request.json|->");
-    return 2;
-}
 
-if (!File.Exists(file)) { Console.Error.WriteLine($"File not found: {file}"); return 2; }
-
+if (!File.Exists(file)) return Fail($"File not found: {file}");
 string source = File.ReadAllText(file);
 
-if (listEntries)
-{
-    Console.WriteLine(JsonSerializer.Serialize(new { Entries = EntryPointScanner.Scan(source) }, json));
-    return 0;
-}
+if (listEntries) return Emit(new { Entries = EntryPointScanner.Scan(source) }, 0);
 
 if (!measure)
 {
     var single = Runner.Run(source, entry, budget);
-    Console.WriteLine(JsonSerializer.Serialize(single, json));
-    return single.Status == RunStatus.Completed ? 0 : 1;
+    return Emit(single, single.Status == RunStatus.Completed ? 0 : 1);
 }
 
-var result = Measurer.Measure(source, entry, ApplyStrategy(source, entry, strategy), sizes, budget);
-Console.WriteLine(JsonSerializer.Serialize(result, json));
-return result.Status == RunStatus.Completed ? 0 : 1;
+var result = Measurer.Measure(source, entry, inputs: null, sizes, budget, strategy);
+return Emit(result, result.Status == RunStatus.Completed ? 0 : 1);
 
-// ---- helpers ---------------------------------------------------------------------
-
-IReadOnlyList<InputSpec>? ApplyStrategy(string text, string entryName, GenerationStrategy? chosen)
+int Emit(object value, int exitCode)
 {
-    if (chosen is not { } value) return null;
+    output.WriteLine(JsonSerializer.Serialize(value, json));
+    return exitCode;
+}
 
-    var compiled = Runner.Compile(text, entryName, instrument: false);
-    if (!compiled.Success) return null;
-
-    using var probe = compiled.Solution!;
-    try
-    {
-        return ParameterBinder.Infer(probe.Parameters)
-            .Select(spec => spec.Shape is InputShape.IntScalar or InputShape.BoolScalar
-                ? spec
-                : spec with { Strategy = value })
-            .ToList();
-    }
-    catch (UnsupportedSignatureException)
-    {
-        // Measurer reports this properly with the full explanation; returning null
-        // here lets it infer and fail with that message rather than a partial one.
-        return null;
-    }
+int Fail(string message)
+{
+    Console.Error.WriteLine(message);
+    return 2;
 }

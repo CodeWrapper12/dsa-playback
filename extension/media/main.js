@@ -7,14 +7,17 @@
   const vscode = typeof acquireVsCodeApi === "function" ? acquireVsCodeApi() : null;
   const app = document.getElementById("app");
 
-  const STRATEGIES = [
-    ["Random", "Random values from a bounded range — repeats are likely"],
-    ["Distinct", "Every value unique — the worst case for duplicate-sensitive code"],
-    ["Sorted", "Ascending"],
-    ["ReverseSorted", "Descending"],
-    ["AllDuplicates", "Every value identical"],
-    ["NearlySorted", "Ascending with a few positions swapped"]
-  ];
+  const STRATEGY_HELP = {
+    Random: "Random values from a bounded range — repeats are likely",
+    Distinct: "Every value unique — the worst case for code that stops at a duplicate",
+    Sorted: "Ascending",
+    ReverseSorted: "Descending",
+    AllDuplicates: "Every value identical (for a grid: all land, one giant island)",
+    NearlySorted: "Ascending with a few positions swapped",
+    Balanced: "Perfectly balanced tree — height log n",
+    Skewed: "Every node has only a right child — height n, the worst case for recursion depth",
+    Path: "Nodes joined in a single line — the deepest possible traversal"
+  };
 
   const CLASS_LABEL = {
     Constant: "O(1)", Logarithmic: "O(log n)", Linear: "O(n)",
@@ -125,25 +128,44 @@
   }
 
   function controls(primary) {
-    const current = (primary.inputs.find(i => i.shape !== "IntScalar" && i.shape !== "BoolScalar")
-      || {}).strategy || "Random";
+    const params = primary.parameters || [];
     const sizes = primary.points.map(p => p.size).join(", ");
 
-    const hasCollection = primary.inputs.some(
-      i => i.shape !== "IntScalar" && i.shape !== "BoolScalar");
+    const inputs = primary.inputs.map((spec, index) => {
+      const param = params[index] || { name: "argument " + (index + 1), type: spec.shape, applicableStrategies: [] };
+      const label = `<label for="in-${index}">${escapeHtml(param.name)} <span class="type">${escapeHtml(param.type)}</span></label>`;
+
+      if (param.applicableStrategies.length > 0) {
+        // Only arrangements that make sense for this parameter: Skewed for a tree,
+        // never for an array. The engine decides, so the two can never disagree.
+        return `<div class="control">${label}
+          <select id="in-${index}" data-index="${index}" data-kind="strategy">
+            ${param.applicableStrategies.map(value =>
+              `<option value="${value}" ${value === spec.strategy ? "selected" : ""} title="${escapeHtml(STRATEGY_HELP[value] || "")}">${value}</option>`
+            ).join("")}
+          </select></div>`;
+      }
+
+      if (spec.shape === "BoolScalar") {
+        return `<div class="control">${label}
+          <select id="in-${index}" data-index="${index}" data-kind="bool">
+            <option value="0" ${spec.fixedValue === 0 ? "selected" : ""}>false</option>
+            <option value="1" ${spec.fixedValue !== 0 ? "selected" : ""}>true</option>
+          </select></div>`;
+      }
+
+      return `<div class="control">${label}
+        <div class="scalar">
+          <label class="inline"><input type="checkbox" data-index="${index}" data-kind="scales" ${spec.scalesWithSize ? "checked" : ""}> grows with n</label>
+          <input type="number" id="in-${index}" data-index="${index}" data-kind="value" value="${spec.fixedValue}" ${spec.scalesWithSize ? "disabled" : ""}>
+        </div></div>`;
+    }).join("");
 
     return `<div class="controls">
-      <div class="control">
-        <label for="strategy">Input arrangement</label>
-        <select id="strategy" ${hasCollection ? "" : "disabled"}>
-          ${STRATEGIES.map(([value, description]) =>
-            `<option value="${value}" ${value === current ? "selected" : ""} title="${escapeHtml(description)}">${value}</option>`
-          ).join("")}
-        </select>
-      </div>
+      ${inputs}
       <div class="control">
         <label for="sizes">Sizes</label>
-        <input type="text" id="sizes" value="${escapeHtml(sizes)}">
+        <input type="text" id="sizes" value="${escapeHtml(sizes)}" title="Leave unchanged to let the engine choose and adapt">
       </div>
       <button id="rerun">Re-measure</button>
     </div>`;
@@ -156,46 +178,68 @@
     if (!detail) return '<p class="placeholder">No per-statement detail was captured.</p>';
 
     const largest = primary.points.length ? primary.points[primary.points.length - 1].size : null;
-    const ranked = [...detail.statements].sort((a, b) => b.hits - a.hits);
-    const maxHits = Math.max(1, ...ranked.map(s => s.hits));
+    const cost = s => s.hits + (s.libraryWork || 0);
+
+    // Ranked by total cost, not by how often a statement ran. Ranked by runs, a
+    // List.Contains line that runs 1,000 times sits below a loop header that runs 1,001 —
+    // and its 499,500 elements of scanning, the real cost, would be invisible.
+    const ranked = [...detail.statements].sort((a, b) => cost(b) - cost(a));
+    const maxCost = Math.max(1, ...ranked.map(cost));
     const shown = ranked.slice(0, 40);
+    const anyLibraryWork = ranked.some(s => s.libraryWork > 0);
 
     const rows = shown.map((statement, index) => {
-      // Logarithmic, so a statement that ran once stays visible beside one that ran
-      // half a million times. On a linear scale everything but the top row vanishes.
-      const width = Math.max(2, Math.round(110 * Math.log(statement.hits + 1) / Math.log(maxHits + 1)));
+      // Logarithmic, so a statement that ran once stays visible beside one that cost
+      // half a million. On a linear scale everything but the top row vanishes.
+      const width = Math.max(2, Math.round(110 * Math.log(cost(statement) + 1) / Math.log(maxCost + 1)));
       return `<tr class="hot-row" data-line="${statement.line}" title="Go to line ${statement.line}">
         <td class="rank">${index + 1}</td>
         <td class="hot-bar"><span class="bar" style="width:${width}px"></span></td>
         <td>${num(statement.hits)}</td>
+        ${anyLibraryWork ? `<td class="${statement.libraryWork ? "hidden-work" : "muted"}">${statement.libraryWork ? "+" + num(statement.libraryWork) : "—"}</td>` : ""}
         <td class="${statement.bytesAllocated ? "" : "muted"}">${bytes(statement.bytesAllocated)}</td>
         <td class="snippet-cell">${escapeHtml(statement.snippet)}</td>
         <td class="muted">${statement.line}:${statement.column}</td>
       </tr>`;
     }).join("");
 
+    const calls = (detail.libraryCalls || []).slice().sort((a, b) => b.work - a.work);
+    const library = calls.length === 0 ? "" : `
+      <h3>Library calls doing hidden work</h3>
+      <p class="footnote">Each of these is one statement on the page and a loop inside the library.
+        The work is the number of elements it touched in total.</p>
+      <table class="hot">
+        <thead><tr><th class="snippet-cell">call</th><th>cost per call</th><th>calls</th><th>work</th><th>at</th></tr></thead>
+        <tbody>${calls.map(call => `<tr class="hot-row" data-line="${call.line}" title="Go to line ${call.line}">
+          <td class="snippet-cell">${escapeHtml(call.member)}</td>
+          <td>${escapeHtml(call.cost)}</td>
+          <td>${num(call.calls)}</td>
+          <td class="hidden-work">${num(call.work)}</td>
+          <td class="muted">${call.line}:${call.column}</td>
+        </tr>`).join("")}</tbody>
+      </table>`;
+
     return `<div class="banner info"><strong>The costs are on your code</strong>
         Every executed line in ${escapeHtml(response.label || "the file")} is annotated in the
-        editor with its execution count and the memory it allocated, and shaded by how hot it is.
-        Hover a line for the per-statement breakdown. Editing the file clears the annotations,
-        because once a line moves the numbers beside it are no longer about that line.
-        Run <em>DSA Visualizer: Clear Cost Annotations</em> to remove them by hand.</div>
+        editor with how often it ran, any work hidden inside library calls it made, and the
+        memory it allocated. Hover a line for the breakdown. Editing the file clears the
+        annotations, because once a line moves the numbers beside it are no longer about that line.</div>
 
       <table class="hot">
         <thead><tr>
           <th class="rank">#</th><th></th><th>executions</th>
+          ${anyLibraryWork ? "<th>library work</th>" : ""}
           <th>memory</th><th class="snippet-cell">statement</th><th>at</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
-
+      ${library}
       <div class="footnote">
-        Measured at n = ${largest === null ? "\u2014" : num(largest)},
-        ${num(detail.totalOperations)} statements executed in total,
-        ${bytes(detail.totalBytesAllocated)} allocated.
-        ${ranked.length > shown.length
-          ? `Showing the ${shown.length} most expensive of ${num(ranked.length)} executed statements. `
-          : ""}
+        Measured at n = ${largest === null ? "\u2014" : num(largest)}:
+        ${num(detail.totalStatements)} statements and ${num(detail.totalOperations - detail.totalStatements)}
+        units of library work, ${bytes(detail.totalBytesAllocated)} allocated,
+        call depth ${num(detail.maxRecursionDepth)}.
+        ${ranked.length > shown.length ? `Showing the ${shown.length} costliest of ${num(ranked.length)} executed statements. ` : ""}
         Click a row to jump to it.
         <br>${escapeHtml(detail.memoryModel)}
       </div>`;
@@ -247,7 +291,7 @@
     parts.push(`<line class="axis" x1="${left}" y1="${top + plotHeight}" x2="${left + plotWidth}" y2="${top + plotHeight}"/>`);
     parts.push(`<line class="axis" x1="${left}" y1="${top}" x2="${left}" y2="${top + plotHeight}"/>`);
     parts.push(`<text class="axis-title" x="${left + plotWidth / 2}" y="${height - 8}" text-anchor="middle">input size n</text>`);
-    parts.push(`<text class="axis-title" x="14" y="${top + plotHeight / 2}" text-anchor="middle" transform="rotate(-90 14 ${top + plotHeight / 2})">statements executed</text>`);
+    parts.push(`<text class="axis-title" x="14" y="${top + plotHeight / 2}" text-anchor="middle" transform="rotate(-90 14 ${top + plotHeight / 2})">operations</text>`);
 
     for (const one of series) {
       if (one.fit) {
@@ -263,7 +307,7 @@
 
       for (const point of one.points) {
         parts.push(`<circle cx="${px(point.size)}" cy="${py(point.operations)}" r="3.5" fill="${one.color}">
-          <title>n=${num(point.size)} — ${num(point.operations)} statements, ${bytes(point.bytesAllocated)}</title>
+          <title>n=${num(point.size)} — ${num(point.operations)} operations, ${bytes(point.bytesAllocated)}</title>
         </circle>`);
       }
     }
@@ -379,28 +423,38 @@
   }
 
   function pointsTable(entries) {
-    const sizes = [...new Set(entries.flatMap(e => e.result.points.map(p => p.size)))]
-      .sort((a, b) => a - b);
+    const sizes = [...new Set(entries.flatMap(e => e.result.points.map(p => p.size)))].sort((a, b) => a - b);
 
-    const head = entries.length > 1
-      ? entries.map(e => `<th>${escapeHtml(e.label || "")}</th>`).join("")
-      : "<th>statements</th><th>memory</th>";
+    if (entries.length > 1) {
+      const head = entries.map(e => `<th>${escapeHtml(e.label || "")}</th>`).join("");
+      const rows = sizes.map(size => `<tr><td>n = ${num(size)}</td>${entries.map(e => {
+        const point = e.result.points.find(p => p.size === size);
+        return `<td>${point ? num(point.operations) : "\u2014"}</td>`;
+      }).join("")}</tr>`).join("");
+      return `<table><thead><tr><th>size</th>${head}</tr></thead><tbody>${rows}</tbody></table>`;
+    }
+
+    // Operations split into what is on the page (statements) and what is hidden inside
+    // library calls, plus the stack depth reached — the raw material for both time and
+    // space complexity.
+    const points = entries[0].result.points;
+    const hasLibrary = points.some(p => p.libraryWork > 0);
+    const hasDepth = points.some(p => p.maxRecursionDepth > 1);
 
     const rows = sizes.map(size => {
-      const cells = entries.length > 1
-        ? entries.map(e => {
-            const point = e.result.points.find(p => p.size === size);
-            return `<td>${point ? num(point.operations) : "—"}</td>`;
-          }).join("")
-        : (() => {
-            const point = entries[0].result.points.find(p => p.size === size);
-            return `<td>${point ? num(point.operations) : "—"}</td>
-                    <td>${point ? bytes(point.bytesAllocated) : "—"}</td>`;
-          })();
-      return `<tr><td>n = ${num(size)}</td>${cells}</tr>`;
+      const p = points.find(point => point.size === size);
+      if (!p) return "";
+      return `<tr><td>n = ${num(size)}</td>
+        <td>${num(p.operations)}</td>
+        ${hasLibrary ? `<td>${num(p.statements)}</td><td class="hidden-work">${num(p.libraryWork)}</td>` : ""}
+        ${hasDepth ? `<td>${num(p.maxRecursionDepth)}</td>` : ""}
+        <td>${bytes(p.bytesAllocated)}</td></tr>`;
     }).join("");
 
-    return `<table><thead><tr><th>size</th>${head}</tr></thead><tbody>${rows}</tbody></table>`;
+    return `<table><thead><tr><th>size</th><th>operations</th>
+      ${hasLibrary ? "<th>statements</th><th>library work</th>" : ""}
+      ${hasDepth ? "<th>call depth</th>" : ""}
+      <th>memory allocated</th></tr></thead><tbody>${rows}</tbody></table>`;
   }
 
   // ---- events ------------------------------------------------------------------
@@ -424,15 +478,42 @@
     const toggle = document.getElementById("toggle-log");
     if (toggle) toggle.addEventListener("click", () => { state.log = !state.log; render(); });
 
+    const sizesField = document.getElementById("sizes");
+    if (sizesField) sizesField.addEventListener("input", () => { state.sizesEdited = true; });
+
+    app.querySelectorAll('input[data-kind="scales"]').forEach(box =>
+      box.addEventListener("change", () => {
+        const value = app.querySelector(`input[data-kind="value"][data-index="${box.dataset.index}"]`);
+        if (value) value.disabled = box.checked;
+      }));
+
     const rerun = document.getElementById("rerun");
     if (rerun) rerun.addEventListener("click", () => {
-      const strategy = document.getElementById("strategy").value;
-      const sizes = document.getElementById("sizes").value
-        .split(",").map(part => parseInt(part.trim(), 10)).filter(n => Number.isFinite(n) && n > 0);
+      // Start from the engine's own resolved inputs and apply only what the user changed,
+      // so nothing here has to reproduce the engine's rules for inferring them.
+      const inputs = state.response.primary.inputs.map(spec => ({ ...spec }));
+      app.querySelectorAll("[data-kind]").forEach(control => {
+        const spec = inputs[Number(control.dataset.index)];
+        if (!spec) return;
+        switch (control.dataset.kind) {
+          case "strategy": spec.strategy = control.value; break;
+          case "bool": spec.fixedValue = Number(control.value); break;
+          case "scales": spec.scalesWithSize = control.checked; break;
+          case "value": spec.fixedValue = parseInt(control.value, 10) || 0; break;
+        }
+      });
+
+      // Sizes are only sent when typed: left alone, the engine keeps choosing them,
+      // including dropping to small sizes for an expensive algorithm.
+      let sizes;
+      if (state.sizesEdited) {
+        sizes = sizesField.value.split(",").map(part => parseInt(part.trim(), 10)).filter(n => Number.isFinite(n) && n >= 0);
+        if (sizes.length === 0) sizes = undefined;
+      }
 
       if (!vscode) return;
       app.innerHTML = '<p class="placeholder">Measuring…</p>';
-      vscode.postMessage({ type: "rerun", strategy, sizes: sizes.length ? sizes : undefined });
+      vscode.postMessage({ type: "rerun", inputs, sizes });
     });
   }
 
@@ -440,7 +521,7 @@
     const message = event.data;
     if (message.type === "loading") { state.response = null; render(); }
     else if (message.type === "result") {
-      state = { ...state, response: message.response, request: message.request, expanded: new Set() };
+      state = { ...state, response: message.response, request: message.request, expanded: new Set(), sizesEdited: false };
       render();
     } else if (message.type === "error") {
       app.innerHTML = banner("The engine could not be run", escapeHtml(message.message), true);

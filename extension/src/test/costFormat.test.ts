@@ -24,6 +24,11 @@ test("an allocating statement shows both figures", () => {
   assert.equal(annotationText(3, 32), "3×   ·   32 B");
 });
 
+test("library work is shown beside the count, not folded into it", () => {
+  assert.equal(annotationText(1000, 0, 499500), "1,000×   ·   +499,500 library work");
+  assert.equal(annotationText(3, 32, 10), "3×   ·   +10 library work   ·   32 B");
+});
+
 test("heat is logarithmic so a cold line stays visible beside a hot one", () => {
   const hottest = heatIntensity(749625, 749625);
   const coldest = heatIntensity(1, 749625);

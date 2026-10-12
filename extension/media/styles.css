@@ -205,3 +205,24 @@ table.hot .snippet-cell {
 table.hot .muted { color: var(--vscode-descriptionForeground); }
 tr.hot-row { cursor: pointer; }
 tr.hot-row:hover { background: var(--vscode-list-hoverBackground); }
+
+/* ---- per-input controls and hidden work ---------------------------------------- */
+
+.control label .type {
+  text-transform: none; letter-spacing: 0;
+  font-family: var(--vscode-editor-font-family);
+  color: var(--vscode-descriptionForeground); opacity: 0.8;
+}
+.scalar { display: flex; align-items: center; gap: 8px; }
+.scalar input[type="number"] {
+  width: 80px;
+  background: var(--vscode-input-background); color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border, transparent); padding: 4px 6px; border-radius: 3px;
+}
+.scalar input[type="number"]:disabled { opacity: 0.45; }
+label.inline {
+  text-transform: none; letter-spacing: 0; font-size: 0.92em;
+  display: flex; align-items: center; gap: 4px; color: var(--vscode-foreground);
+}
+td.hidden-work { color: var(--hot); font-weight: 600; }
+h3 { font-size: 1em; margin: 22px 0 4px; font-weight: 600; }

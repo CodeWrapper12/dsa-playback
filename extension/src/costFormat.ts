@@ -14,12 +14,20 @@ export function formatBytes(value: number): string {
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/** The text that sits at the end of an annotated line. */
-export function annotationText(hits: number, bytesAllocated: number): string {
+/**
+ * The text that sits at the end of an annotated line: how often it ran, the work done
+ * inside library calls it made, and what it allocated.
+ *
+ * The library work is shown separately rather than folded into the count. "1,000×" next
+ * to a List.Contains line is true and misleading; "1,000×  ·  +499,500 library work" is
+ * the whole story, and the gap between the two numbers is the lesson.
+ */
+export function annotationText(hits: number, bytesAllocated: number, libraryWork = 0): string {
+  const parts = [`${formatCount(hits)}×`];
+  if (libraryWork > 0) parts.push(`+${formatCount(libraryWork)} library work`);
   const bytes = formatBytes(bytesAllocated);
-  return bytes
-    ? `${formatCount(hits)}×   ·   ${bytes}`
-    : `${formatCount(hits)}×`;
+  if (bytes) parts.push(bytes);
+  return parts.join("   ·   ");
 }
 
 /**

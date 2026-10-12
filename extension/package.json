@@ -41,8 +41,14 @@
         "dsaViz.sizes": {
           "type": "array",
           "items": { "type": "integer" },
-          "default": [10, 25, 50, 100, 250, 500, 1000],
-          "description": "Input sizes to measure. Smaller sets run faster; wider spreads separate similar complexity classes more reliably."
+          "default": [],
+          "markdownDescription": "Input sizes to measure. Leave empty to let the engine choose: it starts at `10, 25, 50, 100, 250, 500, 1000` and drops to small sizes on its own when an algorithm is too expensive for them — which is the only way an exponential solution gets a curve at all."
+        },
+        "dsaViz.timeoutSeconds": {
+          "type": "integer",
+          "default": 120,
+          "minimum": 5,
+          "description": "Longest a whole measurement may take before the engine is stopped. This is what guarantees the editor never waits forever."
         },
         "dsaViz.budget": {
           "type": "integer",

@@ -25,6 +25,13 @@ public sealed record MeasurementResult
     /// <summary>The input configuration actually used, inferred or supplied.</summary>
     public required IReadOnlyList<InputSpec> Inputs { get; init; }
 
+    /// <summary>
+    /// Each parameter as the engine understands it, with the arrangements that apply to it,
+    /// so the editor offers only choices that make sense — Skewed for a tree, never for an array.
+    /// </summary>
+    public IReadOnlyList<DsaViz.Engine.Inputs.ParameterDescription> Parameters { get; init; }
+        = Array.Empty<DsaViz.Engine.Inputs.ParameterDescription>();
+
     public IReadOnlyList<string> Errors { get; init; } = Array.Empty<string>();
 
     /// <summary>Set when measurement stopped early because a size exceeded the budget.</summary>

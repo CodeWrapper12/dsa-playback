@@ -28,7 +28,12 @@ public static class ComplexityNames
 }
 
 /// <summary>One measured point on the growth curve.</summary>
-public sealed record SizePoint(int Size, long Operations, long BytesAllocated, double ElapsedMs);
+public sealed record SizePoint(int Size, long Operations, long BytesAllocated, double ElapsedMs)
+{
+    public long Statements { get; init; }
+    public long LibraryWork { get; init; }
+    public int MaxRecursionDepth { get; init; }
+}
 
 public sealed record ClassFit(ComplexityClass Class, double RSquared, double Coefficient);
 

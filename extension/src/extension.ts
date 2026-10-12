@@ -1,8 +1,8 @@
 import * as path from "path";
 import * as vscode from "vscode";
 import { CostDecorations } from "./decorations";
-import { EngineNotFoundError, listEntryPoints, measure } from "./engine";
-import { EntryPoint, GenerationStrategy, JobRequest, JobResponse } from "./types";
+import { EngineCancelledError, EngineNotFoundError, listEntryPoints, measure } from "./engine";
+import { EntryPoint, InputSpec, JobRequest, JobResponse } from "./types";
 
 let decorations: CostDecorations;
 
@@ -45,14 +45,19 @@ async function start(context: vscode.ExtensionContext, withComparison: boolean) 
       if (!picked?.length) return;
 
       compareFile = picked[0].fsPath;
-      compareEntry = (await pickEntryPoint(compareFile, "Which method in the second file?"))?.name;
+      compareEntry = (await pickEntryPoint(compareFile, "Which method in the second file?"))?.qualified;
       if (!compareEntry) return;
     }
 
+    // An empty setting means "let the engine choose", which is what lets it fall back
+    // to small sizes for an expensive algorithm. Sending the default list explicitly
+    // used to switch that fallback off and leave exponential solutions unmeasured.
+    const configuredSizes = vscode.workspace.getConfiguration("dsaViz").get<number[]>("sizes") ?? [];
+
     const request: JobRequest = {
       file,
-      entry: entry.name,
-      sizes: vscode.workspace.getConfiguration("dsaViz").get<number[]>("sizes"),
+      entry: entry.qualified,
+      sizes: configuredSizes.length > 0 ? configuredSizes : undefined,
       budget: vscode.workspace.getConfiguration("dsaViz").get<number>("budget"),
       compareFile,
       compareEntry
@@ -68,31 +73,25 @@ async function pickEntryPoint(file: string, title: string): Promise<EntryPoint |
   const entries = await listEntryPoints(file);
 
   if (entries.length === 0) {
-    vscode.window.showWarningMessage(
-      `${path.basename(file)} has no public static methods to measure.`);
+    vscode.window.showWarningMessage(`${path.basename(file)} has no public methods to measure.`);
     return undefined;
   }
 
-  // One measurable candidate is the common case for a solution file, and stopping to
-  // ask about it would be friction for no decision.
-  const measurable = entries.filter(e => e.measurable);
-  if (measurable.length === 1 && entries.length === 1) return measurable[0];
+  // One method is the common case for a solution file, and stopping to ask about it
+  // would be friction for no decision.
+  if (entries.length === 1 && entries[0].measurable) return entries[0];
 
   const picked = await vscode.window.showQuickPick(
     entries.map(entry => ({
       label: entry.measurable ? entry.name : `$(warning) ${entry.name}`,
       description: entry.signature,
-      detail: entry.measurable
-        ? undefined
-        : "Takes a parameter type the engine cannot generate: " +
-          entry.parameters.filter(p => !p.supported).map(p => p.type).join(", "),
+      detail: entry.reason ?? undefined,
       entry
     })),
     { title, matchOnDescription: true });
 
   if (picked && !picked.entry.measurable) {
-    vscode.window.showWarningMessage(
-      `${picked.entry.name} cannot be measured: ${picked.detail}`);
+    vscode.window.showWarningMessage(`${picked.entry.name} cannot be measured: ${picked.entry.reason}`);
     return undefined;
   }
 
@@ -100,6 +99,7 @@ async function pickEntryPoint(file: string, title: string): Promise<EntryPoint |
 }
 
 function reportError(error: unknown) {
+  if (error instanceof EngineCancelledError) return;
   const message = error instanceof Error ? error.message : String(error);
   if (error instanceof EngineNotFoundError) {
     vscode.window.showErrorMessage(message, "Open Settings").then(choice => {
@@ -112,10 +112,22 @@ function reportError(error: unknown) {
   vscode.window.showErrorMessage(`DSA Visualizer: ${message}`);
 }
 
+interface RerunMessage {
+  type: "rerun";
+  inputs?: InputSpec[];
+  sizes?: number[];
+}
+
+interface RevealMessage {
+  type: "reveal";
+  line: number;
+}
+
 class ReportPanel {
   private static current: ReportPanel | undefined;
 
   private readonly disposables: vscode.Disposable[] = [];
+  private inFlight: AbortController | undefined;
 
   private constructor(
     private readonly panel: vscode.WebviewPanel,
@@ -152,12 +164,10 @@ class ReportPanel {
     void ReportPanel.current.run();
   }
 
-  private async onMessage(
-    message: { type: string; strategy?: GenerationStrategy; sizes?: number[]; line?: number }) {
-
-    if (message.type === "reveal" && typeof message.line === "number") {
-      // The panel lists the hottest statements; clicking one should land the cursor on
-      // it, since the annotated source is the thing the user actually works in.
+  private async onMessage(message: RerunMessage | RevealMessage) {
+    if (message.type === "reveal") {
+      // The panel ranks the costliest statements; clicking one lands the cursor on it,
+      // since the annotated source is the thing the user actually works in.
       const document = await vscode.workspace.openTextDocument(this.request.file);
       const editor = await vscode.window.showTextDocument(document, { preview: false });
       const line = Math.max(0, Math.min(message.line - 1, document.lineCount - 1));
@@ -167,51 +177,31 @@ class ReportPanel {
       return;
     }
 
-    if (message.type !== "rerun") return;
-
-    // Re-running with a different arrangement is the main thing anyone does with this
-    // view, so it re-measures in place rather than sending the user back to the
-    // command palette. Scalars keep their configuration: a sort order means nothing
-    // for a search target.
-    if (message.strategy) {
-      this.request = {
-        ...this.request,
-        inputs: undefined,
-        sizes: message.sizes ?? this.request.sizes
-      };
-      this.pendingStrategy = message.strategy;
-    } else if (message.sizes) {
-      this.request = { ...this.request, sizes: message.sizes };
-    }
-
+    // The panel sends back the engine's own resolved inputs with the user's edits
+    // applied, so this side never has to reproduce the engine's inference rules — the
+    // duplication that previously let the two drift apart.
+    this.request = {
+      ...this.request,
+      inputs: message.inputs ?? this.request.inputs,
+      sizes: message.sizes ?? this.request.sizes
+    };
     await this.run();
   }
 
-  private pendingStrategy: GenerationStrategy | undefined;
-
   private async run() {
+    // Re-measuring while a measurement is still running replaces it rather than
+    // queueing behind it.
+    this.inFlight?.abort();
+    const controller = new AbortController();
+    this.inFlight = controller;
+
     this.panel.webview.postMessage({ type: "loading" });
 
     try {
       const request: JobRequest = { ...this.request };
+      const response: JobResponse = await measure(request, controller.signal);
+      if (controller.signal.aborted) return;
 
-      if (this.pendingStrategy) {
-        const entries = await listEntryPoints(request.file);
-        const chosen = entries.find(e => e.name === request.entry);
-        if (chosen) {
-          request.inputs = chosen.parameters.map(parameter => ({
-            shape: shapeFor(parameter.type),
-            strategy: isScalar(parameter.type) ? "Random" : this.pendingStrategy!,
-            minValue: 0,
-            maxValue: 1000,
-            scalesWithSize: !isScalar(parameter.type) || chosen.parameters.length === 1,
-            fixedValue: 0,
-            seed: 20260909
-          }));
-        }
-      }
-
-      const response: JobResponse = await measure(request);
       this.panel.title = response.label ? `DSA: ${response.label}` : "DSA Visualizer";
       this.panel.webview.postMessage({ type: "result", response, request });
 
@@ -225,9 +215,12 @@ class ReportPanel {
         decorations.clear();
       }
     } catch (error) {
+      if (error instanceof EngineCancelledError) return;
       const message = error instanceof Error ? error.message : String(error);
       this.panel.webview.postMessage({ type: "error", message });
       reportError(error);
+    } finally {
+      if (this.inFlight === controller) this.inFlight = undefined;
     }
   }
 
@@ -258,23 +251,9 @@ class ReportPanel {
   }
 
   private dispose() {
+    this.inFlight?.abort();
     ReportPanel.current = undefined;
     this.panel.dispose();
     while (this.disposables.length) this.disposables.pop()?.dispose();
-  }
-}
-
-function isScalar(type: string): boolean {
-  return type === "int" || type === "bool";
-}
-
-function shapeFor(type: string) {
-  switch (type) {
-    case "int[]": return "IntArray" as const;
-    case "List<int>": return "IntList" as const;
-    case "string": return "StringValue" as const;
-    case "int[][]": return "Matrix" as const;
-    case "bool": return "BoolScalar" as const;
-    default: return "IntScalar" as const;
   }
 }

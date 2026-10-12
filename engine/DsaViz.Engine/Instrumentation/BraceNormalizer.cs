@@ -6,8 +6,8 @@ using static Microsoft.CodeAnalysis.CSharp.SyntaxFactory;
 namespace DsaViz.Engine.Instrumentation;
 
 /// <summary>
-/// Wraps single-statement bodies in blocks, and converts expression-bodied methods
-/// into block bodies.
+/// Wraps single-statement bodies in blocks, and converts expression-bodied methods,
+/// local functions and constructors into block bodies.
 ///
 /// This must run before any statement is inserted. Its purpose is measurement
 /// coverage, not semantic safety: <see cref="TraceRewriter"/> only inserts inside
@@ -22,7 +22,7 @@ namespace DsaViz.Engine.Instrumentation;
 /// for this tool than a crash, because nothing looks wrong.
 ///
 /// It also underwrites the execution budget. A braceless <c>while (true) i++;</c> has
-/// no instrumented statement in its body, so Tracer.Hit never runs, the budget never
+/// no instrumented statement in its body, so the tracer's Hit never runs, the budget never
 /// trips, and the loop runs forever — which is exactly what happened when this pass
 /// was disabled during testing.
 /// </summary>
@@ -90,33 +90,68 @@ public sealed class BraceNormalizer : CSharpSyntaxRewriter
 
     public override SyntaxNode? VisitMethodDeclaration(MethodDeclarationSyntax node)
     {
-        // Capture the position before rewriting, so the synthesised statement still
-        // points at where the user's expression actually lives.
-        (int Line, int Start, int Length)? origin = null;
-        if (node.ExpressionBody is { } body)
-        {
-            var span = body.Expression.Span;
-            int line = node.SyntaxTree.GetLineSpan(span).StartLinePosition.Line + 1;
-            origin = (line, span.Start, span.Length);
-        }
-
+        var origin = OriginOf(node.ExpressionBody);
         var rewritten = (MethodDeclarationSyntax)base.VisitMethodDeclaration(node)!;
         if (rewritten.ExpressionBody is null) return rewritten;
-
-        bool returnsVoid = rewritten.ReturnType is PredefinedTypeSyntax predefined
-                           && predefined.Keyword.IsKind(SyntaxKind.VoidKeyword);
-
-        StatementSyntax statement = returnsVoid
-            ? ExpressionStatement(rewritten.ExpressionBody.Expression)
-            : ReturnStatement(rewritten.ExpressionBody.Expression);
-
-        if (origin is { } o)
-            statement = statement.WithAdditionalAnnotations(
-                LineAnnotations.For(o.Line, o.Start, o.Length));
 
         return rewritten
             .WithExpressionBody(null)
             .WithSemicolonToken(default)
-            .WithBody(Block(statement));
+            .WithBody(ToBlock(rewritten.ExpressionBody.Expression, ReturnsVoid(rewritten.ReturnType), origin));
+    }
+
+    /// <summary>
+    /// Local functions get the same treatment as methods, because recursive helpers are
+    /// very often written as arrow-bodied local functions — <c>int Dfs(Node n) =&gt; ...</c>.
+    /// Left as an expression body, such a function contains no statement to instrument,
+    /// so its recursion was invisible and a plainly O(n) solution measured as O(1).
+    /// </summary>
+    public override SyntaxNode? VisitLocalFunctionStatement(LocalFunctionStatementSyntax node)
+    {
+        var origin = OriginOf(node.ExpressionBody);
+        var rewritten = (LocalFunctionStatementSyntax)base.VisitLocalFunctionStatement(node)!;
+        if (rewritten.ExpressionBody is null) return rewritten;
+
+        return rewritten
+            .WithExpressionBody(null)
+            .WithSemicolonToken(default)
+            .WithBody(ToBlock(rewritten.ExpressionBody.Expression, ReturnsVoid(rewritten.ReturnType), origin));
+    }
+
+    public override SyntaxNode? VisitConstructorDeclaration(ConstructorDeclarationSyntax node)
+    {
+        var origin = OriginOf(node.ExpressionBody);
+        var rewritten = (ConstructorDeclarationSyntax)base.VisitConstructorDeclaration(node)!;
+        if (rewritten.ExpressionBody is null) return rewritten;
+
+        return rewritten
+            .WithExpressionBody(null)
+            .WithSemicolonToken(default)
+            .WithBody(ToBlock(rewritten.ExpressionBody.Expression, returnsVoid: true, origin));
+    }
+
+    /// <summary>
+    /// Captured before rewriting, so the synthesised statement still points at where the
+    /// user's expression actually lives.
+    /// </summary>
+    private static (int Line, int Start, int Length)? OriginOf(ArrowExpressionClauseSyntax? body)
+    {
+        if (body is null) return null;
+        var span = body.Expression.Span;
+        int line = body.SyntaxTree.GetLineSpan(span).StartLinePosition.Line + 1;
+        return (line, span.Start, span.Length);
+    }
+
+    private static bool ReturnsVoid(TypeSyntax returnType)
+        => returnType is PredefinedTypeSyntax predefined && predefined.Keyword.IsKind(SyntaxKind.VoidKeyword);
+
+    private static BlockSyntax ToBlock(ExpressionSyntax expression, bool returnsVoid, (int Line, int Start, int Length)? origin)
+    {
+        StatementSyntax statement = returnsVoid ? ExpressionStatement(expression) : ReturnStatement(expression);
+
+        if (origin is { } o)
+            statement = statement.WithAdditionalAnnotations(LineAnnotations.For(o.Line, o.Start, o.Length));
+
+        return Block(statement);
     }
 }

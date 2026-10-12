@@ -21,7 +21,7 @@ public static class JobRunner
 
         string primarySource = read(request.File);
         var primary = Measurer.Measure(
-            primarySource, request.Entry, request.Inputs, request.Sizes, request.Budget);
+            primarySource, request.Entry, request.Inputs, request.Sizes, request.Budget, request.Strategy);
 
         MeasurementResult? comparison = null;
         string? comparisonSource = null;
@@ -43,8 +43,8 @@ public static class JobRunner
                 comparison = Measurer.Measure(
                     comparisonSource,
                     request.CompareEntry ?? request.Entry,
-                    request.Inputs ?? primary.Inputs,
-                    request.Sizes ?? primary.Points.Select(p => p.Size).ToArray(),
+                    primary.Inputs.Count > 0 ? primary.Inputs : request.Inputs,
+                    primary.Points.Count > 0 ? primary.Points.Select(p => p.Size).ToArray() : request.Sizes,
                     request.Budget);
             }
         }

@@ -9,7 +9,7 @@ using static Microsoft.CodeAnalysis.CSharp.SyntaxFactory;
 namespace DsaViz.Engine.Instrumentation;
 
 /// <summary>
-/// Inserts a <c>Tracer.Hit(id)</c> call before every annotated statement, where the id
+/// Inserts a tracer <c>Hit(id)</c> call before every annotated statement, where the id
 /// identifies the statement rather than its line.
 ///
 /// Counting by statement instead of by line is what lets the report distinguish one
@@ -40,7 +40,7 @@ public sealed class TraceRewriter : CSharpSyntaxRewriter
         if (snippet.Length > MaxSnippetLength) snippet = snippet[..(MaxSnippetLength - 1)] + "…";
 
         _statements.Add(new StatementInfo(id, line, column, length, snippet));
-        return ParseStatement($"global::DsaViz.Runtime.Tracer.Hit({id});");
+        return ParseStatement($"{TraceCalls.Prefix}Hit({id});");
     }
 
     private SyntaxList<StatementSyntax> Interleave(SyntaxList<StatementSyntax> statements)

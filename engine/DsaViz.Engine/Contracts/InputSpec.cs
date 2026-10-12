@@ -8,7 +8,25 @@ public enum InputShape
     StringValue,
     Matrix,
     IntScalar,
-    BoolScalar
+    BoolScalar,
+    LongScalar,
+    CharArray,
+    StringArray,
+
+    /// <summary>IList&lt;IList&lt;int&gt;&gt;, generated as a graph's adjacency list over n nodes.</summary>
+    NestedIntList,
+
+    /// <summary>A LeetCode-style TreeNode with val, left and right, defined in the solution file.</summary>
+    Tree,
+
+    /// <summary>A LeetCode-style ListNode with val and next, defined in the solution file.</summary>
+    LinkedList,
+
+    /// <summary>An int[][] of [u, v] pairs, paired with a node count — the usual LeetCode graph input.</summary>
+    EdgeList,
+
+    /// <summary>A char[][] grid of '0' and '1', as in Number of Islands.</summary>
+    CharMatrix
 }
 
 /// <summary>
@@ -32,7 +50,20 @@ public enum GenerationStrategy
     Sorted,
     ReverseSorted,
     AllDuplicates,
-    NearlySorted
+    NearlySorted,
+
+    /// <summary>Trees: a perfectly balanced binary search tree, height log n.</summary>
+    Balanced,
+
+    /// <summary>
+    /// Trees: every node has only a right child, so the tree is a chain of height n.
+    /// This is what a binary search tree built from sorted input degenerates into, and it
+    /// turns an O(log n) recursion depth into O(n).
+    /// </summary>
+    Skewed,
+
+    /// <summary>Graphs: nodes joined in a single line, the deepest possible traversal.</summary>
+    Path
 }
 
 /// <summary>
