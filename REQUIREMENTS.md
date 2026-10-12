@@ -210,14 +210,15 @@ student can **type their own** at any time.
 
 ## Status
 
-**Phases 1 to 3 are done; Phase 4 (release) is ready to publish** once the publisher
-accounts exist. The extension is named **DSA Playback**: "DSA Visualizer" was already
+**All four phases are done.** CI passes on Windows, macOS and Linux, and a release dry run
+built and verified all four platform packages. Publishing waits only for the publisher's
+two tokens. The extension is named **DSA Playback**: "DSA Visualizer" was already
 taken on the Marketplace.
 
 | # | Status | Checked by |
 |---|---|---|
-| 1 | Met on macOS Apple silicon, for C# with no .NET installed and for Python with the student's own Python. The other platforms wait for Phase 4's CI. | `npm run verify-package` runs a C# and a Python sample through the unpacked engine with no .NET on the path. Integration: *a solution outside the open folder visualizes*. |
-| 2 | Met: 39.6 MB on macOS Apple silicon. | `npm run verify-package` |
+| 1 | Met on all four platforms — Windows x64, macOS Intel and Apple silicon, Linux x64 — each package built, tested and verified on its own platform by the release workflow: C# with no .NET in the environment, Python with the machine's own. | `release.yml` (run as a dry run from the Actions tab), `npm run verify-package`. Integration: *a solution outside the open folder visualizes*, on all three operating systems in `ci.yml`. |
+| 2 | Met: 40.6 MB (macOS Apple silicon) to 44.0 MB (Windows). | `npm run verify-package` on each platform |
 | 3 | Met for C# and Python. | Integration: *the ▶ Visualize button appears*; *a Python solution gets the buttons*. `EntryPointScannerTests`, `PythonTests.Methods_and_top_level_functions_are_listed` |
 | 4 | Met: three samples in each language. | Integration: *the walkthrough opens an editable copy*. `npm run verify-package` checks all six ship. The walkthrough page has not yet been looked at by hand in VS Code. |
 | 5 | Met, by construction. | The extension activates on `onLanguage:csharp` and `onLanguage:python`. Listing methods only parses, in either language. |
@@ -242,8 +243,8 @@ taken on the Marketplace.
 | 32 | Met: accents tuned per theme kind and checked at 4.5:1 or better against each default background; high-contrast themes outline every shape; every control is reachable by Tab with a visible focus ring, and keeps focus while stepping. | `contrast.test.ts` (4 themes). Panel tests: *a keyboard user keeps focus*; *rows that go to a line can be used from the keyboard*. Light and high-contrast checked by hand in the browser harness. |
 | 33 | Ready: icon, three animated screenshots and one still, a README for students, CHANGELOG, MIT licence, CI on three operating systems, and a release workflow that builds, tests, verifies and publishes four platform packages. Publishing needs the publisher's two tokens. | `npm run verify-package` checks the icon, licence, changelog and that every README image resolves. |
 
-Test counts: 348 engine tests (32 of them Python), 48 panel tests, and 9 integration
-checks in a real VS Code.
+Test counts: 349 engine tests (32 of them Python), 54 extension tests, and 9 integration
+checks in a real VS Code — on Windows, macOS and Linux in CI.
 
 **Found and fixed in Phase 3.** Generated inputs were meant to be the same on every run
 but were not: their seed came from `HashCode.Combine`, which .NET randomises in every
