@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.7.0
+
+- **Fixed: the run could disappear in a split editor.** After clicking into the panel,
+  each step opened your code as a tab over the run. The code now always opens in its own
+  column, and the panel stays where you put it.
+- **Complexity for design problems,** in all five languages. LRU Cache, Min Stack and the
+  rest are measured the way LeetCode states their requirement — per call. Each size n makes
+  n calls, repeating your example's calls with new values, and each method gets its own
+  answer: *put: O(1) per call*, or *get: O(n) per call, because `order.remove(key)` on line
+  23 scans the list*. A cost hidden in a helper method is found there.
+- **The run starts near the top.** Once a run is on screen, its inputs fold to one line
+  (Edit inputs opens them), and the playback bar stays pinned while you scroll.
+- **Each step says what the last line did** — *total 17 → 13*, *`total == target` was
+  false*, *`head.next` ListNode(2) → None*, *`seen[7]` set to 0*.
+- Play is one clear button (Play, Pause, Replay); the step arrows are disabled at the ends;
+  Home and End jump there.
+- Less clutter: `left` and `right` drawn as pointers are not listed again, the memory note
+  is folded away, and nothing scrolls sideways in a narrow panel.
+
 ## 1.6.0
 
 - **Design problems in C++ and Rust.** LRU Cache, Min Stack and the rest now work in all

@@ -696,3 +696,61 @@ Released as 1.6.0.
 | 73 | Met: checked in full before the first call, so a bad call stops the run with no step taken. | `NativeDesignTests.Calls_that_do_not_fit…` (8); panel: *…calls that do not fit are explained above the run* |
 | 74 | Met: LRU Cache and Min Stack in both languages; engine, panel and VS Code tests; all six platforms pass in release dry run 38399961577. | Tests; release dry run |
 
+
+## Phase 9 — design-problem complexity, and the run view in a split editor (planned in detail)
+
+A student testing 1.6.0 in a split editor could not see the run: once they had clicked the
+panel, each step opened the code as a tab over it. Fixed first, with the run view's other
+rough edges in a narrow panel. Then the gap Phase 8 left: Complexity for design problems.
+LeetCode states their requirement per call — *"get and put must each run in O(1) average
+time"* — so that is how they are measured.
+
+75. **The panel stays in view.** Stepping, Show line and the cost annotations show the code
+    in the column that already shows it, never in the panel's; reopening the panel leaves
+    it where it is.
+76. **The run starts near the top.** Once a run is on screen its inputs fold to one line —
+    where they came from and their values — with Edit inputs to open the form (and Cancel
+    to fold it again). The playback bar stays pinned at the top while the drawing scrolls.
+    The hint for pasting an example stays visible when the code has none.
+77. **Each step says what the line before it did,** in words above the next line: a value
+    set or changed (`total 17 → 13`), an `if` or `while` condition's result, an item added,
+    a key set, a node's field rewired (`head.next ListNode(2) → None`), a call made or
+    returned. A condition's result is not claimed where its body shares its line.
+78. **Clearer playback.** Play is one large button that says what it will do — Play, Pause,
+    Replay; the step arrows are outlined and disabled at the ends; Home and End jump there;
+    every button names its key.
+79. **Less clutter, and a narrow panel fits.** An index drawn as a pointer under its array
+    is not listed again; the note on the memory figures is shown once, folded; long results
+    wrap; a wide table scrolls in its own box. Nothing scrolls sideways at 400 pixels.
+80. **Design problems get Complexity, in all five languages.** Each size n is n calls: the
+    example's calls after the constructor, repeated in order with new values. Whole numbers
+    given to the constructor are n (a cache of capacity n, which fills); those given to the
+    calls are drawn from 0 to n − 1; words, characters, flags and arrays are made up too.
+    The calls are the same every time a size is run.
+81. **Each method's cost per call is named,** from the average cost of one call at each n,
+    fitted with a fixed part: O(1), O(log n), O(n)… per call, in plain words, with the
+    line in the method — or in a helper it calls — that makes it grow, and the library call
+    when that is where the work is. Between two classes that fit almost equally, the simpler
+    is named. The memory the object holds, and the costs on every line, are shown as for
+    any solution.
+82. **When it cannot be measured, it says why:** no example to repeat; a parameter of a type
+    that cannot be made up; in Python, a parameter with no type hint.
+83. **Checked like the rest:** an LRU Cache that scans a list, in all five languages, found
+    O(n) per call at the right line, and the fast samples O(1); engine, panel and VS Code
+    tests, including one that steps after clicking into the panel; all six platforms.
+
+Released as 1.7.0.
+
+### Phase 9 status
+
+| # | Status | Checked by |
+|---|---|---|
+| 75 | Met: one helper picks the code's column for steps, Show line and annotations; the panel is revealed in place. | VS Code: *stepping after clicking into the panel keeps the panel in view* (fails on 1.6.0's code) |
+| 76 | Met. | panel: *values found in the code fill the boxes…*, *Edit inputs opens the form over the run…*, *with no example in the code…* |
+| 77 | Met. | panel: *each step says what the line before it did…* |
+| 78 | Met. | panel: *Space plays and pauses the run*, *Home and End jump to the ends…* |
+| 79 | Met: checked at 400 pixels in every tab. | panel: *an index drawn as a pointer… is not listed again*; the memory-note tests |
+| 80 | Met. | `DesignComplexityTests.Each_size_repeats_the_examples_calls…`, `…Words_characters_and_arrays…` |
+| 81 | Met. | `DesignComplexityTests` (fast samples, slow samples in five languages, a helper, the classifier); panel and VS Code design tests |
+| 82 | Met. | `DesignComplexityTests.Nothing_to_repeat…`, `…Without_an_example…` |
+| 83 | Local: engine 562, panel 99, VS Code 22 pass. Six platforms: pending. | Tests; release dry run |

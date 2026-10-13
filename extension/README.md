@@ -133,8 +133,12 @@ public class LRUCache { … }
 **▶ Visualize** appears above the class. It creates the object, makes every call in
 order, and checks the list of results against Output. The run view says which call is
 running — *Call 4 of 10: get* — and, inside its methods, the object's own fields beside the
-other variables. Type other calls in the same two-list format to try your own. Complexity
-is not measured for design problems.
+other variables. Type other calls in the same two-list format to try your own.
+
+**Complexity** answers the way LeetCode asks — per call. Each size n makes n calls,
+repeating your example's calls with new values (a cache of capacity n; keys from 0 to
+n − 1), and each method gets its own verdict: *put: O(1) per call*, or *get: O(n) per call,
+because `order.remove(key)` on line 23 scans the list*.
 
 In every language DSA Playback supports: C#, Python, Java, C++ — a class, as LeetCode
 writes it — and Rust — a struct with `fn new` and methods taking `&self` or `&mut self`.
