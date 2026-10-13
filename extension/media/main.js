@@ -765,7 +765,12 @@
 
     const trace = st.trace;
     if (trace.status === "InvalidInput") {
-      return header + banner("Fix the highlighted input", "Nothing ran, because an input above could not be read.", true);
+      // Usually one box is marked. A design problem's calls are checked by Python itself,
+      // which cannot say which box, so its sentence is shown here instead.
+      const marked = (trace.inputs || []).some(input => input.error);
+      return header + (marked
+        ? banner("Fix the highlighted input", "Nothing ran, because an input above could not be read.", true)
+        : banner("Fix the input", (trace.errors || []).map(escapeHtml).join("<br>") || "Nothing ran.", true));
     }
     if (trace.steps.length === 0) {
       return header + banner(trace.status === "CompileError" ? "Your code does not compile" : "Nothing was recorded",
@@ -795,7 +800,8 @@
     return header + failed + checkLine(trace.check) +
       `<div id="transport">${transport(st, trace, index)}</div>` +
       (notes.length ? `<div class="banner info">${notes.join(" ")}</div>` : "") +
-      `<div id="step-area">${stepArea(st, index, null)}</div>` + args +
+      `<div id="step-area">${stepArea(st, index, null)}</div>` +
+      `<div id="explain-area">${explainBlock(st, index)}</div>` + args +
       `<div class="footnote">← and → step, Space plays. Index variables are drawn as pointers into the arrays they
         fall inside; a value that just changed flashes.</div>`;
   }
@@ -820,6 +826,61 @@
   }
 
   /** The drawing of one step, animated from `previous` when it is the step next to it. */
+  // ---- explain this step (optional, off by default) -------------------------------------
+
+  /**
+   * The Explain button and whatever came back for this step. Only shown when the student
+   * has turned the setting on; nothing is sent until the button is pressed.
+   */
+  function explainBlock(st, index) {
+    if (!state.explain) return "";
+    const answer = (st.explanations || {})[index];
+    const body = !answer ? ""
+      : answer.error ? `<div class="explanation error" role="alert">${escapeHtml(answer.error)}</div>`
+      : `<div class="explanation" aria-live="polite">${escapeHtml(answer.text || "").replace(/\n/g, "<br>")}${
+          answer.done ? `<div class="footnote">Written by ${escapeHtml(answer.model || "Copilot")}. It can be wrong; the run above is what really happened.</div>`
+                      : '<span class="muted"> …</span>'}</div>`;
+    const busy = answer && !answer.done && !answer.error;
+    return `<button class="ghost" id="explain" ${busy ? "disabled" : ""}>✨ Explain this step</button>${body}`;
+  }
+
+  function refreshExplain() {
+    const area = document.getElementById("explain-area");
+    const st = state.stepping;
+    if (!area || !st || !st.trace) return;
+    area.innerHTML = explainBlock(st, st.index || 0);
+    wireExplain();
+  }
+
+  function wireExplain() {
+    const button = document.getElementById("explain");
+    if (!button) return;
+    button.addEventListener("click", () => {
+      const st = state.stepping;
+      const index = st.index || 0;
+      st.explanations = { ...(st.explanations || {}), [index]: { text: "", done: false } };
+      refreshExplain();
+      if (vscode) vscode.postMessage({ type: "explain", trace: st.traceId, index,
+        callStack: callStackAt(st, index), changed: changedAt(st.trace, index) });
+    });
+  }
+
+  /** The methods on the stack at a step, outermost first, as the run view shows them. */
+  function callStackAt(st, index) {
+    if (!window.DsaRun || !st.model) return [];
+    return window.DsaRun.framesAt(st.model, index).map(frame => frame.call.method);
+  }
+
+  /** The variables whose shown value differs from the step before. */
+  function changedAt(trace, index) {
+    const step = trace.steps[index], before = index > 0 ? trace.steps[index - 1] : null;
+    if (!before) return [];
+    return step.variables.filter(v => {
+      const old = before.variables.find(o => o.name === v.name);
+      return !old || old.display !== v.display;
+    }).map(v => v.name);
+  }
+
   function stepArea(st, index, previous) {
     if (!window.DsaRun) return '<p class="placeholder">The run view could not load.</p>';
     if (!st.model || st.model.trace !== st.trace) st.model = window.DsaRun.prepare(st.trace);
@@ -862,6 +923,7 @@
       area.innerHTML = stepArea(st, st.index, previous);
       bar.innerHTML = transport(st, st.trace, st.index);
       wireTransport();
+      refreshExplain();
       if (key) { const again = bar.querySelector(key); if (again) again.focus(); }
       followCurrent(area);
     } else {
@@ -1056,6 +1118,7 @@
       requestRun({ example: currentExample(), size: currentSize() }));
 
     wireTransport();
+    wireExplain();
 
     const sizesField = document.getElementById("sizes");
     if (sizesField) sizesField.addEventListener("input", () => { state.sizesEdited = true; });
@@ -1113,16 +1176,28 @@
         // A new method, or the same one again: everything shown belongs to the old request.
         if (st.playing) clearInterval(st.playing);
         state = { ...state, request: message.request, tab: message.tab, response: null, measuring: message.tab !== "steps",
-          measureError: null, sizesEdited: false, stepping: {} };
+          measureError: null, sizesEdited: false, stepping: {}, explain: message.explain === true };
         render();
         return;
+      case "settings":
+        state.explain = message.explain === true;
+        if (state.tab === "steps") render();
+        return;
+      case "explanation": {
+        // An answer for a step of this run; one for an earlier run is dropped.
+        if (!st.trace || message.trace !== st.traceId) return;
+        st.explanations = { ...(st.explanations || {}),
+          [message.index]: { text: message.text, done: message.done, error: message.error, model: message.model } };
+        if (state.tab === "steps" && (st.index || 0) === message.index) refreshExplain();
+        return;
+      }
       case "stepsLoading":
         state.stepping = { ...st, loading: true, error: null, choice: message.choice, size: message.choice && message.choice.size };
         if (state.tab === "steps") render();
         return;
       case "steps": {
         const trace = message.trace;
-        state.stepping = { ...st, trace, index: 0, loading: false, draft: {},
+        state.stepping = { ...st, trace, traceId: message.traceId, explanations: {}, index: 0, loading: false, draft: {},
           error: trace ? null : { message: (message.errors || []).join(" ") || "The engine returned no steps." } };
         if (state.tab === "steps") render();
         if (trace && trace.steps.length && vscode) vscode.postMessage({ type: "stepAt", line: trace.steps[0].line });

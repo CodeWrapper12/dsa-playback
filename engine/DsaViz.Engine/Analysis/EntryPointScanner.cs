@@ -46,6 +46,15 @@ public static class EntryPointScanner
 
         var entries = new List<EntryPoint>();
 
+        // A design problem's class is run through its example's list of calls, so it is
+        // offered once, as a class, rather than as methods that cannot be called alone.
+        var named = DesignExamples.ClassesNamed(ExampleFinder.CommentLines(root));
+        var designs = classes
+            .Where(c => !nodeTypes.Contains(c.Identifier.Text) && IsDesign(c, named))
+            .ToList();
+        var designNames = designs.Select(c => c.Identifier.Text).ToHashSet(StringComparer.Ordinal);
+        entries.AddRange(designs.Select(c => DesignEntry(c, named.Contains(c.Identifier.Text))));
+
         foreach (var method in root.DescendantNodes().OfType<MethodDeclarationSyntax>())
         {
             if (!method.Modifiers.Any(m => m.ValueText == "public")) continue;
@@ -56,8 +65,9 @@ public static class EntryPointScanner
             // A program's entry point is where examples are called from, not a solution.
             if (method.Identifier.Text == "Main" && method.Modifiers.Any(m => m.ValueText == "static")) continue;
 
-            // A node class's own members are plumbing, not solutions.
-            if (nodeTypes.Contains(owner.Identifier.Text)) continue;
+            // A node class's own members are plumbing, not solutions; a design class's
+            // methods are run through its list of calls.
+            if (nodeTypes.Contains(owner.Identifier.Text) || designNames.Contains(owner.Identifier.Text)) continue;
 
             bool isStatic = method.Modifiers.Any(m => m.ValueText == "static");
 
@@ -104,6 +114,45 @@ public static class EntryPointScanner
             .ThenBy(e => e.Name, StringComparer.Ordinal)
             .ToList();
     }
+
+    /// <summary>
+    /// A class an example creates with a list of calls, or one that cannot be created without
+    /// arguments but has methods to call — the shape of every LeetCode design problem.
+    /// </summary>
+    private static bool IsDesign(ClassDeclarationSyntax type, IReadOnlySet<string> named)
+    {
+        if (!type.Modifiers.Any(m => m.ValueText == "public")) return false;
+        if (type.Modifiers.Any(m => m.ValueText is "abstract" or "static")) return false;
+        if (named.Contains(type.Identifier.Text)) return true;
+
+        var constructors = type.Members.OfType<ConstructorDeclarationSyntax>()
+            .Where(c => !c.Modifiers.Any(m => m.ValueText == "static")).ToList();
+        bool needsArguments = constructors.Count > 0 && !IsConstructible(type) &&
+                              constructors.Any(c => c.Modifiers.Any(m => m.ValueText == "public"));
+        bool hasMethods = type.Members.OfType<MethodDeclarationSyntax>()
+            .Any(m => m.Modifiers.Any(x => x.ValueText == "public") && !m.Modifiers.Any(x => x.ValueText == "static"));
+        return needsArguments && hasMethods;
+    }
+
+    private static EntryPoint DesignEntry(ClassDeclarationSyntax type, bool hasExample)
+    {
+        string name = type.Identifier.Text;
+        return new EntryPoint("", name, new[]
+        {
+            new EntryParameter(DesignExamples.Parameters[0], "list of operations", hasExample),
+            new EntryParameter(DesignExamples.Parameters[1], "list of arguments", hasExample)
+        })
+        {
+            Design = true,
+            Generatable = false,
+            Line = type.Identifier.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
+            Reason = hasExample ? null : DesignNeedsExample(name)
+        };
+    }
+
+    public static string DesignNeedsExample(string name) =>
+        $"{name} is created and then called, as in a LeetCode design problem. Add LeetCode's example as a comment — " +
+        "Input, then the list of operations and the list of their arguments — and it runs.";
 
     private static string UnsupportedReason(string name, string type, bool byRef, HashSet<string> nodeTypes)
     {

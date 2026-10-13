@@ -72,6 +72,12 @@ public sealed record EntryPoint(
     /// </summary>
     public bool Generatable { get; init; } = true;
 
+    /// <summary>
+    /// A LeetCode design problem: a class whose example lists the calls to make on it, as
+    /// in LRU Cache. <see cref="Name"/> is the class, and there is no declaring type.
+    /// </summary>
+    public bool Design { get; init; }
+
     /// <summary>The 1-based line of the method's name, where the editor puts its buttons.</summary>
     public int Line { get; init; }
 

@@ -117,7 +117,7 @@ public static class ExampleFinder
     /// The comment text of the file, one entry per line with its 1-based line number, the
     /// comment markers removed.
     /// </summary>
-    private static List<(string Text, int Line)> CommentLines(SyntaxNode root)
+    internal static List<(string Text, int Line)> CommentLines(SyntaxNode root)
     {
         var lines = new List<(string, int)>();
         foreach (var trivia in root.DescendantTrivia(descendIntoTrivia: true))

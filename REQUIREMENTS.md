@@ -423,9 +423,9 @@ is pressed.
 | # | Status | Checked by |
 |---|---|---|
 | 42 | Met: `using` lines and `TreeNode`/`ListNode` supplied beside the file, never into it, so error lines are still the student's own. A file's own definitions are kept. | `LeetCodeExtensionTests` (13 tests over `samples/leetcode-extension`, C# and Python); integration: *a C# file made by the LeetCode extension…* |
-| 43 | Not started. | |
-| 44 | Not started. | |
-| 45 | Not started. | |
+| 43 | Met, in C# and Python: one ▶ Visualize on the class (no Complexity), its example read in either layout LeetCode uses, every call made in order, results checked, typed calls accepted, calls that do not fit named in plain words, a thrown exception's own line reported. The run view titles the call running, *Call 4 of 10: get*, from where the engine recorded each call starting. | `DesignTests` (23); panel tests: *a design problem plays every call…* (C#, Python), *…calls Python could not make are explained*; integration: *a design problem gets one ▶ Visualize…* |
+| 44 | Met: `win32-arm64` on `windows-11-arm` and `linux-arm64` on `ubuntu-24.04-arm` passed every test and `verify-package` in release dry run 38329086933. | Release dry run |
+| 45 | Met, except the real Copilot answer, which is the publisher's check by hand. Off by default; the setting says the code is sent; nothing is sent until pressed; no API or no model says why. VS Code 1.85 is still supported: the API is found at run time. | `explain.test.ts` (6, stand-in model); panel tests: *Explain this step is absent until…*, *an answer from an earlier run is not shown*; integration: *Explain this step sends nothing while off…* |
 
 ## Phase 7 — new languages (outline)
 

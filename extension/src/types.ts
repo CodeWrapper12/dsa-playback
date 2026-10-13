@@ -191,6 +191,8 @@ export interface EntryPoint {
   reason: string | null;
   /** Every parameter can be generated, so growth can be measured; otherwise it runs only on examples. */
   generatable: boolean;
+  /** A LeetCode design problem: a class run through its example's list of calls. */
+  design: boolean;
   /** "Solution.TwoSum" — unambiguous even when classes share a method name. */
   qualified: string;
   signature: string;
@@ -299,6 +301,8 @@ export interface StepTrace {
   totalAllocated: number;
   methods: { name: string; parameters: string[] }[];
   graph: { kind: "adjacency" | "edges"; variable: string; nodeCount?: string } | null;
+  /** A design problem's calls, each with the first step recorded after it began. */
+  calls: { index: number; operation: string; step: number }[];
 }
 
 export type InputSource = "Example" | "Typed" | "Generated";

@@ -204,6 +204,21 @@ public static class Literals
         return "a value";
     }
 
+    /// <summary>
+    /// A value as plain data — whole numbers as long, other numbers as double, text, true or
+    /// false, null, and lists as object arrays — for a caller that has no type to build it as.
+    /// </summary>
+    public static object? ToPlain(LeetValue value) => value switch
+    {
+        LeetNumber { IsWhole: true } n when long.TryParse(n.Text, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out long whole) => whole,
+        LeetNumber n => n.AsDouble,
+        LeetString s => s.Value,
+        LeetBool b => b.Value,
+        LeetNull => null,
+        LeetArray a => a.Items.Select(ToPlain).ToArray(),
+        _ => throw new LiteralException($"unreadable value at character {value.Position + 1}")
+    };
+
     public static object? ToObject(LeetValue value, Type type)
     {
         if (type == typeof(int)) return (int)Whole(value, int.MinValue, int.MaxValue, "a whole number");

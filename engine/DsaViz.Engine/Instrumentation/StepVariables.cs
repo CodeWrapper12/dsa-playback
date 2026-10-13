@@ -60,6 +60,8 @@ public static class StepVariables
             string method = enclosing switch
             {
                 { MethodKind: MethodKind.AnonymousFunction } lambda => "lambda in " + (lambda.ContainingSymbol?.Name ?? "?"),
+                // A constructor's own name is ".ctor"; students know it by its class's name.
+                { MethodKind: MethodKind.Constructor } constructor => constructor.ContainingType.Name,
                 { } symbol => symbol.Name,
                 _ => "?"
             };

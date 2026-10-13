@@ -53,6 +53,9 @@ public sealed class CompiledSolution : IDisposable
     }
 
     public MethodInfo Entry { get; }
+
+    /// <summary>For a design problem, the student's class whose calls are made; null otherwise.</summary>
+    public Type? DesignType { get; init; }
     public IReadOnlyList<StatementInfo> Statements { get; }
     public IReadOnlyList<LibraryCallSite> Sites { get; }
     public bool IsInstrumented => Slot is not null;
@@ -94,7 +97,12 @@ public static class Runner
     public static CompileOutcome Compile(string source, string entryMethod, bool instrument = true)
         => Compile(SourceAnalysis.Create(source), entryMethod, instrument);
 
-    public static CompileOutcome Compile(SourceAnalysis analysis, string entryMethod, bool instrument = true, bool stepping = false)
+    /// <param name="design">
+    /// The entry is a class whose calls are listed, as in a LeetCode design problem; the
+    /// run then goes through <see cref="DsaViz.Runtime.DesignCalls.Run"/>.
+    /// </param>
+    public static CompileOutcome Compile(SourceAnalysis analysis, string entryMethod, bool instrument = true, bool stepping = false,
+        bool design = false)
     {
         // Errors come from the user's own file, so the line numbers are the ones they see.
         if (analysis.HasErrors)
@@ -132,13 +140,16 @@ public static class Runner
         {
             using var stream = new MemoryStream(compiled.Assembly!);
             var assembly = context.LoadFromStream(stream);
-            var entry = FindEntryPoint(assembly, entryMethod);
+            Type? designType = design ? FindDesignType(assembly, entryMethod) : null;
+            var entry = designType is null
+                ? FindEntryPoint(assembly, entryMethod)
+                : typeof(DsaViz.Runtime.DesignCalls).GetMethod(nameof(DsaViz.Runtime.DesignCalls.Run))!;
             var slot = instrument
                 ? assembly.GetType(TraceCalls.HolderType)?.GetField(TraceCalls.SlotField)
                   ?? throw new InvalidOperationException("The instrumented assembly has no tracer slot.")
                 : null;
             return new CompileOutcome(
-                new CompiledSolution(context, entry, statements, sites, slot),
+                new CompiledSolution(context, entry, statements, sites, slot) { DesignType = designType },
                 RunStatus.Completed,
                 Array.Empty<string>());
         }
@@ -250,6 +261,10 @@ public static class Runner
                 // thrown on this same thread after the real one. Noting it would overwrite
                 // the student's exception with the wrapper.
                 if (e.Exception is TargetInvocationException) return;
+                // The same exception thrown again — a design problem's calls pass the
+                // student's exception on — happens after the frames have unwound, so the
+                // statement it was first thrown at is the one to keep.
+                if (ReferenceEquals(e.Exception, outcome.Thrown)) return;
                 outcome.Thrown = e.Exception;
                 outcome.ThrownAt = state.PendingStatement;
             };
@@ -439,6 +454,10 @@ public static class Runner
     /// template is <c>public class Solution { public int[] TwoSum(...) }</c>, and a tool
     /// that only finds static methods cannot run anything written in that template.
     /// </summary>
+    private static Type FindDesignType(Assembly assembly, string name)
+        => assembly.GetTypes().FirstOrDefault(t => t.IsClass && t.IsPublic && t.Name == name)
+           ?? throw new InvalidOperationException($"No public class named '{name}' was found.");
+
     private static MethodInfo FindEntryPoint(Assembly assembly, string name)
     {
         string? typeName = null;

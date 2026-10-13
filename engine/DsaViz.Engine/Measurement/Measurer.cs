@@ -6,6 +6,11 @@ namespace DsaViz.Engine.Measurement;
 
 public static class Measurer
 {
+    /// <summary>Said when growth is asked for a design problem.</summary>
+    public const string DesignNotMeasured =
+        "Complexity is not measured for design problems: their cost is per operation, which this version does not measure. " +
+        "Press Visualize to watch the calls run.";
+
     /// <summary>Said beside a parameter that cannot be generated, when growth is asked for.</summary>
     public const string NotGeneratedNote =
         "Complexity is measured by running the method on inputs made at many sizes, so it needs every parameter " +
@@ -44,6 +49,9 @@ public static class Measurer
         long budget = Runner.DefaultBudget,
         GenerationStrategy? strategy = null)
     {
+        if (Stepper.IsDesign(analysis, entryMethod))
+            return Failed(RunStatus.RuntimeError, new[] { DesignNotMeasured }, inputs ?? Array.Empty<InputSpec>());
+
         var outcome = Runner.Compile(analysis, entryMethod, instrument: true);
         if (!outcome.Success)
             return Failed(outcome.Status, outcome.Errors, inputs ?? Array.Empty<InputSpec>());
@@ -70,6 +78,8 @@ public static class Measurer
         var solution = Python.PythonSolution.Describe(host, source, entry);
         if (solution.CompileError is { } error)
             return Failed(RunStatus.CompileError, new[] { error }, inputs ?? Array.Empty<InputSpec>());
+        if (solution.DesignClass is not null)
+            return Failed(RunStatus.RuntimeError, new[] { DesignNotMeasured }, inputs ?? Array.Empty<InputSpec>());
         if (solution.EntryInfo is null)
             return Failed(RunStatus.CompileError, new[] { $"No function named '{entry}' was found." }, inputs ?? Array.Empty<InputSpec>());
 

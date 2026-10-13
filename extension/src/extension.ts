@@ -12,6 +12,7 @@ import { log, recentLog, showLog } from "./log";
 import { offerPython, pythonInterpreter } from "./python";
 import { RatingPrompt, RatingState } from "./rating";
 import { issueUrl } from "./report";
+import { explainStep, LanguageModels, StepToExplain } from "./explain";
 import { EntryPoint, ExampleReport, InputSpec, JobRequest, JobResponse, StepTrace } from "./types";
 
 let decorations: CostDecorations;
@@ -41,6 +42,10 @@ export interface TestApi {
   lastSteps(): StepTrace | undefined;
   lastError(): string | undefined;
   lastExamples(): ExampleReport | undefined;
+  /** The last answer sent to the panel for "Explain this step". */
+  lastExplanation(): Record<string, unknown> | undefined;
+  /** The id of the recorded run on screen, as the panel would send it back. */
+  currentTraceId(): number | undefined;
   linesDecoratedIn(uri: vscode.Uri): number;
   /** The address "Report a Problem" opens, without opening it. */
   problemReportUrl(): string;
@@ -49,7 +54,9 @@ export interface TestApi {
   enginePath(): string;
 }
 
-const observed: { response?: JobResponse; steps?: StepTrace; error?: string; examples?: ExampleReport } = {};
+const observed: {
+  response?: JobResponse; steps?: StepTrace; error?: string; examples?: ExampleReport; explanation?: Record<string, unknown>
+} = {};
 
 export function activate(context: vscode.ExtensionContext): TestApi {
   configureEngine(context.extensionPath, context.extensionMode !== vscode.ExtensionMode.Production);
@@ -86,6 +93,8 @@ export function activate(context: vscode.ExtensionContext): TestApi {
     lastSteps: () => observed.steps,
     lastError: () => observed.error,
     lastExamples: () => observed.examples,
+    lastExplanation: () => observed.explanation,
+    currentTraceId: () => ReportPanel.currentTraceId(),
     linesDecoratedIn: uri => decorations.linesDecoratedIn(uri),
     problemReportUrl: () => problemReportUrl(context),
     sendPanelMessage: async message => { await ReportPanel.deliver(message); },
@@ -254,6 +263,24 @@ async function reportProblem(context: vscode.ExtensionContext) {
   await vscode.env.openExternal(url as unknown as vscode.Uri);
 }
 
+function explainEnabled(): boolean {
+  return vscode.workspace.getConfiguration("dsaPlayback").get<boolean>("explainWithAI") === true;
+}
+
+/**
+ * The solution's own lines, numbered, for Copilot to read: from the first statement the
+ * run could reach to the last, with a little around them. Not the whole file, which may
+ * hold a long problem description or other solutions.
+ */
+function solutionCode(lines: string[], trace: StepTrace): string {
+  const recorded = trace.statements.map(s => s.line);
+  if (recorded.length === 0) return lines.map((text, i) => `${i + 1}  ${text}`).join("\n");
+  const CONTEXT = 3;
+  const first = Math.max(1, Math.min(...recorded) - CONTEXT);
+  const last = Math.min(lines.length, Math.max(...recorded) + CONTEXT);
+  return lines.slice(first - 1, last).map((text, i) => `${first + i}  ${text}`).join("\n");
+}
+
 function reportError(error: unknown) {
   if (error instanceof EngineCancelledError) return;
   const message = error instanceof Error ? error.message : String(error);
@@ -284,6 +311,7 @@ interface ShowLogMessage { type: "showLog" }
 interface InstallPythonMessage { type: "installPython"; message?: string }
 interface RunExamplesMessage { type: "runExamples" }
 interface ReportProblemMessage { type: "reportProblem" }
+interface ExplainMessage { type: "explain"; trace: number; index: number; callStack?: string[]; changed?: string[] }
 
 /** Record a run: with typed values, a chosen example, and a size for anything generated. */
 interface RunMessage {
@@ -296,7 +324,7 @@ interface RunMessage {
 }
 
 type PanelMessage = RerunMessage | MeasureMessage | RevealMessage | StepAtMessage | ShowLogMessage | RunMessage
-  | InstallPythonMessage | RunExamplesMessage | ReportProblemMessage;
+  | InstallPythonMessage | RunExamplesMessage | ReportProblemMessage | ExplainMessage;
 
 /** What the student chose for one method, kept across restarts. */
 interface SavedInputs {
@@ -315,6 +343,11 @@ class ReportPanel {
   private measuring: AbortController | undefined;
   private recording: AbortController | undefined;
   private checkingExamples: AbortController | undefined;
+  private explaining: vscode.CancellationTokenSource | undefined;
+
+  /** The recorded run on screen, and the file text it ran, for explaining a step. */
+  private shown: { id: number; trace: StepTrace; source: string } | undefined;
+  private static traces = 0;
 
   private constructor(
     private readonly panel: vscode.WebviewPanel,
@@ -323,7 +356,16 @@ class ReportPanel {
 
     this.panel.webview.html = this.render();
     this.panel.webview.onDidReceiveMessage(message => this.onMessage(message), null, this.disposables);
+    vscode.workspace.onDidChangeConfiguration(change => {
+      if (change.affectsConfiguration("dsaPlayback.explainWithAI")) {
+        this.panel.webview.postMessage({ type: "settings", explain: explainEnabled() });
+      }
+    }, null, this.disposables);
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
+  }
+
+  static currentTraceId(): number | undefined {
+    return ReportPanel.current?.shown?.id;
   }
 
   /** Routes a message as if the webview had sent it. For integration tests. */
@@ -351,7 +393,7 @@ class ReportPanel {
     }
 
     panel.panel.title = `DSA: ${path.basename(request.file, path.extname(request.file))}`;
-    panel.panel.webview.postMessage({ type: "open", request, tab });
+    panel.panel.webview.postMessage({ type: "open", request, tab, explain: explainEnabled() });
 
     // Only what is on screen is computed. Opening on the run view records a run, which
     // takes a moment; measuring growth takes several seconds and waits until asked for.
@@ -373,6 +415,7 @@ class ReportPanel {
       case "stepAt": await decorations.showStep(this.request.file, message.line); return;
       case "showLog": showLog(); return;
       case "reportProblem": await vscode.commands.executeCommand("dsaPlayback.reportProblem"); return;
+      case "explain": await this.explain(message); return;
       case "installPython": await offerPython(message.message ?? "DSA Playback needs Python 3.9 or later."); return;
       case "reveal": await this.reveal(message.line); return;
       case "rerun":
@@ -477,7 +520,9 @@ class ReportPanel {
         return;
       }
 
-      this.panel.webview.postMessage({ type: "steps", trace: response.steps, errors: response.errors, choice });
+      const traceId = ++ReportPanel.traces;
+      this.shown = response.steps ? { id: traceId, trace: response.steps, source: response.source ?? "" } : undefined;
+      this.panel.webview.postMessage({ type: "steps", trace: response.steps, traceId, errors: response.errors, choice });
       observed.steps = response.steps ?? undefined;
       if (response.steps?.status === "Completed") void rating.succeeded();
     } catch (error) {
@@ -485,6 +530,58 @@ class ReportPanel {
     } finally {
       if (this.recording === controller) this.recording = undefined;
     }
+  }
+
+  /**
+   * Asks the student's own Copilot to explain one step. Only when the setting is on and the
+   * button was pressed; what is sent is the solution's code, the line, the call stack and
+   * the variables at that step.
+   */
+  private async explain(message: ExplainMessage) {
+    const reply = (fields: Record<string, unknown>) => {
+      observed.explanation = fields;
+      return this.panel.webview.postMessage({ type: "explanation", trace: message.trace, index: message.index, ...fields });
+    };
+
+    if (!explainEnabled()) {
+      await reply({ done: true, error: "Explaining steps is turned off. Turn on dsaPlayback.explainWithAI to use it." });
+      return;
+    }
+    const shown = this.shown;
+    const step = shown?.id === message.trace ? shown.trace.steps[message.index] : undefined;
+    if (!shown || !step) {
+      await reply({ done: true, error: "This run has been replaced. Press Explain again." });
+      return;
+    }
+
+    this.explaining?.cancel();
+    const cancel = new vscode.CancellationTokenSource();
+    this.explaining = cancel;
+
+    const lines = shown.source.split(/\r?\n/);
+    const toExplain: StepToExplain = {
+      language: path.extname(this.request.file).toLowerCase() === ".py" ? "Python" : "C#",
+      code: solutionCode(lines, shown.trace),
+      line: step.line,
+      lineText: lines[step.line - 1] ?? "",
+      callStack: message.callStack ?? [step.method],
+      variables: step.variables.map(v => ({ name: v.name, value: v.display })),
+      changed: message.changed ?? []
+    };
+
+    log(`Explaining step ${message.index + 1} with Copilot (line ${step.line}).`);
+    const lm = (vscode as unknown as { lm?: LanguageModels }).lm;
+    const result = await explainStep(lm, text => vscode.LanguageModelChatMessage.User(text), toExplain,
+      soFar => { if (!cancel.token.isCancellationRequested) void reply({ text: soFar, done: false }); },
+      cancel.token);
+    if (cancel.token.isCancellationRequested) return;
+
+    if (result.ok) await reply({ text: result.text, done: true, model: result.model });
+    else {
+      log(`Explaining failed: ${result.reason}`);
+      await reply({ done: true, error: result.reason });
+    }
+    if (this.explaining === cancel) this.explaining = undefined;
   }
 
   /** Runs every example in the file and lists each result against its expected output. */
@@ -557,6 +654,7 @@ class ReportPanel {
     this.measuring?.abort();
     this.recording?.abort();
     this.checkingExamples?.abort();
+    this.explaining?.cancel();
     decorations.clearStep();
     ReportPanel.current = undefined;
     this.panel.dispose();

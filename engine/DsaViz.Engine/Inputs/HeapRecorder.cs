@@ -55,6 +55,11 @@ public sealed class HeapRecorder : IStepObserver
     public List<ExecutionStep> Steps { get; } = new();
     public List<ReturnEvent> Returns { get; } = new();
 
+    /// <summary>For a design problem: each call's number and the step count when it started.</summary>
+    public List<(int Index, int Step)> CallStarts { get; } = new();
+
+    public void CallStarting(int index) => CallStarts.Add((index, Steps.Count));
+
     public void Step(int statementId, int depth, object?[] values, long allocatedBytes)
     {
         var info = _statements[statementId];

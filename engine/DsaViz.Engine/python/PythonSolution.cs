@@ -61,6 +61,15 @@ public sealed class PythonSolution
         }
     }
 
+    /// <summary>The design problem's class when the entry names one rather than a function.</summary>
+    public PythonClass? DesignClass => Entry.Contains('.') ? null : Description.Classes.FirstOrDefault(c => c.Name == Entry);
+
+    private IReadOnlyList<(string Text, int Line)> CommentLines => Description.Comments.Select(c => (c.Text, c.Line)).ToList();
+
+    /// <summary>The design examples that create <see cref="DesignClass"/>.</summary>
+    public ExampleSearch DesignExamplesFound()
+        => new(DsaViz.Engine.Analysis.DesignExamples.FromCommentLines(CommentLines, Entry).ToList(), Array.Empty<string>());
+
     /// <summary>The examples in the file for this entry: comments read by the shared reader, calls found by Python.</summary>
     public ExampleSearch Examples()
     {
@@ -116,7 +125,26 @@ public sealed class PythonSolution
     /// <summary>The functions the editor can offer, with the reason for any that cannot run.</summary>
     public static IReadOnlyList<EntryPoint> Entries(PythonDescription description)
     {
-        return description.Entries.Select(entry =>
+        // A design problem's class is offered once, run through its example's calls, and
+        // its methods are not offered on their own.
+        var named = DesignExamples.ClassesNamed(description.Comments.Select(c => (c.Text, c.Line)).ToList());
+        var designs = description.Classes
+            .Where(c => named.Contains(c.Name) || (!c.Constructible && c.Methods.Count > 0))
+            .ToList();
+        var designNames = designs.Select(c => c.Name).ToHashSet(StringComparer.Ordinal);
+        var designEntries = designs.Select(c => new EntryPoint("", c.Name, new[]
+        {
+            new EntryParameter(DesignExamples.Parameters[0], "list of operations", named.Contains(c.Name)),
+            new EntryParameter(DesignExamples.Parameters[1], "list of arguments", named.Contains(c.Name))
+        })
+        {
+            Design = true,
+            Generatable = false,
+            Line = c.Line,
+            Reason = named.Contains(c.Name) ? null : EntryPointScanner.DesignNeedsExample(c.Name)
+        });
+
+        return description.Entries.Where(entry => !designNames.Contains(entry.DeclaringType)).Select(entry =>
         {
             var examples = ExamplesFor(description, entry);
             var parameters = ParametersOf(entry, examples);
@@ -145,6 +173,7 @@ public sealed class PythonSolution
                 Generatable = generatable.All(g => g)
             };
         })
+        .Concat(designEntries)
         .OrderByDescending(e => e.Measurable)
         .ThenBy(e => e.Line)
         .ToList();

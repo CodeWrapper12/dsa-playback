@@ -69,6 +69,13 @@ public sealed record StepTrace
 
     public IReadOnlyList<MethodParameters> Methods { get; init; } = Array.Empty<MethodParameters>();
 
+    /// <summary>
+    /// A design problem's calls, each with the first step recorded after it began. Lets the
+    /// run view tell one call from the next, which depth alone cannot when two follow each
+    /// other at the top level.
+    /// </summary>
+    public IReadOnlyList<DesignCall> Calls { get; init; } = Array.Empty<DesignCall>();
+
     /// <summary>The input to draw as a graph, when there is one.</summary>
     public GraphInput? Graph { get; init; }
 }
@@ -100,3 +107,6 @@ public sealed record OutputCheck(string Expected, string Actual, bool Matches)
     /// <summary>Compared ignoring order, because the problem says any order is accepted.</summary>
     public bool AnyOrder { get; init; }
 }
+
+/// <summary>One call of a design problem: its position in the list, the operation, and the step it starts at.</summary>
+public sealed record DesignCall(int Index, string Operation, int Step);

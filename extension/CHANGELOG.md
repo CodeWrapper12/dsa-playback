@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.2.0
+
+- **Design problems.** LRU Cache, Min Stack and the rest: a class with LeetCode's
+  two-line example — the operations, then their arguments — gets ▶ Visualize. The object
+  is created, every call is made in order, the results are checked against Output, and
+  the run view says which call is running. In C# and Python.
+- **Explain this step** (optional, off by default). With `dsaPlayback.explainWithAI` on,
+  a button in the run view asks your own GitHub Copilot to explain the current step in
+  plain English. Turning it on sends your code to Copilot — only when you press the
+  button, and VS Code asks your permission first.
+- **Windows on ARM and Linux on ARM** packages, built and tested on ARM machines.
+
 ## 1.1.1
 
 - Fixed: C# files made by the LeetCode extension, or copied from LeetCode, did not

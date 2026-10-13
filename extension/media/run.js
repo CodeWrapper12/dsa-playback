@@ -132,12 +132,14 @@
   /**
    * The run as a tree of calls. A step one level deeper than the last starts a call; a
    * recorded return, or a step back at a shallower depth, ends it. Lambdas run at their
-   * caller's depth and are part of its frame.
+   * caller's depth and are part of its frame. A design problem's calls are made one after
+   * another at the top level, so each ends where the engine says the next one began.
    */
   function buildCalls(trace, methods) {
     const calls = [];
     const stack = [];
     const callAt = new Array(trace.steps.length);
+    const designStarts = new Set((trace.calls || []).map(call => call.step));
     const returns = (trace.returns || []).slice();
     let r = 0;
 
@@ -155,6 +157,7 @@
         }
       }
       while (stack.length > step.depth) end(stack.pop(), index);
+      if (designStarts.has(index) && index > 0) while (stack.length) end(stack.pop(), index);
 
       while (stack.length < step.depth) {
         const parent = stack[stack.length - 1] || null;
@@ -183,7 +186,8 @@
       return false;
     });
 
-    return { list: calls, at: callAt, recursive };
+    const roots = calls.filter(call => call.parent == null).length;
+    return { list: calls, at: callAt, recursive, roots };
   }
 
   /** The frames on the stack at a step, outermost first, each with its variables at that moment. */
@@ -790,10 +794,17 @@
   // ---- call stack and recursion tree ------------------------------------------------------------
 
   function callStack(frames, context) {
-    if (frames.length <= 1 && !context.model.calls.recursive) return "";
+    const { recursive, roots } = context.model.calls;
+    // One method running once needs no stack. Several calls one after another — a design
+    // problem's — do: the stack is what says which call is running.
+    if (frames.length <= 1 && !recursive && roots <= 1) return "";
     const shown = frames.slice(-8);
     const hidden = frames.length - shown.length;
-    return `<div class="panel-block"><div class="block-title">Call stack · ${frames.length} deep</div>
+    const design = designCallAt(context.model.trace, context.index);
+    const title = design
+      ? `Call ${design.index + 1} of ${context.model.trace.calls.length}: ${escapeHtml(design.operation)}`
+      : `Call stack · ${frames.length} deep`;
+    return `<div class="panel-block"><div class="block-title">${title}</div>
       <div class="call-stack">${hidden > 0 ? `<div class="frame-card muted">… ${hidden} more below</div>` : ""}${shown.map((frame, i) => {
         const top = i === shown.length - 1;
         const vars = frame.variables.filter(v => v.ref == null).slice(0, 6)
@@ -801,6 +812,13 @@
         return `<div class="frame-card ${top ? "top" : ""} ${top && context.before && context.before.step.depth < context.step.depth ? "added" : ""}">
           <div class="frame-name">${escapeHtml(callLabel(frame.call))}</div><div class="entries">${vars}</div></div>`;
       }).reverse().join("")}</div></div>`;
+  }
+
+  /** The design problem's call running at step `index`: the last one to start at or before it. */
+  function designCallAt(trace, index) {
+    let found = null;
+    for (const call of trace.calls || []) if (call.step <= index) found = call;
+    return found;
   }
 
   function callLabel(call) {

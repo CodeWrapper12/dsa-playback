@@ -20,7 +20,7 @@ public class ScannerAgreementTests
     {
         string source = Samples.Read(sample);
 
-        foreach (var entry in EntryPointScanner.Scan(source))
+        foreach (var entry in EntryPointScanner.Scan(source).Where(e => !e.Design))
         {
             var outcome = Runner.Compile(source, entry.Qualified, instrument: false);
             Assert.True(outcome.Success, $"{entry.Qualified}: {string.Join("; ", outcome.Errors)}");
@@ -48,12 +48,25 @@ public class ScannerAgreementTests
     }
 
     [Fact]
-    public void A_class_that_cannot_be_constructed_says_why()
+    public void A_class_that_cannot_be_constructed_is_a_design_problem_and_says_what_it_needs()
     {
+        // Created with arguments and then called: LeetCode's design-problem shape, as in
+        // Random Pick Index, whose class is even called Solution.
         var entry = Assert.Single(EntryPointScanner.Scan(
             "public class Solution { public Solution(int seed) { } public int Go(int[] values) => values.Length; }"));
 
+        Assert.True(entry.Design);
         Assert.False(entry.Measurable);
+        Assert.Contains("Add LeetCode's example as a comment", entry.Reason);
+    }
+
+    [Fact]
+    public void A_class_with_only_a_private_constructor_still_says_why()
+    {
+        var entry = Assert.Single(EntryPointScanner.Scan(
+            "public class Solution { private Solution() { } public int Go(int[] values) => values.Length; }"));
+
+        Assert.False(entry.Design);
         Assert.Contains("parameterless constructor", entry.Reason);
     }
 

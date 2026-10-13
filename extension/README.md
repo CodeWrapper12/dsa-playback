@@ -6,7 +6,8 @@ has the complexity it has. For C# and Python, written the way LeetCode writes it
 - **Runs on your machine.** Nothing to set up for C#: the engine is inside the
   extension. For Python, the Python you already have is used (3.9 or later).
 - **No sign-in.** No account, and nothing is collected about you.
-- **Your code never leaves your computer.**
+- **Your code never leaves your computer** — unless you turn on the optional AI
+  explanation, which sends a step to your own Copilot when you ask.
 - **Explains *why* a solution is O(n²), line by line** — *"When the input doubles, this
   takes about four times as long, because line 10 runs once for every pair of items."*
 
@@ -101,10 +102,38 @@ and press Enter.
   the versions and the recent log, for you to read before sending. Your code is never
   included.
 
+## Explain this step (optional, off by default)
+
+Turn on **DSA Playback: Explain With AI** (`dsaPlayback.explainWithAI`) to get an
+**✨ Explain this step** button in the run view, answered by your own GitHub Copilot in
+plain English. **Turning it on sends your code to Copilot** — the code you are stepping
+through, the current line and its variables — and only when you press the button. VS Code
+asks your permission the first time. Needs VS Code 1.90 or later and a Copilot sign-in.
+Everything else in DSA Playback stays on your machine.
+
 ## Questions
 
 Ask in [Discussions](https://github.com/CodeWrapper12/dsa-playback/discussions). If
 DSA Playback helps you, a rating helps other students find it.
+
+## Design problems
+
+LRU Cache, Min Stack, Implement Trie: a class, and LeetCode's two-line example of the
+calls to make on it.
+
+```csharp
+// Input
+// ["LRUCache", "put", "put", "get"]
+// [[2], [1, 1], [2, 2], [1]]
+// Output
+// [null, null, null, 1]
+public class LRUCache { … }
+```
+
+**▶ Visualize** appears above the class. It creates the object, makes every call in
+order, and checks the list of results against Output. The run view says which call is
+running — *Call 4 of 10: get*. Type other calls in the same two-list format to try your
+own. Complexity is not measured for design problems.
 
 ## Files from LeetCode
 

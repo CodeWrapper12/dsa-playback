@@ -27,16 +27,14 @@ public static class Stepper
         IReadOnlyList<string?>? values = null,
         int? example = null)
     {
-        var outcome = Runner.Compile(analysis, entryMethod, instrument: true, stepping: true);
+        var outcome = Runner.Compile(analysis, entryMethod, instrument: true, stepping: true, design: IsDesign(analysis, entryMethod));
         if (!outcome.Success) return Failed(outcome.Status, outcome.Errors, size);
 
         var solution = outcome.Solution!;
         try
         {
-            var parameters = SolutionParameter.From(solution.Parameters);
-            var search = ExampleFinder.Find(analysis.Tree.GetRoot(), entryMethod, parameters.Select(p => p.Name).ToList());
-
-            return RecordWith(parameters, search, inputs, size, maxSteps, strategy, values, example, MethodsOf(analysis),
+            var plan = CSharpPlan(analysis, entryMethod, solution);
+            return RecordWith(plan, inputs, size, maxSteps, strategy, values, example, MethodsOf(analysis),
                 CSharpRun(solution, budget, maxSteps));
         }
         finally
@@ -51,22 +49,21 @@ public static class Stepper
     /// </summary>
     public static ExampleReport RunExamples(SourceAnalysis analysis, string entryMethod, long budget = Runner.DefaultBudget)
     {
-        var outcome = Runner.Compile(analysis, entryMethod, instrument: true, stepping: true);
+        var outcome = Runner.Compile(analysis, entryMethod, instrument: true, stepping: true, design: IsDesign(analysis, entryMethod));
         if (!outcome.Success) return new ExampleReport(outcome.Status, Array.Empty<ExampleRun>()) { Errors = outcome.Errors };
 
         var solution = outcome.Solution!;
         try
         {
-            var parameters = SolutionParameter.From(solution.Parameters);
-            var search = ExampleFinder.Find(analysis.Tree.GetRoot(), entryMethod, parameters.Select(p => p.Name).ToList());
+            var plan = CSharpPlan(analysis, entryMethod, solution);
             var methods = MethodsOf(analysis);
             var run = CSharpRun(solution, budget, ResultOnlySteps);
 
             // A run that timed out leaves this build unusable, so later examples are
             // reported as not run rather than as failures of the student's code.
-            return RunEach(search, index => solution.Abandoned
+            return RunEach(plan.Search, index => solution.Abandoned
                 ? null
-                : RecordWith(parameters, search, null, DefaultSize, ResultOnlySteps, null, null, index, methods, run));
+                : RecordWith(plan, null, DefaultSize, ResultOnlySteps, null, null, index, methods, run));
         }
         finally
         {
@@ -74,11 +71,92 @@ public static class Stepper
         }
     }
 
+    /// <summary>
+    /// What a run takes and where its values come from. A design problem's two values —
+    /// the operations and their arguments — are read together, since which types the
+    /// arguments are depends on the methods the operations name.
+    /// </summary>
+    private sealed record Plan(IReadOnlyList<SolutionParameter> Parameters, ExampleSearch Search)
+    {
+        /// <summary>Reads a value's text; null reads it as its parameter's type.</summary>
+        public Func<int, string, object?[], object?>? Read { get; init; }
+
+        /// <summary>Why nothing can be generated, when that is so regardless of the types.</summary>
+        public string? NotGenerated { get; init; }
+    }
+
+    /// <summary>The design problem's class when <paramref name="entry"/> names one, not a method.</summary>
+    public static bool IsDesign(SourceAnalysis analysis, string entry)
+        => !entry.Contains('.') && analysis.Tree.GetRoot().DescendantNodes()
+            .OfType<Microsoft.CodeAnalysis.CSharp.Syntax.ClassDeclarationSyntax>()
+            .Any(c => c.Identifier.Text == entry);
+
+    private static readonly IReadOnlyList<SolutionParameter> DesignParameters = new[]
+    {
+        new SolutionParameter(DesignExamples.Parameters[0], typeof(string[])) { Written = "list of operations" },
+        new SolutionParameter(DesignExamples.Parameters[1], typeof(object[][])) { Written = "list of arguments" }
+    };
+
+    private const string DesignNotGenerated =
+        "A design problem's calls cannot be made up: add LeetCode's example as a comment, or type the operations and their arguments.";
+
+    private static Plan CSharpPlan(SourceAnalysis analysis, string entry, CompiledSolution solution)
+    {
+        if (solution.DesignType is { } type)
+        {
+            return new Plan(DesignParameters, DesignExamples.Find(analysis.Tree.GetRoot(), type.Name))
+            {
+                NotGenerated = DesignNotGenerated,
+                Read = (index, text, read) => index == 0
+                    ? Literals.ToObject(text, typeof(string[]))
+                    : DesignArguments(type, read[0] as string[], text)
+            };
+        }
+
+        var parameters = SolutionParameter.From(solution.Parameters);
+        return new Plan(parameters, ExampleFinder.Find(analysis.Tree.GetRoot(), entry, parameters.Select(p => p.Name).ToList()));
+    }
+
+    /// <summary>The argument lists as a design problem's calls need them: each one built as its method's parameter types.</summary>
+    private static object?[][]? DesignArguments(Type type, string[]? operations, string text)
+    {
+        var lists = ArgumentLists(text);
+        // The operations could not be read, and that is already said under their own box.
+        if (operations is null) return null;
+
+        System.Reflection.MethodBase[] members;
+        try
+        {
+            members = DsaViz.Runtime.DesignCalls.Resolve(type, operations, lists.Select(l => l.Count).ToList());
+        }
+        catch (DsaViz.Runtime.DesignInputException ex)
+        {
+            throw new LiteralException(ex.Message);
+        }
+
+        return members.Select((member, i) => member.GetParameters()
+            .Select((parameter, j) => Literals.ToObject(lists[i][j], parameter.ParameterType))
+            .ToArray()).ToArray();
+    }
+
+    /// <summary>A list of lists, one per call, as LeetCode writes a design problem's arguments.</summary>
+    private static IReadOnlyList<IReadOnlyList<LeetValue>> ArgumentLists(string text)
+    {
+        const string Shape = "a list with one list of arguments per operation, like [[2],[1,1],[1]]";
+        return Literals.Parse(text) is LeetArray outer
+            ? outer.Items.Select(item => item is LeetArray inner ? inner.Items : throw new LiteralException($"expected {Shape}")).ToList()
+            : throw new LiteralException($"expected {Shape}");
+    }
+
     /// <summary>A run of the compiled C# solution, recording at most <paramref name="maxSteps"/> steps.</summary>
     private static Func<object?[], RecordedRun> CSharpRun(CompiledSolution solution, long budget, int maxSteps)
-        => arguments =>
+        => values =>
         {
+            // A design run's entry point makes the calls, and takes the class to make them on.
             var recorder = new HeapRecorder(solution.Statements);
+            object?[] arguments = solution.DesignType is { } type
+                ? new object?[] { type, values[0], values[1], new Action<int>(recorder.CallStarting) }
+                : values;
             var trace = Runner.Invoke(solution, arguments, budget, recording: new StepRecording(recorder, maxSteps));
 
             var errors = trace.Errors.ToList();
@@ -93,7 +171,10 @@ public static class Stepper
 
             return new RecordedRun(trace.Status, recorder.Steps, recorder.Returns, solution.Statements, trace.StepsTruncated,
                 recorder.Steps.Count > 0 ? trace.TotalBytesAllocated : 0, errors, trace.ErrorLine,
-                trace.Status == RunStatus.Completed ? Literals.Format(trace.ReturnObject) : null);
+                trace.Status == RunStatus.Completed ? Literals.Format(trace.ReturnObject) : null)
+            {
+                CallStarts = recorder.CallStarts
+            };
         };
 
     /// <summary>
@@ -148,13 +229,12 @@ public static class Stepper
     {
         var solution = Python.PythonSolution.Describe(host, source, entry);
         if (solution.CompileError is { } error) return Failed(RunStatus.CompileError, new[] { error }, size);
-        if (solution.EntryInfo is null) return Failed(RunStatus.CompileError, new[] { NoFunction(entry) }, size);
+        if (solution.EntryInfo is null && solution.DesignClass is null)
+            return Failed(RunStatus.CompileError, new[] { NoFunction(entry) }, size);
 
-        var search = solution.Examples();
-        var parameters = solution.Parameters(search);
-
-        return RecordWith(parameters, search, inputs, size, maxSteps, strategy, values, example, solution.Description.Methods,
-            PythonRun(host, solution, source, entry, parameters, budget, maxSteps));
+        var plan = PythonPlan(solution);
+        return RecordWith(plan, inputs, size, maxSteps, strategy, values, example, solution.Description.Methods,
+            PythonRun(host, solution, source, entry, plan.Parameters, budget, maxSteps));
     }
 
     /// <summary>Runs every example in a Python file, each recording a single step.</summary>
@@ -164,19 +244,47 @@ public static class Stepper
         var solution = Python.PythonSolution.Describe(host, source, entry);
         if (solution.CompileError is { } error)
             return new ExampleReport(RunStatus.CompileError, Array.Empty<ExampleRun>()) { Errors = new[] { error } };
-        if (solution.EntryInfo is null)
+        if (solution.EntryInfo is null && solution.DesignClass is null)
             return new ExampleReport(RunStatus.CompileError, Array.Empty<ExampleRun>()) { Errors = new[] { NoFunction(entry) } };
 
-        var search = solution.Examples();
-        var parameters = solution.Parameters(search);
-        var run = PythonRun(host, solution, source, entry, parameters, budget, ResultOnlySteps);
+        var plan = PythonPlan(solution);
+        var run = PythonRun(host, solution, source, entry, plan.Parameters, budget, ResultOnlySteps);
 
         // Each Python run is its own process, so a timeout leaves nothing behind to skip.
-        return RunEach(search, index => RecordWith(parameters, search, null, DefaultSize, ResultOnlySteps, null, null, index,
+        return RunEach(plan.Search, index => RecordWith(plan, null, DefaultSize, ResultOnlySteps, null, null, index,
             solution.Description.Methods, run));
     }
 
     private static string NoFunction(string entry) => $"No function named '{entry}' was found.";
+
+    private static Plan PythonPlan(Python.PythonSolution solution)
+    {
+        if (solution.DesignClass is not null)
+        {
+            // Python takes the arguments as they are written; its runner checks them against
+            // the methods, which only it can see.
+            return new Plan(DesignParameters, solution.DesignExamplesFound())
+            {
+                NotGenerated = DesignNotGenerated,
+                Read = (index, text, read) => index == 0
+                    ? Literals.ToObject(text, typeof(string[]))
+                    : PlainArguments(read[0] as string[], text)
+            };
+        }
+
+        var search = solution.Examples();
+        return new Plan(solution.Parameters(search), search);
+    }
+
+    private static object?[][]? PlainArguments(string[]? operations, string text)
+    {
+        var lists = ArgumentLists(text);
+        if (operations is null) return null;
+        if (lists.Count != operations.Length)
+            throw new LiteralException(
+                $"there are {operations.Length} operations but {lists.Count} argument lists. Each operation needs its own list, [] when it takes none");
+        return lists.Select(list => list.Select(Literals.ToPlain).ToArray()).ToArray();
+    }
 
     /// <summary>A run of the Python function, recording at most <paramref name="maxSteps"/> steps.</summary>
     private static Func<object?[], RecordedRun> PythonRun(Python.PythonHost host, Python.PythonSolution solution,
@@ -196,7 +304,8 @@ public static class Stepper
                     budget = Math.Min(budget, Python.PythonSolution.DefaultBudget),
                     depthLimit = Python.PythonSolution.DepthLimit,
                     stackLike = solution.Description.StackLike,
-                    heapLike = solution.Description.HeapLike
+                    heapLike = solution.Description.HeapLike,
+                    design = solution.DesignClass is not null
                 }, Python.PythonSolution.RunTimeout);
             }
             catch (Python.PythonRunFailedException ex) when (ex.TimedOut)
@@ -206,22 +315,28 @@ public static class Stepper
             }
 
             return new RecordedRun(run.Status, run.Steps, run.Returns, run.Statements, run.Truncated, run.TotalAllocated,
-                run.Errors, run.ErrorLine, run.ReturnValue);
+                run.Errors, run.ErrorLine, run.ReturnValue)
+            {
+                CallStarts = run.Calls.Select(c => (c.Index, c.Step)).ToList()
+            };
         };
 
     /// <summary>What one recorded run produced, whichever language ran it.</summary>
     private sealed record RecordedRun(
         RunStatus Status, IReadOnlyList<ExecutionStep> Steps, IReadOnlyList<ReturnEvent> Returns,
         IReadOnlyList<StatementInfo> Statements, bool Truncated, long TotalAllocated,
-        IReadOnlyList<string> Errors, int? ErrorLine, string? ReturnValue);
+        IReadOnlyList<string> Errors, int? ErrorLine, string? ReturnValue)
+    {
+        /// <summary>For a design problem: each call's number and the step it started at.</summary>
+        public IReadOnlyList<(int Index, int Step)> CallStarts { get; init; } = Array.Empty<(int, int)>();
+    }
 
     /// <summary>
     /// Everything about a recorded run that does not depend on the language: which values it
     /// runs with, reading typed ones, the expected output, and the arguments as passed in.
     /// </summary>
     private static StepTrace RecordWith(
-        IReadOnlyList<SolutionParameter> parameters,
-        ExampleSearch search,
+        Plan plan,
         IReadOnlyList<InputSpec>? inputs,
         int size,
         int maxSteps,
@@ -231,6 +346,7 @@ public static class Stepper
         IReadOnlyList<MethodParameters> methods,
         Func<object?[], RecordedRun> run)
     {
+        var (parameters, search) = (plan.Parameters, plan.Search);
         int? selected = example switch
         {
             < 0 => null,
@@ -243,8 +359,8 @@ public static class Stepper
         // Generated values need a configuration; a parameter that cannot be generated is
         // fine as long as every value it needs is typed or found in the code.
         IReadOnlyList<InputSpec>? specs = inputs;
-        string? generationProblem = null;
-        if (specs is null)
+        string? generationProblem = plan.NotGenerated;
+        if (specs is null && generationProblem is null)
         {
             try
             {
@@ -258,7 +374,7 @@ public static class Stepper
             }
         }
 
-        var (arguments, resolved) = ResolveInputs(parameters, specs, size, values, chosenExample, generationProblem);
+        var (arguments, resolved) = ResolveInputs(parameters, specs, size, values, chosenExample, generationProblem, plan.Read);
         var found = new StepTrace
         {
             Status = RunStatus.Completed,
@@ -298,7 +414,11 @@ public static class Stepper
             ReturnValue = recorded.ReturnValue,
             Errors = recorded.Errors,
             ErrorLine = recorded.ErrorLine,
-            Check = Check(chosenExample, resolved, recorded.ReturnValue)
+            Check = Check(chosenExample, resolved, recorded.ReturnValue),
+            Calls = arguments[0] is string[] operations && plan.NotGenerated == DesignNotGenerated
+                ? recorded.CallStarts.Where(c => c.Index < operations.Length)
+                    .Select(c => new DesignCall(c.Index, operations[c.Index], c.Step)).ToList()
+                : Array.Empty<DesignCall>()
         };
     }
 
@@ -308,7 +428,8 @@ public static class Stepper
     /// </summary>
     private static (object?[] Arguments, IReadOnlyList<StepInput> Inputs) ResolveInputs(
         IReadOnlyList<SolutionParameter> parameters, IReadOnlyList<InputSpec>? specs, int size,
-        IReadOnlyList<string?>? typed, FoundExample? example, string? generationProblem)
+        IReadOnlyList<string?>? typed, FoundExample? example, string? generationProblem,
+        Func<int, string, object?[], object?>? read)
     {
         var arguments = new object?[parameters.Count];
         var inputs = new List<StepInput>(parameters.Count);
@@ -349,7 +470,7 @@ public static class Stepper
 
             try
             {
-                arguments[i] = Literals.ToObject(text, parameter.Type);
+                arguments[i] = read is null ? Literals.ToObject(text, parameter.Type) : read(i, text, arguments);
                 inputs.Add(new StepInput(name, type, text, source));
             }
             catch (LiteralException ex)
@@ -392,6 +513,7 @@ public static class Stepper
             {
                 Microsoft.CodeAnalysis.CSharp.Syntax.MethodDeclarationSyntax m => (Name: m.Identifier.Text, List: m.ParameterList),
                 Microsoft.CodeAnalysis.CSharp.Syntax.LocalFunctionStatementSyntax f => (Name: f.Identifier.Text, List: f.ParameterList),
+                Microsoft.CodeAnalysis.CSharp.Syntax.ConstructorDeclarationSyntax c => (Name: c.Identifier.Text, List: c.ParameterList),
                 _ => (Name: (string?)null, List: (Microsoft.CodeAnalysis.CSharp.Syntax.ParameterListSyntax?)null)
             })
             .Where(m => m.Name is not null)

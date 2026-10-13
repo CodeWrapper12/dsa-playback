@@ -663,3 +663,96 @@ test("a measured Python solution gets the same plain sentences", () => {
   assert.match(sentences[0], /^When the input doubles, this takes about four times as long, because line \d+ runs/);
   for (const sentence of sentences) assert.doesNotMatch(sentence, NOTATION, sentence);
 });
+
+// ---- design problems -------------------------------------------------------------------
+
+for (const [file, calls] of [["design/LRUCache.cs", ["LRUCache", "Put", "Get"]], ["design/lru_cache.py", ["__init__", "put", "get"]]] as const) {
+  test(`a design problem plays every call, naming the one running (${file})`, () => {
+    const { dom, go, count, area, trace } = run(sample(file), "LRUCache");
+    const text = () => dom.window.document.body.textContent ?? "";
+    assert.match(text(), /✓ Matches the expected output/);
+    assert.match(text(), /operations/);
+    assert.match(text(), /arguments/);
+
+    const seen = new Set<string>();
+    for (let i = 0; i < count; i++) {
+      go(i);
+      for (const call of calls) if (new RegExp(`\\b${call}\\b`).test(area().textContent ?? "")) seen.add(call);
+    }
+    assert.deepEqual([...seen].sort(), [...calls].sort(), "every call appears on the stack as it runs");
+
+    // The fourth call, get(1), is named as it starts — after two puts in a row, which
+    // depth alone could not tell apart.
+    const fourth = (trace as unknown as { calls: { step: number }[] }).calls[3];
+    go(fourth.step);
+    assert.match(area().textContent ?? "", /Call 4 of 10: get/);
+    assert.match(area().textContent ?? "", /(Get|get)\(1\)/);
+  });
+}
+
+test("a design problem's calls Python could not make are explained above the run", () => {
+  const recorded = measure({
+    file: sample("design/lru_cache.py"), entry: "LRUCache", stepSize: 8,
+    values: ['["LRUCache","put","gett"]', "[[1],[1,1],[1]]"]
+  }) as { steps: unknown };
+  const { text, errors } = showRun(recorded.steps);
+  assert.deepEqual(errors, []);
+  assert.match(text(), /Fix the input/);
+  assert.match(text(), /Operation 3 is "gett", but LRUCache has no method by that name\./);
+});
+
+// ---- explain this step ------------------------------------------------------------------
+
+test("Explain this step is absent until the setting is on, then asks for the current step only when pressed", () => {
+  const recorded = measure({ file: walkthrough("TwoSumSorted.cs"), entry: "Solution.TwoSum", stepSize: 8 }) as { steps: unknown };
+  const { dom, document, posted, errors } = showRun(recorded.steps);
+  const send = (message: unknown) => dom.window.postMessage(message, "*");
+  assert.equal(document.getElementById("explain"), null, "off by default");
+
+  return new Promise<void>(resolve => {
+    send({ type: "settings", explain: true });
+    setTimeout(() => {
+      const before = posted.length;
+      assert.ok(document.getElementById("explain"), "shown once turned on");
+      assert.equal(posted.filter(m => m.type === "explain").length, 0, "nothing is sent until pressed");
+
+      (dom.window as unknown as { __goto(i: number): void }).__goto(2);
+      document.getElementById("explain")!.click();
+      const asked = posted.slice(before).find(m => m.type === "explain")!;
+      assert.equal(asked.index, 2);
+      assert.ok(Array.isArray(asked.callStack) && (asked.callStack as string[]).includes("TwoSum"));
+      assert.ok(Array.isArray(asked.changed));
+
+      // The answer streams in; text from the model is shown as text, never as markup.
+      send({ type: "explanation", trace: asked.trace, index: 2, text: "left moves <b>right</b>", done: false });
+      setTimeout(() => {
+        send({ type: "explanation", trace: asked.trace, index: 2, text: "left moves <b>right</b>.", done: true, model: "Stand-in" });
+        setTimeout(() => {
+          const shown = document.querySelector("#explain-area .explanation")!;
+          assert.match(shown.textContent ?? "", /left moves <b>right<\/b>\./);
+          assert.equal(shown.querySelector("b"), null);
+          assert.match(shown.textContent ?? "", /Written by Stand-in/);
+
+          // Another step has its own answer, or none.
+          (dom.window as unknown as { __goto(i: number): void }).__goto(3);
+          assert.equal(document.querySelector("#explain-area .explanation"), null);
+          assert.deepEqual(errors, []);
+          resolve();
+        }, 0);
+      }, 0);
+    }, 0);
+  });
+});
+
+test("an answer from an earlier run is not shown on a new one", () => {
+  const recorded = measure({ file: walkthrough("TwoSumSorted.cs"), entry: "Solution.TwoSum", stepSize: 8 }) as { steps: unknown };
+  const { dom, document } = showRun(recorded.steps);
+  return new Promise<void>(resolve => {
+    dom.window.postMessage({ type: "settings", explain: true }, "*");
+    dom.window.postMessage({ type: "explanation", trace: 999, index: 0, text: "stale", done: true }, "*");
+    setTimeout(() => {
+      assert.equal(document.querySelector("#explain-area .explanation"), null);
+      resolve();
+    }, 0);
+  });
+});

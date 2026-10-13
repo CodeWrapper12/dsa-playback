@@ -545,3 +545,14 @@ tr.example-row.current { background: var(--vscode-list-inactiveSelectionBackgrou
   background: var(--vscode-editorWidget-background);
 }
 .returned-value code { font-family: var(--vscode-editor-font-family); }
+
+/* ---- explain this step ------------------------------------------------------------- */
+
+#explain-area { margin: 10px 0; }
+#explain-area .explanation {
+  margin-top: 8px; padding: 8px 10px; border-radius: 4px; line-height: 1.5;
+  border-left: 3px solid var(--vscode-textLink-foreground);
+  background: var(--vscode-textBlockQuote-background);
+}
+#explain-area .explanation.error { border-left-color: var(--vscode-errorForeground); }
+#explain-area .explanation .footnote { margin-top: 6px; }

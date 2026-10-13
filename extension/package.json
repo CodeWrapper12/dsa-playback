@@ -2,7 +2,7 @@
   "name": "dsa-playback",
   "displayName": "DSA Playback \u2014 Algorithm Visualizer & Big-O Explainer",
   "description": "Watch your C# or Python solution run step by step \u2014 pointers sliding, lists rewiring, trees filling \u2014 and see in plain words why it is O(n\u00b2). Runs on your machine, no sign-in. Built for learning data structures and algorithms.",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "publisher": "codewrapper12",
   "license": "MIT",
   "icon": "images/icon.png",
@@ -165,6 +165,11 @@
           "type": "string",
           "default": "",
           "markdownDescription": "The Python interpreter for Python files. Leave empty to use the one selected in the Python extension, or else `python3` on your path. Needs Python 3.9 or later."
+        },
+        "dsaPlayback.explainWithAI": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Adds an **Explain this step** button to the run view. **Turning this on sends your code to GitHub Copilot**: pressing the button sends the code you are stepping through, the current line and the variables at that step to your own Copilot, through VS Code's language-model API. Nothing is sent until you press it, and VS Code asks your permission the first time. Needs VS Code 1.90 or later and a GitHub Copilot sign-in."
         }
       }
     },

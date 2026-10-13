@@ -23,6 +23,7 @@ import builtins
 import bisect
 import collections
 import heapq
+import inspect
 import io
 import json
 import math
@@ -135,7 +136,8 @@ def describe(request):
         calls_by_function.setdefault(call["function"], []).append(call)
 
     entries = list_entries(tree, calls_by_function)
-    result = {"entries": entries, "comments": comment_lines(source), "calls": calls_by_function}
+    result = {"entries": entries, "comments": comment_lines(source), "calls": calls_by_function,
+              "classes": list_classes(tree)}
 
     entry_name = request.get("entry")
     if entry_name:
@@ -145,6 +147,8 @@ def describe(request):
             result["space"] = {"class": "Unknown", "reasoning":
                                "Reading Python code for space is not supported; the measured figures are the answer.",
                                "linearLoopDepth": 0, "logLoopDepth": 0, "recursiveSelfCalls": 0}
+        # A design problem's entry is its class, which a run needs the same things for.
+        if target or any(c["name"] == entry_name for c in result["classes"]):
             result["methods"] = [{"name": f.name, "parameters": [a.arg for a in f.args.args if a.arg != "self"]}
                                  for f in ast.walk(tree) if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))]
             result["stackLike"], result["heapLike"] = container_roles(tree)
@@ -216,6 +220,18 @@ def list_entries(tree, calls_by_function):
 
     entries.sort(key=lambda e: (e["reason"] is not None, e["line"]))
     return entries
+
+
+def list_classes(tree):
+    """Classes that could be a design problem's: their line, whether they can be created
+    without arguments, and their public methods."""
+    nodes = node_classes(tree)
+    return [{
+        "name": node.name,
+        "line": node.lineno,
+        "constructible": constructible(node),
+        "methods": [m.name for m in node.body if isinstance(m, ast.FunctionDef) and not m.name.startswith("_")],
+    } for node in tree.body if isinstance(node, ast.ClassDef) and node.name not in nodes]
 
 
 def constructible(cls):
@@ -1214,7 +1230,52 @@ def prepare(request, stepping):
     return (code, statements, sites, namespace), None
 
 
-def locate(namespace, entry):
+class DesignInputError(Exception):
+    """A design problem's calls that do not fit its class. The input's fault, not the code's."""
+
+
+def design_runner(cls, starting=None):
+    """Makes a LeetCode design problem's calls: the first creates the object, every later
+    one calls a method on it, and each result is collected, None for the constructor."""
+    def check(callable_, arguments, what):
+        try:
+            inspect.signature(callable_).bind(*arguments)
+        except TypeError as error:
+            raise DesignInputError(f"{what} cannot take {len(arguments)} argument(s): {error}.") from None
+
+    def run(operations, arguments):
+        if not operations:
+            raise DesignInputError(f'The list of operations is empty. The first one creates the object, like "{cls.__name__}".')
+        if len(operations) != len(arguments):
+            raise DesignInputError(f"There are {len(operations)} operations but {len(arguments)} argument lists. "
+                                   "Each operation needs its own list, [] when it takes none.")
+        if operations[0] != cls.__name__:
+            raise DesignInputError(f'The first operation creates the object, so it must be "{cls.__name__}", not "{operations[0]}".')
+        check(cls, arguments[0], cls.__name__)
+        for number, (name, args) in enumerate(zip(operations[1:], arguments[1:]), 2):
+            method = getattr(cls, name, None) if isinstance(name, str) and not name.startswith("_") else None
+            if not callable(method):
+                raise DesignInputError(f'Operation {number} is "{name}", but {cls.__name__} has no method by that name.')
+            # A plain method is looked up on the class here, so it still takes self; a
+            # static or class method does not.
+            takes_self = not inspect.ismethod(method) and not isinstance(inspect.getattr_static(cls, name), staticmethod)
+            check(method, [None, *args] if takes_self else list(args), f"Operation {number}, {name},")
+
+        if starting:
+            starting(0)
+        target = cls(*arguments[0])
+        results = [None]
+        for number, (name, args) in enumerate(zip(operations[1:], arguments[1:]), 1):
+            if starting:
+                starting(number)
+            results.append(getattr(target, name)(*args))
+        return results
+    return run
+
+
+def locate(namespace, entry, design=False, starting=None):
+    if design:
+        return design_runner(namespace[entry], starting)
     owner, _, name = entry.rpartition(".")
     if owner:
         return getattr(namespace[owner](), name)
@@ -1232,7 +1293,9 @@ def execute(request, tracer, code, namespace):
         sys.stdout = captured
         try:
             exec(code, namespace)                         # defines the solution; nothing is counted yet
-            function = locate(namespace, request["entry"])
+            recorder = getattr(tracer, "recorder", None)
+            function = locate(namespace, request["entry"], request.get("design", False),
+                              recorder.call_starting if recorder is not None else None)
             try:
                 arguments = [build_value(a["text"], a.get("kind", "value"), namespace) for a in request.get("args", [])]
             except Exception as error:
@@ -1259,6 +1322,9 @@ def execute(request, tracer, code, namespace):
         except BudgetExceeded:
             outcome["status"] = "BudgetExceeded"
             outcome["error"] = f"Execution budget of {tracer.budget:,} operations was exceeded."
+        except DesignInputError as error:
+            outcome["status"] = "InvalidInput"
+            outcome["error"] = str(error)
         except (DepthExceeded, RecursionError):
             outcome["status"] = "RecursionLimitExceeded"
             outcome["error"] = (f"Recursion went deeper than {tracer.depth_limit:,} calls. That usually means a missing "
@@ -1349,6 +1415,7 @@ class Recorder:
         self.max_steps = max_steps
         self.steps = []
         self.returns = []
+        self.calls = []                # a design problem's calls: where each began
         self.truncated = False
         self.ids = {}
         self.keep = []                 # ids of live objects are only unique while they are alive
@@ -1488,6 +1555,10 @@ class Recorder:
             changed.append(self.as_patch(previous, current) if previous else current)
         return changed
 
+    def call_starting(self, index):
+        """A design problem's call is about to be made: note the step it starts at."""
+        self.calls.append({"index": index, "step": len(self.steps)})
+
     def describe(self, value, pending):
         kind = self.kind_of(value)
         described = {"id": self.ids[id(value)], "kind": kind, "type": type(value).__name__,
@@ -1545,6 +1616,7 @@ def run_stepped(request):
         "status": outcome["status"],
         "steps": recorder.steps,
         "returns": recorder.returns,
+        "calls": recorder.calls,
         "statements": statements,
         "truncated": recorder.truncated,
         "totalAllocated": tracer.solution_bytes,

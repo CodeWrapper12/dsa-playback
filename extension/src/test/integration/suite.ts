@@ -192,6 +192,41 @@ const checks: [string, (api: TestApi) => Promise<void>][] = [
     assert.equal(steps.check?.matches, true);
   }],
 
+  ["a design problem gets one ▶ Visualize on its class, and its calls run and are checked", async api => {
+    const document = await open("samples/design/LRUCache.cs");
+    assert.deepEqual((await api.lenses(document)).map(lens => lens.command?.title), ["$(play) Visualize"]);
+
+    const before = api.lastSteps();
+    await vscode.commands.executeCommand("dsaPlayback.visualize", document.uri, "LRUCache");
+    const steps = await waitFor(() => (api.lastSteps() !== before ? api.lastSteps() : undefined), "a recorded run");
+    assert.equal(steps.status, "Completed", steps.errors.join("; "));
+    assert.equal(steps.check?.matches, true);
+    assert.equal(steps.calls.length, 10);
+  }],
+
+  ["Explain this step sends nothing while off, and explains why when no Copilot is available", async api => {
+    const settings = vscode.workspace.getConfiguration("dsaPlayback");
+    await vscode.commands.executeCommand("dsaPlayback.visualize",
+      vscode.Uri.file(path.join(repository, "extension/samples/csharp/TwoSumSorted.cs")), "Solution.TwoSum");
+    await waitFor(() => api.lastSteps(), "a recorded run");
+
+    await api.sendPanelMessage({ type: "explain", trace: -1, index: 0 });
+    assert.match(String(api.lastExplanation()?.error), /turned off/);
+
+    await settings.update("explainWithAI", true, vscode.ConfigurationTarget.Global);
+    try {
+      await api.sendPanelMessage({ type: "explain", trace: -1, index: 0 });
+      assert.match(String(api.lastExplanation()?.error), /replaced/, "an answer is only for the run on screen");
+      // The test editor has no Copilot sign-in: the real API is asked, and the answer says so.
+      const traceId = await waitFor(() => api.currentTraceId(), "the run's id", 5_000);
+      await api.sendPanelMessage({ type: "explain", trace: traceId, index: 0 });
+      const answer = await waitFor(() => api.lastExplanation()?.done ? api.lastExplanation() : undefined, "an answer", 30_000);
+      assert.match(String(answer.error), /Copilot|language-model API/);
+    } finally {
+      await settings.update("explainWithAI", undefined, vscode.ConfigurationTarget.Global);
+    }
+  }],
+
   ["the walkthrough opens an editable copy of its sample", async () => {
     await vscode.commands.executeCommand("dsaPlayback.openSample", "LevelOrder.cs");
     const opened = vscode.window.activeTextEditor?.document.fileName ?? "";
