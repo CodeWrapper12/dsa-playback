@@ -39,6 +39,9 @@ public final class Dsaviz {
     static long allocBase, allocLast, since;
     /** What the runtime itself allocated while recording: never the student's. */
     static long own;
+    /** A design problem's calls, measured: operations when each began. */
+    static long[] callStarts;
+    static int calls;
     static String programFile = "Solution.java";
     static final StringBuilder out = new StringBuilder(1 << 16);
 
@@ -690,9 +693,16 @@ public final class Dsaviz {
 
         List<Object> results = new ArrayList<>();
         Object target = null;
+        calls = 0;
+        if (!stepping) {
+            long before = allocated();
+            callStarts = new long[operations.size()];
+            excludeSince(before);
+        }
         for (int i = 0; i < operations.size(); i++) {
             List<?> args = (List<?>) arguments.get(i);
-            out.append("{\"call\":").append(i).append(",\"step\":").append(steps).append("}\n");
+            if (stepping) out.append("{\"call\":").append(i).append(",\"step\":").append(steps).append("}\n");
+            else callStarts[calls++] = Dsaviz.operations;
             try {
                 if (i == 0) {
                     Constructor<?> make = null;
@@ -896,7 +906,17 @@ public final class Dsaviz {
         list(j, "hits", hits); list(j, "bytes", bytes); list(j, "largest", largest); list(j, "work", work);
         j.append(",\"sites\":[");
         for (int i = 0; i < siteCalls.length; i++) { if (i > 0) j.append(','); j.append('[').append(siteCalls[i]).append(',').append(siteWork[i]).append(']'); }
-        j.append("]}");
+        j.append(']');
+        if (!stepping && callStarts != null && calls > 0) {
+            // What each call cost: the operations between its start and the next one's.
+            j.append(",\"callCosts\":[");
+            for (int i = 0; i < calls; i++) {
+                if (i > 0) j.append(',');
+                j.append((i + 1 < calls ? callStarts[i + 1] : operations) - callStarts[i]);
+            }
+            j.append(']');
+        }
+        j.append('}');
         out.append(j).append('\n');
         System.out.flush();
         // A line of the student's own output may not have ended: the protocol starts afresh.

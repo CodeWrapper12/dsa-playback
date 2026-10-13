@@ -42,4 +42,45 @@ public sealed record MeasurementResult
 
     /// <summary>Set when measurement stopped early because a size exceeded the budget.</summary>
     public string? SizeNote { get; init; }
+
+    /// <summary>For a design problem: how each operation's cost per call grows. Null otherwise.</summary>
+    public DesignGrowth? Design { get; init; }
 }
+
+/// <summary>
+/// A design problem measured the way LeetCode states its requirement — "get and put must
+/// each run in O(1) average time": the cost of one call to each method, averaged over all
+/// its calls, as the number of calls made grows.
+/// </summary>
+public sealed record DesignGrowth
+{
+    /// <summary>What calls were made at each size, in words.</summary>
+    public required string Workload { get; init; }
+
+    /// <summary>One per method the calls used, in the order the example first calls them.</summary>
+    public required IReadOnlyList<OperationGrowth> Operations { get; init; }
+}
+
+public sealed record OperationGrowth
+{
+    /// <summary>The operation as the example names it: "put".</summary>
+    public required string Name { get; init; }
+
+    /// <summary>How the average cost of one call grows with n.</summary>
+    public required ComplexityClass PerCall { get; init; }
+
+    /// <summary>"≈ 6 operations per call", "≈ 0.5·n per call".</summary>
+    public string? Formula { get; init; }
+
+    /// <summary>The finding in plain words.</summary>
+    public required string Plain { get; init; }
+
+    /// <summary>The line that makes a call cost what it does, when one does.</summary>
+    public string? Because { get; init; }
+    public int? Line { get; init; }
+
+    /// <summary>At each size: how many calls were made, and their average and largest cost.</summary>
+    public required IReadOnlyList<OperationPoint> Points { get; init; }
+}
+
+public sealed record OperationPoint(int Size, int Calls, double Average, long Largest);

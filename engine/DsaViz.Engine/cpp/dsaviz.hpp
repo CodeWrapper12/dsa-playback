@@ -93,6 +93,8 @@ struct State {
     bool stepping = false;
     long long maxSteps = 10000, steps = 0;
     bool truncated = false;
+    long long* callStarts = nullptr;   // a design problem's calls, measured: operations when each began
+    long long calls = 0, callRoom = 0;
     FILE* out = stdout;
 };
 
@@ -701,6 +703,15 @@ inline void writeCounts(Json& j) {
     j.raw("],\"sites\":[");
     for (int i = 0; i < s.sites; ++i) { if (i) j.raw(","); j.raw("["); j.number(s.siteCalls[i]); j.raw(","); j.number(s.siteWork[i]); j.raw("]"); }
     j.raw("]");
+    if (s.calls > 0) {
+        // What each call cost: the operations between its start and the next one's.
+        j.raw(",\"callCosts\":[");
+        for (long long i = 0; i < s.calls; ++i) {
+            if (i) j.raw(",");
+            j.number((i + 1 < s.calls ? s.callStarts[i + 1] : s.operations) - s.callStarts[i]);
+        }
+        j.raw("]");
+    }
 }
 
 [[noreturn]] inline void finish(const char* status, const std::string& error, int statement) {
@@ -842,6 +853,16 @@ inline void design_validate(const std::vector<std::string>& operations, const Va
 
 /// Marks where call `index` begins, so the run view can tell one call from the next.
 inline void call_starting(std::size_t index) {
+    State& s = state();
+    if (s.active && !s.stepping) {
+        // Measuring: the count so far, kept outside the student's memory in a plain block.
+        if (s.calls == s.callRoom) {
+            s.callRoom = s.callRoom ? s.callRoom * 2 : 1024;
+            s.callStarts = static_cast<long long*>(std::realloc(s.callStarts, (std::size_t)s.callRoom * sizeof(long long)));
+        }
+        s.callStarts[s.calls++] = s.operations;
+        return;
+    }
     if (!state().active || !state().stepping) return;
     Quiet quiet;
     emit("{\"call\":" + std::to_string(index) + ",\"step\":" + std::to_string(state().steps) + "}");

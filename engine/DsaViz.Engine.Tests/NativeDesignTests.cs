@@ -61,12 +61,12 @@ public class NativeDesignTests
     [Theory]
     [InlineData("lru_cache.cpp")]
     [InlineData("lru_cache.rs")]
-    public void The_class_is_offered_once_with_Visualize_only(string file)
+    public void The_class_is_offered_once_and_can_be_measured_per_call(string file)
     {
         var entries = JobRunnerEntries(Sample(file));
         var entry = Assert.Single(entries);
         Assert.True(entry.Design);
-        Assert.False(entry.Generatable);
+        Assert.True(entry.Generatable, "its example's calls can be repeated at bigger sizes");
         Assert.Equal("LRUCache", entry.Qualified);
     }
 
@@ -103,15 +103,6 @@ public class NativeDesignTests
         Assert.Empty(trace.Steps);
         var said = string.Join(" ", trace.Errors.Concat(trace.Inputs.Select(i => i.Error ?? "")));
         Assert.Contains(message, said);
-    }
-
-    [Theory]
-    [InlineData("lru_cache.cpp")]
-    [InlineData("lru_cache.rs")]
-    public void Complexity_is_not_measured_for_a_design_problem(string file)
-    {
-        var result = JobRunner.Run(new JobRequest { File = Sample(file), Entry = "LRUCache" }).Primary!;
-        Assert.Contains(Measurer.DesignNotMeasured, result.Errors);
     }
 
     [Fact]

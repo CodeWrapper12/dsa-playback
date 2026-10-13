@@ -6,11 +6,6 @@ namespace DsaViz.Engine.Measurement;
 
 public static class Measurer
 {
-    /// <summary>Said when growth is asked for a design problem.</summary>
-    public const string DesignNotMeasured =
-        "Complexity is not measured for design problems: their cost is per operation, which this version does not measure. " +
-        "Press Visualize to watch the calls run.";
-
     /// <summary>Said beside a parameter that cannot be generated, when growth is asked for.</summary>
     public const string NotGeneratedNote =
         "Complexity is measured by running the method on inputs made at many sizes, so it needs every parameter " +
@@ -49,8 +44,7 @@ public static class Measurer
         long budget = Runner.DefaultBudget,
         GenerationStrategy? strategy = null)
     {
-        if (Stepper.IsDesign(analysis, entryMethod))
-            return Failed(RunStatus.RuntimeError, new[] { DesignNotMeasured }, inputs ?? Array.Empty<InputSpec>());
+        if (Stepper.IsDesign(analysis, entryMethod)) return MeasureCSharpDesign(analysis, entryMethod, sizes, budget);
 
         var outcome = Runner.Compile(analysis, entryMethod, instrument: true);
         if (!outcome.Success)
@@ -60,6 +54,127 @@ public static class Measurer
         return MeasureTarget(target, inputs, sizes, budget, strategy,
             () => StaticEstimator.Estimate(analysis, entryMethod),
             () => StaticEstimator.EstimateSpace(analysis, entryMethod));
+    }
+
+    private static MeasurementResult MeasureCSharpDesign(SourceAnalysis analysis, string entryMethod, IReadOnlyList<int>? sizes, long budget)
+    {
+        var outcome = Runner.Compile(analysis, entryMethod, instrument: true, design: true);
+        if (!outcome.Success) return Failed(outcome.Status, outcome.Errors, Array.Empty<InputSpec>());
+
+        var solution = outcome.Solution!;
+        var type = solution.DesignType!;
+        DesignWorkload workload;
+        try
+        {
+            workload = DesignWorkload.From(type.Name, DesignExamples.Find(analysis.Tree.GetRoot(), type.Name),
+                (operation, arity) => CSharpDesignTarget.Signature(type, operation, arity));
+        }
+        catch (DesignWorkloadException ex)
+        {
+            solution.Dispose();
+            return Failed(RunStatus.RuntimeError, new[] { ex.Message }, Array.Empty<InputSpec>());
+        }
+
+        using var target = new CSharpDesignTarget(solution, type);
+        return MeasureDesign(target, workload, sizes, budget,
+            id => id >= 0 && id < solution.Statements.Count ? solution.Statements[id].Method : null);
+    }
+
+    private static MeasurementResult MeasurePythonDesign(Python.PythonSolution solution, Python.PythonClass design,
+        IReadOnlyList<int>? sizes, long budget)
+    {
+        DesignWorkload workload;
+        try
+        {
+            workload = DesignWorkload.From(design.Name, solution.DesignExamplesFound(), (operation, arity) =>
+            {
+                string name = operation == design.Name ? "__init__" : operation;
+                if (!design.Signatures.TryGetValue(name, out var parameters))
+                    return name == "__init__" && arity == 0 ? Array.Empty<DesignArg>() : null;
+                return parameters.Count == arity ? parameters.Select(p => DesignArg.Of(p.Name, p.Type)).ToList() : null;
+            });
+        }
+        catch (DesignWorkloadException ex)
+        {
+            return Failed(RunStatus.RuntimeError, new[] { ex.Message }, Array.Empty<InputSpec>());
+        }
+
+        using var target = solution.DesignTarget();
+        return MeasureDesign(target, workload, sizes, Math.Min(budget, Python.PythonSolution.DefaultBudget), target.MethodOf);
+    }
+
+    /// <summary>A C++, Rust or Java design problem, measured per call with its own program.</summary>
+    private static MeasurementResult NativeDesign(string className, ExampleSearch examples,
+        Func<string, int, IReadOnlyList<DesignArg>?> signature, Func<IRunTarget> target,
+        IReadOnlyList<StatementInfo> statements, IReadOnlyList<int>? sizes, long budget)
+    {
+        DesignWorkload workload;
+        try
+        {
+            workload = DesignWorkload.From(className, examples, signature);
+        }
+        catch (DesignWorkloadException ex)
+        {
+            return Failed(RunStatus.RuntimeError, new[] { ex.Message }, Array.Empty<InputSpec>());
+        }
+
+        using var run = target();
+        return MeasureDesign(run, workload, sizes, budget, id => id >= 0 && id < statements.Count ? statements[id].Method : null);
+    }
+
+    /// <summary>
+    /// A design problem, measured per call: at each size n, the example's calls repeated to
+    /// n calls with new values, run as the student's own calls are, with each call's cost
+    /// recorded. The total over all n calls is fitted as any run is, for the costs on each
+    /// line; what each method costs per call is the answer.
+    /// </summary>
+    private static MeasurementResult MeasureDesign(
+        IRunTarget target, DesignWorkload workload, IReadOnlyList<int>? sizes, long budget, Func<int, string?> methodOf)
+    {
+        object?[] Build(int size)
+        {
+            var (operations, arguments) = workload.At(size);
+            return new object?[] { operations, arguments };
+        }
+
+        var notes = new List<string>();
+        var requested = sizes ?? DefaultSizes;
+        var ladder = RunLadder(target, Build, requested, budget);
+        if (ladder.Points.Count < MinimumPointsForCurve && ladder.StoppedBy is RunStatus.BudgetExceeded or RunStatus.RecursionLimitExceeded
+            && target.Usable && !requested.SequenceEqual(SmallSizes))
+        {
+            var retry = RunLadder(target, Build, SmallSizes, budget);
+            if (retry.Points.Count > ladder.Points.Count)
+            {
+                notes.Add("The default numbers of calls exhausted the limits almost immediately, so the measurement was retried with far fewer.");
+                ladder = retry;
+            }
+        }
+        if (ladder.Note is not null) notes.Add(ladder.Note);
+
+        var errors = ladder.Errors;
+        if (ladder.Points.Count == 0 && ladder.Note is not null) errors = new List<string>(errors) { ladder.Note };
+
+        var empirical = CurveFitter.Fit(ladder.Points);
+        var unread = new StaticEstimate(ComplexityClass.Unknown,
+            "A design problem is not read from the code: what each call costs is measured.", 0, 0, 0);
+        var derivation = Derivations.Explain(ladder.Runs, empirical);
+
+        return new MeasurementResult
+        {
+            Status = ladder.Points.Count > 0 ? RunStatus.Completed : ladder.StoppedBy ?? RunStatus.RuntimeError,
+            Points = ladder.Points,
+            Empirical = empirical,
+            Static = unread,
+            Disagreement = false,
+            Detail = ladder.Detail,
+            Derivation = derivation,
+            Space = Derivations.Space(ladder.Runs, derivation, unread),
+            Inputs = Array.Empty<InputSpec>(),
+            Errors = errors,
+            SizeNote = notes.Count == 0 ? null : string.Join(" ", notes),
+            Design = ladder.Points.Count > 0 ? DesignGrowthReader.Read(ladder.Runs, workload, methodOf) : null
+        };
     }
 
     /// <summary>
@@ -78,8 +193,7 @@ public static class Measurer
         var solution = Python.PythonSolution.Describe(host, source, entry);
         if (solution.CompileError is { } error)
             return Failed(RunStatus.CompileError, new[] { error }, inputs ?? Array.Empty<InputSpec>());
-        if (solution.DesignClass is not null)
-            return Failed(RunStatus.RuntimeError, new[] { DesignNotMeasured }, inputs ?? Array.Empty<InputSpec>());
+        if (solution.DesignClass is { } design) return MeasurePythonDesign(solution, design, sizes, budget);
         if (solution.EntryInfo is null)
             return Failed(RunStatus.CompileError, new[] { $"No function named '{entry}' was found." }, inputs ?? Array.Empty<InputSpec>());
 
@@ -105,10 +219,13 @@ public static class Measurer
         GenerationStrategy? strategy = null)
     {
         var solution = Cpp.CppSolution.Read(source, entry);
-        if (solution.DesignClass is not null)
-            return Failed(RunStatus.RuntimeError, new[] { DesignNotMeasured }, inputs ?? Array.Empty<InputSpec>());
         var built = solution.Build(host, stepping: false);
         if (built.Executable is null) return Failed(built.Status, built.Errors, inputs ?? Array.Empty<InputSpec>());
+        if (solution.DesignClass is { } design)
+        {
+            return NativeDesign(design.Name, solution.DesignExamplesFound(), solution.DesignSignature,
+                () => solution.DesignTarget(built.Executable, built.Program!), built.Program!.Statements, sizes, budget);
+        }
 
         using var target = solution.Target(built.Executable, built.Program!);
         return MeasureTarget(target, inputs, sizes, budget, strategy,
@@ -127,10 +244,13 @@ public static class Measurer
         GenerationStrategy? strategy = null)
     {
         var solution = Java.JavaSolution.Read(source, entry);
-        if (solution.DesignClass is not null)
-            return Failed(RunStatus.RuntimeError, new[] { DesignNotMeasured }, inputs ?? Array.Empty<InputSpec>());
         var built = solution.Build(host, stepping: false);
         if (built.Classes is null) return Failed(built.Status, built.Errors, inputs ?? Array.Empty<InputSpec>());
+        if (solution.DesignClass is { } design)
+        {
+            return NativeDesign(design.Name, solution.DesignExamplesFound(), solution.DesignSignature,
+                () => solution.DesignTarget(host, built.Classes, built.Plan!), built.Plan!.Statements, sizes, budget);
+        }
 
         using var target = solution.Target(host, built.Classes, built.Plan!);
         return MeasureTarget(target, inputs, sizes, budget, strategy,
@@ -149,10 +269,13 @@ public static class Measurer
         GenerationStrategy? strategy = null)
     {
         var solution = Rust.RustSolution.Read(source, entry);
-        if (solution.DesignStruct is not null)
-            return Failed(RunStatus.RuntimeError, new[] { DesignNotMeasured }, inputs ?? Array.Empty<InputSpec>());
         var built = solution.Build(host, stepping: false);
         if (built.Executable is null) return Failed(built.Status, built.Errors, inputs ?? Array.Empty<InputSpec>());
+        if (solution.DesignStruct is { } design)
+        {
+            return NativeDesign(design, solution.DesignExamplesFound(), solution.DesignSignature,
+                () => solution.DesignTarget(built.Executable, built.Plan!), built.Plan!.Statements, sizes, budget);
+        }
 
         using var target = solution.Target(built.Executable, built.Plan!);
         return MeasureTarget(target, inputs, sizes, budget, strategy,
@@ -188,7 +311,8 @@ public static class Measurer
         }
 
         var requested = sizes ?? DefaultSizes;
-        var ladder = RunLadder(target, specs, requested, budget);
+        object?[] Build(int size) => ParameterBinder.Bind(specs, parameters, size);
+        var ladder = RunLadder(target, Build, requested, budget);
 
         // A ladder that hit the budget or the depth limit almost immediately left too
         // few points to say anything. Retry small — the range should fit the algorithm,
@@ -204,7 +328,7 @@ public static class Measurer
         if (ladder.Points.Count < MinimumPointsForCurve && ladder.StoppedBy is RunStatus.BudgetExceeded
                 or RunStatus.RecursionLimitExceeded && !overflowedEarly && target.Usable && !requested.SequenceEqual(SmallSizes))
         {
-            var retry = RunLadder(target, specs, SmallSizes, budget);
+            var retry = RunLadder(target, Build, SmallSizes, budget);
             if (retry.Points.Count > ladder.Points.Count)
             {
                 notes.Add((sizes is null ? "The default sizes" : "The sizes requested") +
@@ -272,9 +396,9 @@ public static class Measurer
         List<SizePoint> Points, List<MeasuredRun> Runs, TraceResult? Detail, string? Note, List<string> Errors,
         RunStatus? StoppedBy, int? StoppedAt = null);
 
-    private static Ladder RunLadder(IRunTarget target, IReadOnlyList<InputSpec> specs, IReadOnlyList<int> sizes, long budget)
+    /// <param name="build">The arguments for a size, made afresh for every run.</param>
+    private static Ladder RunLadder(IRunTarget target, Func<int, object?[]> build, IReadOnlyList<int> sizes, long budget)
     {
-        var parameters = target.Parameters;
         var points = new List<SizePoint>();
         var runs = new List<MeasuredRun>();
         var errors = new List<string>();
@@ -284,7 +408,7 @@ public static class Measurer
         {
             try
             {
-                ParameterBinder.Bind(specs, parameters, size);
+                build(size);
             }
             catch (Exception ex)
             {
@@ -294,7 +418,7 @@ public static class Measurer
 
             // Inputs are rebuilt for every attempt: a repeated run must start from the same
             // data, and many solutions sort or mark their input in place.
-            var trace = target.Run(() => ParameterBinder.Bind(specs, parameters, size), budget);
+            var trace = target.Run(() => build(size), budget);
 
             if (trace.Status is RunStatus.BudgetExceeded or RunStatus.RecursionLimitExceeded or RunStatus.TimedOut)
             {

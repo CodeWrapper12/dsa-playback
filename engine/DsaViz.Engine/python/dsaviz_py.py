@@ -231,6 +231,11 @@ def list_classes(tree):
         "line": node.lineno,
         "constructible": constructible(node),
         "methods": [m.name for m in node.body if isinstance(m, ast.FunctionDef) and not m.name.startswith("_")],
+        # Each method's parameters and hints, the constructor's too: a design problem's calls
+        # are made up from them when it is measured.
+        "signatures": {m.name: [{"name": a.arg, "type": ast.unparse(a.annotation) if a.annotation is not None else "",
+                                 "supported": a.annotation is not None} for a in m.args.args[1:]]
+                       for m in node.body if isinstance(m, ast.FunctionDef) and (m.name == "__init__" or not m.name.startswith("_"))},
     } for node in tree.body if isinstance(node, ast.ClassDef) and node.name not in nodes]
 
 
@@ -920,6 +925,7 @@ class Tracer:
         self.budget = budget
         self.depth_limit = depth_limit
         self.operations = 0
+        self.call_starts = []          # a design problem's calls, measured: operations when each began
         self.depth = 0
         self.max_depth = 0
         self.pending = -1
@@ -1295,7 +1301,8 @@ def execute(request, tracer, code, namespace):
             exec(code, namespace)                         # defines the solution; nothing is counted yet
             recorder = getattr(tracer, "recorder", None)
             function = locate(namespace, request["entry"], request.get("design", False),
-                              recorder.call_starting if recorder is not None else None)
+                              recorder.call_starting if recorder is not None
+                              else lambda number: tracer.call_starts.append(tracer.operations))
             try:
                 arguments = [build_value(a["text"], a.get("kind", "value"), namespace) for a in request.get("args", [])]
             except Exception as error:
@@ -1398,6 +1405,9 @@ def run_measured(request):
         "returnValue": leetcode_format(outcome["value"]) if outcome["status"] == "Completed" else None,
         "libraryCalls": calls,
         "output": outcome["output"][:10_000],
+        "callCosts": [(tracer.call_starts[i + 1] if i + 1 < len(tracer.call_starts) else tracer.operations) - start
+                      for i, start in enumerate(tracer.call_starts)] if request.get("design") else None,
+        "statementMethods": [info["method"] for info in statements],
     }
 
 

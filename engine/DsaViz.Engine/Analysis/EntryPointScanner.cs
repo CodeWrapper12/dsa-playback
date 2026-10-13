@@ -144,7 +144,8 @@ public static class EntryPointScanner
         })
         {
             Design = true,
-            Generatable = false,
+            // Measured per call by repeating the example's calls, so it needs one.
+            Generatable = hasExample,
             Line = type.Identifier.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
             Reason = hasExample ? null : DesignNeedsExample(name)
         };

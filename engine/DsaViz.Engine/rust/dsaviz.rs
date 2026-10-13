@@ -122,6 +122,8 @@ struct State {
     program: String,
     panic_line: i64,
     panic_message: String,
+    /// A design problem's calls, measured: operations when each began.
+    call_starts: Vec<i64>,
 }
 
 static mut STATE: State = State {
@@ -145,6 +147,7 @@ static mut STATE: State = State {
     program: String::new(),
     panic_line: -1,
     panic_message: String::new(),
+    call_starts: Vec::new(),
 };
 
 // The student's code runs on one thread, and the thread that started it only waits.
@@ -219,6 +222,18 @@ fn counts(out: &mut String) {
         out.push_str(&format!("[{},{}]", s.site_calls[i], s.site_work[i]));
     }
     out.push(']');
+    if !s.call_starts.is_empty() {
+        // What each call cost: the operations between its start and the next one's.
+        out.push_str(",\"callCosts\":[");
+        for i in 0..s.call_starts.len() {
+            if i > 0 {
+                out.push(',');
+            }
+            let end = if i + 1 < s.call_starts.len() { s.call_starts[i + 1] } else { s.operations };
+            out.push_str(&(end - s.call_starts[i]).to_string());
+        }
+        out.push(']');
+    }
 }
 
 /// Ends the run: everything recorded, then how it ended, written out at once.
@@ -1263,6 +1278,13 @@ pub fn design_validate(operations: &[String], arguments: &[Vec<Value>], type_nam
 
 /// Marks where call `index` begins, so the run view can tell one call from the next.
 pub fn call_starting(index: usize) {
+    if ACTIVE.load(Relaxed) && !st().stepping {
+        // Measuring: the count so far, kept out of the student's memory.
+        let _quiet = Quiet::new();
+        let s = st();
+        s.call_starts.push(s.operations);
+        return;
+    }
     if !ACTIVE.load(Relaxed) || !st().stepping { return; }
     let _quiet = Quiet::new();
     let steps = st().steps;

@@ -51,7 +51,7 @@ public sealed class TraceRewriter : CSharpSyntaxRewriter
         var step = _stepping ? StepVariables.Read(statement) : null;
         _statements.Add(new StatementInfo(id, line, column, length, snippet)
         {
-            Method = step?.Method ?? "",
+            Method = step?.Method ?? _methods.LastOrDefault() ?? "",
             Variables = step?.Variables.Select(v => v.Name).ToList() ?? (IReadOnlyList<string>)Array.Empty<string>()
         });
 
@@ -76,6 +76,29 @@ public sealed class TraceRewriter : CSharpSyntaxRewriter
         }
         return List(result);
     }
+
+    /// <summary>
+    /// The methods being rewritten, innermost last. A measuring build names each statement's
+    /// method from here — the step-through build reads it with the variables — so a design
+    /// problem's costs can be put down to the operation whose call ran them.
+    /// </summary>
+    private readonly List<string> _methods = new();
+
+    private SyntaxNode? Within(string name, Func<SyntaxNode?> visit)
+    {
+        _methods.Add(name);
+        try { return visit(); }
+        finally { _methods.RemoveAt(_methods.Count - 1); }
+    }
+
+    public override SyntaxNode? VisitMethodDeclaration(MethodDeclarationSyntax node)
+        => Within(node.Identifier.Text, () => base.VisitMethodDeclaration(node));
+
+    public override SyntaxNode? VisitConstructorDeclaration(ConstructorDeclarationSyntax node)
+        => Within(node.Identifier.Text, () => base.VisitConstructorDeclaration(node));
+
+    public override SyntaxNode? VisitLocalFunctionStatement(LocalFunctionStatementSyntax node)
+        => Within(node.Identifier.Text, () => base.VisitLocalFunctionStatement(node));
 
     public override SyntaxNode? VisitBlock(BlockSyntax node)
     {

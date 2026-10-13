@@ -61,12 +61,12 @@ public class DesignTests
     [Theory]
     [InlineData("LRUCache.cs")]
     [InlineData("MinStack.cs")]
-    public void The_class_is_offered_once_with_Visualize_only(string file)
+    public void The_class_is_offered_once_and_can_be_measured_per_call(string file)
     {
         var entry = Assert.Single(EntryPointScanner.Scan(File.ReadAllText(SamplePath(file))));
         Assert.True(entry.Design);
         Assert.True(entry.Measurable, entry.Reason);
-        Assert.False(entry.Generatable);
+        Assert.True(entry.Generatable, "its example's calls can be repeated at bigger sizes");
         Assert.Equal(Path.GetFileNameWithoutExtension(file), entry.Qualified);
     }
 
@@ -179,10 +179,12 @@ public class DesignTests
     [Theory]
     [InlineData("LRUCache.cs")]
     [InlineData("lru_cache.py")]
-    public void Complexity_is_not_measured_for_a_design_problem(string file)
+    public void Complexity_is_measured_per_call(string file)
     {
         var result = JobRunner.Run(new JobRequest { File = SamplePath(file), Entry = "LRUCache" }).Primary!;
-        Assert.Contains(Measurer.DesignNotMeasured, result.Errors);
+        Assert.Equal(RunStatus.Completed, result.Status);
+        Assert.Equal(new[] { "put", "get" }, result.Design!.Operations.Select(o => o.Name));
+        Assert.All(result.Design.Operations, o => Assert.Equal(ComplexityClass.Constant, o.PerCall));
     }
 
     [Fact]

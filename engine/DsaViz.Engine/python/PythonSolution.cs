@@ -139,7 +139,8 @@ public sealed class PythonSolution
         })
         {
             Design = true,
-            Generatable = false,
+            // Measured per call by repeating the example's calls, so it needs one.
+            Generatable = named.Contains(c.Name),
             Line = c.Line,
             Reason = named.Contains(c.Name) ? null : EntryPointScanner.DesignNeedsExample(c.Name)
         });
@@ -182,6 +183,85 @@ public sealed class PythonSolution
     /// <summary>A run target for measuring this function at a ladder of sizes.</summary>
     public IRunTarget Target(IReadOnlyList<SolutionParameter> parameters) => new PythonTarget(this, parameters);
 
+    /// <summary>One measured run of the entry with these arguments, as Python receives them.</summary>
+    internal TraceResult RunMeasured(object[] args, long budget, bool design, out PythonRun? run)
+    {
+        run = null;
+        try
+        {
+            run = Host.Call<PythonRun>(new
+            {
+                mode = "run",
+                source = Source,
+                entry = Entry,
+                args,
+                budget = Math.Min(budget, DefaultBudget),
+                depthLimit = DepthLimit,
+                design
+            }, RunTimeout);
+        }
+        catch (PythonRunFailedException ex) when (ex.TimedOut)
+        {
+            return Runner.Failure(RunStatus.TimedOut, new[]
+            {
+                $"The run did not finish within {RunTimeout.TotalSeconds:0} seconds. The statement budget cannot stop a " +
+                "single statement that never returns — a sleep, a blocking call, or one enormous library call."
+            });
+        }
+
+        var statements = run.Statements.OrderBy(s => s.Line).ThenBy(s => s.Column).ToList();
+        return new TraceResult
+        {
+            Status = run.Status,
+            Statements = statements,
+            Lines = Runner.LinesOf(statements),
+            TotalOperations = run.TotalOperations,
+            TotalStatements = run.TotalStatements,
+            TotalBytesAllocated = run.TotalBytesAllocated,
+            MaxRecursionDepth = run.MaxRecursionDepth,
+            PeakBytes = run.PeakBytes,
+            ElapsedMs = run.ElapsedMs,
+            LibraryCalls = run.LibraryCalls,
+            Errors = run.Errors,
+            ErrorLine = run.ErrorLine,
+            ReturnValue = run.ReturnValue,
+            Output = run.Output,
+            Language = "python",
+            CallCosts = run.CallCosts
+        };
+    }
+
+    /// <summary>A run target for measuring this design problem's calls at a ladder of sizes.</summary>
+    public PythonDesignTarget DesignTarget() => new(this);
+
+    /// <summary>A design problem run from its two lists of text, with what each call cost.</summary>
+    public sealed class PythonDesignTarget : IRunTarget
+    {
+        private readonly PythonSolution _solution;
+        private IReadOnlyList<string> _methods = Array.Empty<string>();
+
+        internal PythonDesignTarget(PythonSolution solution) => _solution = solution;
+
+        public IReadOnlyList<SolutionParameter> Parameters { get; } = Array.Empty<SolutionParameter>();
+        public bool Usable => true;
+        public void Dispose() { }
+
+        /// <summary>The method a statement is in, as the last run reported it.</summary>
+        public string? MethodOf(int statement) => statement >= 0 && statement < _methods.Count ? _methods[statement] : null;
+
+        public TraceResult Run(Func<object?[]> arguments, long budget)
+        {
+            var lists = arguments();
+            var trace = _solution.RunMeasured(new object[]
+            {
+                new { text = (string)lists[0]!, kind = "value" },
+                new { text = (string)lists[1]!, kind = "value" }
+            }, budget, design: true, out var run);
+            if (run is not null) _methods = run.StatementMethods;
+            return trace;
+        }
+    }
+
     /// <summary>The values as Python receives them: LeetCode-format text, and how to rebuild nodes.</summary>
     public static object[] Arguments(object?[] values, IReadOnlyList<SolutionParameter> parameters)
         => values.Select((v, i) => (object)new
@@ -206,49 +286,7 @@ public sealed class PythonSolution
         public bool Usable => true;
 
         public TraceResult Run(Func<object?[]> arguments, long budget)
-        {
-            PythonRun run;
-            try
-            {
-                run = _solution.Host.Call<PythonRun>(new
-                {
-                    mode = "run",
-                    source = _solution.Source,
-                    entry = _solution.Entry,
-                    args = Arguments(arguments(), Parameters),
-                    budget = Math.Min(budget, DefaultBudget),
-                    depthLimit = DepthLimit
-                }, RunTimeout);
-            }
-            catch (PythonRunFailedException ex) when (ex.TimedOut)
-            {
-                return Runner.Failure(RunStatus.TimedOut, new[]
-                {
-                    $"The run did not finish within {RunTimeout.TotalSeconds:0} seconds. The statement budget cannot stop a " +
-                    "single statement that never returns — a sleep, a blocking call, or one enormous library call."
-                });
-            }
-
-            var statements = run.Statements.OrderBy(s => s.Line).ThenBy(s => s.Column).ToList();
-            return new TraceResult
-            {
-                Status = run.Status,
-                Statements = statements,
-                Lines = Runner.LinesOf(statements),
-                TotalOperations = run.TotalOperations,
-                TotalStatements = run.TotalStatements,
-                TotalBytesAllocated = run.TotalBytesAllocated,
-                MaxRecursionDepth = run.MaxRecursionDepth,
-                PeakBytes = run.PeakBytes,
-                ElapsedMs = run.ElapsedMs,
-                LibraryCalls = run.LibraryCalls,
-                Errors = run.Errors,
-                ErrorLine = run.ErrorLine,
-                ReturnValue = run.ReturnValue,
-                Output = run.Output,
-                Language = "python"
-            };
-        }
+            => _solution.RunMeasured(Arguments(arguments(), Parameters), budget, design: false, out _);
 
         public void Dispose() { }
     }

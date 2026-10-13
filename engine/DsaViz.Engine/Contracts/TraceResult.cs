@@ -103,6 +103,13 @@ public sealed record TraceResult
 
     public IReadOnlyList<LibraryCall> LibraryCalls { get; init; } = Array.Empty<LibraryCall>();
 
+    /// <summary>
+    /// A design problem's run: what each call cost, in operations, the constructor first.
+    /// Read when measuring per call; never serialised.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public IReadOnlyList<long>? CallCosts { get; init; }
+
     [System.Text.Json.Serialization.JsonIgnore]
     public bool StepsTruncated { get; init; }
 

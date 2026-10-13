@@ -394,6 +394,9 @@ public sealed class TraceState
     /// <summary>Garbage collections, of any generation, that happened while this run was traced.</summary>
     public int CollectionsDuringRun { get; private set; }
 
+    /// <summary>Operations so far: statements run plus library work. Read between a design problem's calls.</summary>
+    public long Operations => _totalOperations;
+
     public TraceSnapshot Snapshot() => new(
         (long[])_hits.Clone(), (long[])_bytes.Clone(), (long[])_libraryWork.Clone(),
         (long[])_siteCalls.Clone(), (long[])_siteUnits.Clone(), _totalOperations, _maxDepth)

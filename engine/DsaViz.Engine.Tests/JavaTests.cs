@@ -67,7 +67,7 @@ public class JavaTests
         var entry = Assert.Single(JavaSolution.Entries(JavaReader.Read(File.ReadAllText(Sample("LRUCache.java")))));
         Assert.True(entry.Design);
         Assert.Equal("LRUCache", entry.Qualified);
-        Assert.False(entry.Generatable);
+        Assert.True(entry.Generatable, "its example's calls can be repeated at bigger sizes");
     }
 
     [Fact]

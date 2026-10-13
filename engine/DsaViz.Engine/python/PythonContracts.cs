@@ -15,7 +15,11 @@ public sealed record PythonCommentLine(string Text, int Line);
 public sealed record PythonCallStart(int Index, int Step);
 
 /// <summary>A class in the file that could be a design problem's: whether it can be created without arguments, and its public methods.</summary>
-public sealed record PythonClass(string Name, int Line, bool Constructible, IReadOnlyList<string> Methods);
+public sealed record PythonClass(string Name, int Line, bool Constructible, IReadOnlyList<string> Methods)
+{
+    /// <summary>Each method's parameters with their hints, "__init__" for the constructor.</summary>
+    public Dictionary<string, List<PythonParameter>> Signatures { get; init; } = new();
+}
 
 public sealed record PythonCall(string Function, int Line, Dictionary<string, string?> Values, IReadOnlyList<ExampleNote> Notes, bool Complete);
 
@@ -52,6 +56,12 @@ public sealed record PythonRun
     public string Output { get; init; } = "";
     public string? Error { get; init; }
     public string? Message { get; init; }
+
+    /// <summary>A design problem's run: what each call cost, the constructor first.</summary>
+    public IReadOnlyList<long>? CallCosts { get; init; }
+
+    /// <summary>The method each statement is in, by statement number.</summary>
+    public IReadOnlyList<string> StatementMethods { get; init; } = Array.Empty<string>();
 }
 
 public sealed record PythonSteps

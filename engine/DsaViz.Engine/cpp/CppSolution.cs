@@ -89,7 +89,8 @@ public sealed class CppSolution
             })
             {
                 Design = true,
-                Generatable = false,
+                // Measured per call by repeating the example's calls, so it needs one.
+                Generatable = example,
                 Line = type.Line,
                 Reason = example ? null : EntryPointScanner.DesignNeedsExample(type.Name)
             });
@@ -199,6 +200,23 @@ public sealed class CppSolution
 
     public IRunTarget Target(string executable, CppProgram program)
         => new NativeTarget(executable, program.Statements, program.Sites, Parameters(Function!), "cpp", DepthLimit, RunTimeout);
+
+    /// <summary>A target for the design problem's calls, given as its two lists of LeetCode text.</summary>
+    public IRunTarget DesignTarget(string executable, CppProgram program)
+        => new NativeTarget(executable, program.Statements, program.Sites, Array.Empty<SolutionParameter>(), "cpp", DepthLimit, RunTimeout)
+        {
+            TextInputs = true
+        };
+
+    /// <summary>The design class's constructor or public method for a number of arguments, as its parameters.</summary>
+    public IReadOnlyList<DsaViz.Engine.Analysis.DesignArg>? DesignSignature(string operation, int arity)
+    {
+        var type = DesignClass!;
+        if (operation == type.Name && arity == 0 && !type.HasConstructors) return Array.Empty<DsaViz.Engine.Analysis.DesignArg>();
+        var member = File.Functions.FirstOrDefault(f => f.Owner == type.Name && f.IsPublic && !f.IsStatic &&
+            (operation == type.Name ? f.IsConstructor : !f.IsConstructor && f.Name == operation) && f.Parameters.Count == arity);
+        return member?.Parameters.Select(p => DsaViz.Engine.Analysis.DesignArg.Of(p.Name, p.Type)).ToList();
+    }
 }
 
 /// <summary>The C++ types LeetCode passes, as the .NET types the shared input code builds and formats.</summary>

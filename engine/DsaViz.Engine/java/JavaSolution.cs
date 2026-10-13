@@ -67,7 +67,8 @@ public sealed class JavaSolution
             })
             {
                 Design = true,
-                Generatable = false,
+                // Measured per call by repeating the example's calls, so it needs one.
+                Generatable = example,
                 Line = type.Line,
                 Reason = example ? null : EntryPointScanner.DesignNeedsExample(type.Name)
             });
@@ -210,6 +211,24 @@ public sealed class JavaSolution
         {
             Launcher = host.Launcher(classes)
         };
+
+    /// <summary>A target for the design problem's calls, given as its two lists of LeetCode text.</summary>
+    public IRunTarget DesignTarget(JavaHost host, string classes, JavaPlan plan)
+        => new NativeTarget(host.Java, plan.Statements, plan.Sites, Array.Empty<SolutionParameter>(), "java", DepthLimit, RunTimeout)
+        {
+            Launcher = host.Launcher(classes),
+            TextInputs = true
+        };
+
+    /// <summary>The design class's constructor or method for a number of arguments, as its parameters.</summary>
+    public IReadOnlyList<DsaViz.Engine.Analysis.DesignArg>? DesignSignature(string operation, int arity)
+    {
+        var type = DesignClass!;
+        if (operation == type.Name && arity == 0 && type.Constructors.Count == 0) return Array.Empty<DsaViz.Engine.Analysis.DesignArg>();
+        var member = File.Methods.FirstOrDefault(m => m.Owner == type.Name && !m.IsStatic &&
+            (operation == type.Name ? m.IsConstructor : !m.IsConstructor && m.Name == operation) && m.Parameters.Count == arity);
+        return member?.Parameters.Select(p => DsaViz.Engine.Analysis.DesignArg.Of(p.Name, p.Type)).ToList();
+    }
 }
 
 /// <summary>The Java types LeetCode passes, as the .NET types the shared input code builds and formats.</summary>

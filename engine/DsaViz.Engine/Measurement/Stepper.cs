@@ -118,7 +118,7 @@ public static class Stepper
     }
 
     /// <summary>The argument lists as a design problem's calls need them: each one built as its method's parameter types.</summary>
-    private static object?[][]? DesignArguments(Type type, string[]? operations, string text)
+    internal static object?[][]? DesignArguments(Type type, string[]? operations, string text)
     {
         var lists = ArgumentLists(text);
         // The operations could not be read, and that is already said under their own box.

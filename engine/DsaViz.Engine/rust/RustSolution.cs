@@ -87,7 +87,8 @@ public sealed class RustSolution
             })
             {
                 Design = true,
-                Generatable = false,
+                // Measured per call by repeating the example's calls, so it needs one.
+                Generatable = example,
                 Line = line,
                 Reason = example ? null : EntryPointScanner.DesignNeedsExample(type)
             });
@@ -279,6 +280,23 @@ public sealed class RustSolution
 
     public IRunTarget Target(string executable, RustPlan plan)
         => new NativeTarget(executable, plan.Statements, plan.Sites, Parameters(Function!), "rust", DepthLimit, RunTimeout);
+
+    /// <summary>A target for the design problem's calls, given as its two lists of LeetCode text.</summary>
+    public IRunTarget DesignTarget(string executable, RustPlan plan)
+        => new NativeTarget(executable, plan.Statements, plan.Sites, Array.Empty<SolutionParameter>(), "rust", DepthLimit, RunTimeout)
+        {
+            TextInputs = true
+        };
+
+    /// <summary>The design struct's fn new, or a method taking self, for a number of arguments, as its parameters.</summary>
+    public IReadOnlyList<DsaViz.Engine.Analysis.DesignArg>? DesignSignature(string operation, int arity)
+    {
+        var type = DesignStruct!;
+        var member = File.Functions.FirstOrDefault(f => f.Owner == type && !f.IsNested && !f.IsGeneric &&
+            (operation == type ? f.Name == "new" && !f.HasSelf : f.Name == operation && f.HasSelf && !f.SelfByValue) &&
+            f.Parameters.Count == arity);
+        return member?.Parameters.Select(p => DsaViz.Engine.Analysis.DesignArg.Of(p.Name, p.Type)).ToList();
+    }
 }
 
 /// <summary>The Rust types LeetCode passes, as the .NET types the shared input code builds and formats.</summary>

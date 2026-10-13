@@ -28,6 +28,9 @@ public sealed class NativeTarget : IRunTarget
         /// <summary>For a program run through a launcher, what goes before the run's own arguments.</summary>
         public IReadOnlyList<string>? Launcher { get; init; }
 
+        /// <summary>The arguments are already LeetCode text — a design problem's two lists — and are passed as they are.</summary>
+        public bool TextInputs { get; init; }
+
         public NativeTarget(string executable, IReadOnlyList<StatementInfo> statements, IReadOnlyList<LibraryCallSite> sites,
             IReadOnlyList<SolutionParameter> parameters, string language, int depthLimit, TimeSpan timeout)
         {
@@ -51,7 +54,9 @@ public sealed class NativeTarget : IRunTarget
             int exit;
             try
             {
-                lines = NativeRun.Run(_executable, stepping: false, NativeRun.Inputs(arguments()), budget, _depthLimit, 0, _timeout, out exit, Launcher);
+                var values = arguments();
+                var inputs = TextInputs ? values.Select(v => (string)v!).ToList() : NativeRun.Inputs(values);
+                lines = NativeRun.Run(_executable, stepping: false, inputs, budget, _depthLimit, 0, _timeout, out exit, Launcher);
             }
             catch (NativeRunFailedException ex) when (ex.TimedOut)
             {
@@ -88,7 +93,8 @@ public sealed class NativeTarget : IRunTarget
                 Errors = end.Errors,
                 ErrorLine = end.ErrorLine,
                 ReturnValue = end.Result,
-                Language = _language
+                Language = _language,
+                CallCosts = end.CallCosts
             };
         }
 }
@@ -117,6 +123,9 @@ public static class NativeRun
         public IReadOnlyList<long> Largest { get; init; } = Array.Empty<long>();
         public IReadOnlyList<long> Work { get; init; } = Array.Empty<long>();
         public IReadOnlyList<(long Calls, long Work)> Sites { get; init; } = Array.Empty<(long, long)>();
+
+        /// <summary>A design problem's measured run: what each call cost, the constructor first.</summary>
+        public IReadOnlyList<long>? CallCosts { get; init; }
     }
 
     /// <summary>
@@ -181,7 +190,8 @@ public static class NativeRun
             Work = Numbers(root, "work"),
             Sites = root.TryGetProperty("sites", out var sites)
                 ? sites.EnumerateArray().Select(x => (x[0].GetInt64(), x[1].GetInt64())).ToList()
-                : Array.Empty<(long, long)>()
+                : Array.Empty<(long, long)>(),
+            CallCosts = root.TryGetProperty("callCosts", out _) ? Numbers(root, "callCosts") : null
         };
     }
 
