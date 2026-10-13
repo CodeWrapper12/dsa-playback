@@ -307,9 +307,42 @@ td.growth .formula { color: var(--vscode-descriptionForeground); font-weight: 40
 
 input.narrow { min-width: 0; width: 56px; }
 .inline-note { margin: 0; align-self: center; max-width: 380px; }
-.transport { display: flex; align-items: center; gap: 6px; margin: 4px 0 12px; }
+/* The playback bar stays at the top while the drawing below it is scrolled. */
+#transport {
+  position: sticky; top: 0; z-index: 3;
+  background: var(--vscode-editor-background);
+  padding-top: 4px;
+}
+.transport { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 0 0 12px; padding-bottom: 6px; }
 .transport button { padding: 4px 9px; }
-.transport input[type="range"] { flex: 1; min-width: 120px; }
+.transport button.play { min-width: 92px; padding: 5px 14px; font-weight: 600; font-size: 1.05em; }
+.transport button:disabled { opacity: 0.4; cursor: default; }
+.transport button.ghost:disabled:hover { background: transparent; }
+.transport .step-buttons { display: inline-flex; gap: 4px; }
+.transport input[type="range"] { flex: 1 1 140px; min-width: 100px; }
+
+/* What the line before did, above what runs next. */
+.current-step .did { margin-bottom: 8px; line-height: 1.5; overflow-wrap: anywhere; }
+.current-step .did .label { display: inline; margin-right: 6px; }
+.current-step .did code { font-family: var(--vscode-editor-font-family); }
+.current-step .did .did-value { color: var(--hot); font-weight: 600; }
+
+/* The inputs, folded to one line once a run is on screen. */
+.inputs-summary {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+  padding: 6px 10px; margin-bottom: 10px;
+  border: 1px solid var(--vscode-panel-border); border-radius: 6px;
+}
+.inputs-summary .from { color: var(--vscode-descriptionForeground); font-size: 0.92em; }
+.inputs-summary .values {
+  flex: 1 1 160px; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--vscode-editor-font-family);
+}
+.inputs-summary .summary-actions { display: inline-flex; gap: 6px; }
+
+details.memory-note { margin-top: 12px; }
+details.memory-note summary { cursor: pointer; color: var(--vscode-descriptionForeground); }
 
 .current-step {
   border: 1px solid var(--vscode-panel-border); border-left: 3px solid var(--vscode-editorInfo-foreground, var(--cool));
@@ -391,6 +424,7 @@ details.arguments summary { cursor: pointer; color: var(--vscode-descriptionFore
 .input-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 
 .check {
+  overflow-wrap: anywhere;
   margin: 0 0 10px;
   padding: 6px 10px;
   border-radius: 4px;

@@ -659,13 +659,8 @@
     const selected = trace ? trace.selectedExample : st.choice && st.choice.example;
     const draft = st.draft || {};
 
-    const language = languageOf((state.request && state.request.file) || "");
-    // C++, Rust and Java examples are read from comments only; a call in main is not read.
-    const orCall = language === "python" ? ', or call the method from <code>if __name__ == "__main__":</code>'
-      : language === "csharp" ? ", or call the method from <code>Main</code>" : "";
     const picker = examples.length === 0
-      ? `<div class="footnote">No example found in your code, so values are generated. Paste LeetCode's
-           <code>Input: nums = [2,7,11,15], target = 9</code> as a comment${orCall}, and it is used automatically.</div>`
+      ? noExampleHint()
       : `<div class="control"><label for="example">Example</label>
            <select id="example">
              ${examples.map((e, i) => `<option value="${i}" ${selected === i ? "selected" : ""}>${escapeHtml(e.label)}</option>`).join("")}
@@ -700,11 +695,46 @@
           <input type="text" id="step-size" class="narrow" value="${(trace && trace.size) || st.size || 8}">` : ""}
         <button id="record">▶ Run</button>
         ${typedSomething ? '<button class="ghost" id="use-code">Use values from code</button>' : ""}
+        ${st.editing && st.trace ? '<button class="ghost" id="cancel-edit">Cancel</button>' : ""}
         ${examples.length > 0 ? `<button class="ghost" id="run-examples" ${st.examples && st.examples.loading ? "disabled" : ""}>Run all examples</button>` : ""}
       </div>
       ${examplesList(st, selected)}
       ${((trace && trace.exampleNotes) || []).map(n => `<div class="input-note">${escapeHtml(n)}</div>`).join("")}
     </div>`;
+  }
+
+  /** Where an example can come from, when the code has none. */
+  function noExampleHint() {
+    const language = languageOf((state.request && state.request.file) || "");
+    // C++, Rust and Java examples are read from comments only; a call in main is not read.
+    const orCall = language === "python" ? ', or call the method from <code>if __name__ == "__main__":</code>'
+      : language === "csharp" ? ", or call the method from <code>Main</code>" : "";
+    return `<div class="footnote">No example found in your code, so values are generated. Paste LeetCode's
+         <code>Input: nums = [2,7,11,15], target = 9</code> as a comment${orCall}, and it is used automatically.</div>`;
+  }
+
+  /**
+   * The inputs once a run is on screen, as one line, so the run starts near the top of a
+   * short panel. Edit opens the full form again; choosing to run closes it.
+   */
+  function inputsSummary(st) {
+    const trace = st.trace;
+    const examples = trace.examples || [];
+    const selected = trace.selectedExample;
+    const inputs = trace.inputs || [];
+    const from = inputs.some(i => i.source === "Typed") ? "Your values"
+      : selected != null && examples[selected] ? examples[selected].label
+      : inputs.some(i => i.source === "Generated") ? `Values generated at n = ${num(trace.size || 0)}`
+      : "From your code";
+    const values = inputs.map(i => `${i.name} = ${i.literal}`).join(", ");
+    return `<div class="inputs-summary">
+        <span class="from">${escapeHtml(from)}</span>
+        <code class="values" title="${escapeHtml(values)}">${escapeHtml(values) || '<span class="muted">no inputs</span>'}</code>
+        <span class="summary-actions">
+          <button class="ghost" id="edit-inputs" title="Change the inputs or pick another example">Edit inputs</button>
+          ${examples.length > 1 ? `<button class="ghost" id="run-examples" ${st.examples && st.examples.loading ? "disabled" : ""}>Run all examples</button>` : ""}
+        </span>
+      </div>${examples.length === 0 ? noExampleHint() : ""}${examplesList(st, selected)}`;
   }
 
   /**
@@ -771,7 +801,7 @@
 
   function stepPanel() {
     const st = state.stepping || {};
-    const header = inputsSection(st);
+    const header = st.trace && !st.editing && st.trace.status !== "InvalidInput" ? inputsSummary(st) : inputsSection(st);
 
     if (st.loading) return header + '<p class="placeholder">Running…</p>';
     if (st.error) return header + errorBanner("The run could not be recorded", st.error);
@@ -816,8 +846,8 @@
       (notes.length ? `<div class="banner info">${notes.join(" ")}</div>` : "") +
       `<div id="step-area">${stepArea(st, index, null)}</div>` +
       `<div id="explain-area">${explainBlock(st, index)}</div>` + args +
-      `<div class="footnote">← and → step, Space plays. Index variables are drawn as pointers into the arrays they
-        fall inside; a value that just changed flashes.</div>`;
+      (window.DsaRun ? `<details class="memory-note"><summary>About the memory figures</summary>
+        <div class="footnote">${escapeHtml(window.DsaRun.memoryNote(languageOf((state.request && state.request.file) || "")))}</div></details>` : "");
   }
 
   const SPEEDS = [0.25, 0.5, 1, 2, 4];
@@ -825,16 +855,24 @@
   /** Time between steps while playing, at the chosen speed. */
   const stepInterval = st => 700 / (st.speed || 1);
 
+  /**
+   * Play is the one large button, and says what it will do; the step buttons beside it are
+   * outlined arrows, so Play and Next never look alike. Each names its key.
+   */
   function transport(st, trace, index) {
+    const last = trace.steps.length - 1;
     return `<div class="transport">
-      <button class="ghost" data-step="first" title="First step" aria-label="First step">⏮</button>
-      <button class="ghost" data-step="prev" title="Previous step (←)" aria-label="Previous step">◀</button>
-      <button class="ghost" data-step="play" title="Play / pause (Space)" aria-label="${st.playing ? "Pause" : "Play"}">${st.playing ? "⏸" : "▶"}</button>
-      <button class="ghost" data-step="next" title="Next step (→)" aria-label="Next step">▶</button>
-      <button class="ghost" data-step="last" title="Last step" aria-label="Last step">⏭</button>
-      <input type="range" id="scrubber" min="0" max="${trace.steps.length - 1}" value="${index}" aria-label="Step">
+      <button class="play" data-step="play" title="${st.playing ? "Pause" : "Play"} (Space)" aria-label="${st.playing ? "Pause" : "Play"}">${
+        st.playing ? "⏸ Pause" : index >= last ? "↻ Replay" : "▶ Play"}</button>
+      <span class="step-buttons">
+        <button class="ghost" data-step="first" title="First step (Home)" aria-label="First step" ${index === 0 ? "disabled" : ""}>⏮</button>
+        <button class="ghost" data-step="prev" title="Previous step (←)" aria-label="Previous step" ${index === 0 ? "disabled" : ""}>◁</button>
+        <button class="ghost" data-step="next" title="Next step (→)" aria-label="Next step" ${index >= last ? "disabled" : ""}>▷</button>
+        <button class="ghost" data-step="last" title="Last step (End)" aria-label="Last step" ${index >= last ? "disabled" : ""}>⏭</button>
+      </span>
+      <input type="range" id="scrubber" min="0" max="${last}" value="${index}" aria-label="Step">
       <span class="muted" id="step-count">step ${num(index + 1)} of ${num(trace.steps.length)}${trace.truncated ? "+" : ""}</span>
-      <select id="speed" title="Speed" aria-label="Speed">${SPEEDS.map(speed =>
+      <select id="speed" title="Playing speed" aria-label="Playing speed">${SPEEDS.map(speed =>
         `<option value="${speed}" ${speed === (st.speed || 1) ? "selected" : ""}>${speed}×</option>`).join("")}</select>
     </div>`;
   }
@@ -939,7 +977,11 @@
       bar.innerHTML = transport(st, st.trace, st.index);
       wireTransport();
       refreshExplain();
-      if (key) { const again = bar.querySelector(key); if (again) again.focus(); }
+      if (key) {
+        // Reaching either end disables the arrow that got there, which then cannot hold focus.
+        const again = bar.querySelector(key);
+        (again && !again.disabled ? again : bar.querySelector('[data-step="play"]')).focus();
+      }
       followCurrent(area);
     } else {
       render();
@@ -1009,7 +1051,7 @@
     const st = state.stepping || {};
     if (st.playing) clearInterval(st.playing);
     state.stepping = {
-      ...st, playing: null, loading: true, error: null, draft: {},
+      ...st, playing: null, loading: true, error: null, draft: {}, editing: false,
       lastInputs: (st.trace && st.trace.inputs) || st.lastInputs,
       lastExamples: (st.trace && st.trace.examples) || st.lastExamples,
       trace: null
@@ -1035,7 +1077,8 @@
 
   function currentSize() {
     const field = document.getElementById("step-size");
-    if (!field) return undefined;
+    // With the form folded away, the size chosen for the run on screen is kept.
+    if (!field) return (state.stepping && state.stepping.choice && state.stepping.choice.size) || undefined;
     const size = parseInt(field.value, 10);
     return Number.isFinite(size) && size >= 0 ? Math.min(size, 64) : undefined;
   }
@@ -1130,6 +1173,21 @@
       });
     });
 
+    const edit = document.getElementById("edit-inputs");
+    if (edit) edit.addEventListener("click", () => {
+      state.stepping.editing = true;
+      render();
+      const first = document.querySelector(".value-box, #example");
+      if (first) first.focus();
+    });
+
+    const cancel = document.getElementById("cancel-edit");
+    if (cancel) cancel.addEventListener("click", () => {
+      state.stepping.editing = false;
+      state.stepping.draft = {};
+      render();
+    });
+
     const useCode = document.getElementById("use-code");
     if (useCode) useCode.addEventListener("click", () =>
       requestRun({ example: currentExample(), size: currentSize() }));
@@ -1183,6 +1241,8 @@
     if (event.key === "ArrowRight") { setStep(state.stepping.index + 1); event.preventDefault(); }
     if (event.key === "ArrowLeft") { setStep(state.stepping.index - 1); event.preventDefault(); }
     if (event.key === " ") { togglePlay(); event.preventDefault(); }
+    if (event.key === "Home") { setStep(0); event.preventDefault(); }
+    if (event.key === "End") { setStep(state.stepping.trace.steps.length - 1); event.preventDefault(); }
   });
 
   window.addEventListener("message", event => {

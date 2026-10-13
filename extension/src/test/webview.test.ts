@@ -190,13 +190,20 @@ type Panel = { __steps(t: unknown, q?: unknown): void; dispatchEvent(e: Event): 
 function showRun(trace: unknown) {
   const loaded = load(true);
   (loaded.dom.window as unknown as Panel).__steps(trace, { file: "TwoSumSorted.cs", entry: "Solution.TwoSum" });
-  return { ...loaded, document: loaded.dom.window.document, text: () => loaded.dom.window.document.body.textContent ?? "" };
+  const document = loaded.dom.window.document;
+  // Once a run is on screen its inputs fold to one line; Edit inputs opens the form.
+  const edit = () => document.querySelector<HTMLElement>("#edit-inputs")!.click();
+  return { ...loaded, document, edit, text: () => document.body.textContent ?? "" };
 }
 
 test("values found in the code fill the boxes, and the result is checked", () => {
   const recorded = measure({ file: walkthrough("TwoSumSorted.cs"), entry: "Solution.TwoSum", stepSize: 8 }) as { steps: unknown };
-  const { document, errors, text } = showRun(recorded.steps);
+  const { document, errors, text, edit } = showRun(recorded.steps);
   assert.deepEqual(errors, []);
+  assert.equal(document.querySelector(".inputs-summary .values")!.textContent, "numbers = [2,7,11,15], target = 9",
+    "the run on screen shows its inputs on one line");
+  assert.equal(document.querySelector(".value-box"), null, "the form is folded away");
+  edit();
 
   const boxes = Array.from(document.querySelectorAll<HTMLInputElement>(".value-box")).map(b => b.value);
   assert.deepEqual(boxes, ["[2,7,11,15]", "9"]);
@@ -209,7 +216,8 @@ test("values found in the code fill the boxes, and the result is checked", () =>
 
 test("a typed value is sent with the next run, and only that one", () => {
   const recorded = measure({ file: walkthrough("TwoSumSorted.cs"), entry: "Solution.TwoSum", stepSize: 8 }) as { steps: unknown };
-  const { dom, document, posted } = showRun(recorded.steps);
+  const { dom, document, posted, edit } = showRun(recorded.steps);
+  edit();
 
   const target = document.querySelector<HTMLInputElement>('.value-box[data-index="1"]')!;
   target.value = "18";
@@ -222,7 +230,8 @@ test("a typed value is sent with the next run, and only that one", () => {
 
 test("choosing another example runs it, setting typed values aside", () => {
   const recorded = measure({ file: walkthrough("TwoSumSorted.cs"), entry: "Solution.TwoSum", stepSize: 8 }) as { steps: unknown };
-  const { dom, document, posted } = showRun(recorded.steps);
+  const { dom, document, posted, edit } = showRun(recorded.steps);
+  edit();
 
   const select = document.querySelector<HTMLSelectElement>("#example")!;
   select.value = "1";
@@ -305,9 +314,10 @@ test("an exception in the student's code names the line, and the run up to it st
 
 test("with no example in the code, values are generated at a size the student picks", () => {
   const recorded = measure({ file: sample("SortParamSample.cs"), entry: "SortParamSample.Sort", stepSize: 5 }) as { steps: unknown };
-  const { document, text } = showRun(recorded.steps);
-  assert.match(text(), /No example found in your code/);
+  const { document, text, edit } = showRun(recorded.steps);
+  assert.match(text(), /No example found in your code/, "the hint stays while the form is folded");
   assert.match(text(), /generated at n = 5/);
+  edit();
   assert.ok(document.querySelector("#step-size"), "the size can be changed");
 });
 
@@ -316,10 +326,73 @@ test("Space plays and pauses the run", () => {
   const { dom, document } = showRun(recorded.steps);
   const space = () => document.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: " " }));
 
+  const play = () => document.querySelector('[data-step="play"]')!;
   space();
-  assert.equal(document.querySelector('[data-step="play"]')!.textContent, "⏸");
+  assert.equal(play().getAttribute("aria-label"), "Pause");
+  assert.match(play().textContent!, /Pause/);
   space();
-  assert.equal(document.querySelector('[data-step="play"]')!.textContent, "▶");
+  assert.equal(play().getAttribute("aria-label"), "Play");
+  assert.match(play().textContent!, /Play/);
+});
+
+test("each step says what the line before it did: a value set, a condition's result, a field rewired", () => {
+  const { go, area } = run(pythonSample("two_sum_sorted.py"), "Solution.twoSum");
+  const did = (index: number) => { go(index); return area().querySelector(".did")?.textContent?.replace(/\s+/g, " ").trim(); };
+
+  assert.equal(did(0), undefined, "nothing has run before the first step");
+  assert.equal(did(1), "Line 8 ran left set to 0, right set to 3");
+  assert.equal(did(3), "Line 10 ran total set to 17");
+  assert.equal(did(4), "Line 11 ran total == target was false");
+  assert.equal(did(7), "Line 10 ran total 17 → 13");
+  assert.equal(did(12), "Line 11 ran total == target was true");
+
+  const list = run(pythonSample("reverse_list.py"), "Solution.reverseList");
+  list.go(4);
+  assert.match(list.area().querySelector(".did")!.textContent!, /head\.next ListNode\(2\) → None/);
+
+  const cache = run(sample("design/lru_cache.py"), "LRUCache", { stepSize: 6 });
+  cache.go(4);
+  assert.match(cache.area().querySelector(".did")!.textContent!, /items\[1\] set to 1/);
+});
+
+test("an index drawn as a pointer under its array is not listed again", () => {
+  const { go, area } = run(pythonSample("two_sum_sorted.py"), "Solution.twoSum");
+  go(5);
+  const pointers = Array.from(area().querySelectorAll(".cell-pointers .pointer")).map(p => p.textContent);
+  assert.deepEqual(pointers.sort(), ["left", "right"]);
+  const rows = Array.from(area().querySelectorAll(".variable > .var-name")).map(n => n.textContent);
+  assert.ok(!rows.includes("left") && !rows.includes("right"), `listed once, as pointers: ${rows.join(", ")}`);
+  assert.ok(rows.includes("total"), "other values still have rows");
+});
+
+test("Home and End jump to the ends; the arrow that cannot move further is disabled", () => {
+  const { dom } = run(walkthrough("TwoSumSorted.cs"), "Solution.TwoSum");
+  const document = dom.window.document;
+  const key = (name: string) => document.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: name }));
+  const button = (step: string) => document.querySelector<HTMLButtonElement>(`[data-step="${step}"]`)!;
+
+  assert.ok(button("prev").disabled && button("first").disabled, "nothing before the first step");
+  key("End");
+  assert.match(document.getElementById("step-count")!.textContent!, /^step (\d+) of \1$/);
+  assert.ok(button("next").disabled && button("last").disabled, "nothing after the last step");
+  assert.match(button("play").textContent!, /Replay/);
+  key("Home");
+  assert.match(document.getElementById("step-count")!.textContent!, /^step 1 of/);
+});
+
+test("Edit inputs opens the form over the run, and Cancel folds it again with nothing sent", () => {
+  const recorded = measure({ file: walkthrough("TwoSumSorted.cs"), entry: "Solution.TwoSum", stepSize: 8 }) as { steps: unknown };
+  const { dom, document, posted, edit } = showRun(recorded.steps);
+  edit();
+  const box = document.querySelector<HTMLInputElement>('.value-box[data-index="1"]')!;
+  box.value = "18";
+  box.dispatchEvent(new dom.window.Event("input"));
+  document.querySelector<HTMLElement>("#cancel-edit")!.click();
+
+  assert.ok(document.querySelector(".inputs-summary"), "folded again");
+  assert.match(document.querySelector(".inputs-summary .values")!.textContent!, /target = 9/, "the typed value was set aside");
+  assert.equal(posted.filter(m => m.type === "run").length, 0);
+  assert.ok(document.querySelector(".transport"), "the run stays on screen while editing and after");
 });
 
 test("complexity is measured only once its tab is opened", () => {
@@ -570,9 +643,9 @@ test("a heapq list is drawn as a two-way heap and a list used as a stack as a st
 });
 
 test("Python's memory figures are labelled approximate in the run view", () => {
-  const { go, area } = run(pythonSample("two_sum.py"), "Solution.twoSum");
+  const { go, dom } = run(pythonSample("two_sum.py"), "Solution.twoSum");
   go(2);
-  assert.match(area().querySelector(".memory")!.textContent!, /Approximate, from Python's tracemalloc/);
+  assert.match(dom.window.document.querySelector(".memory-note")!.textContent!, /Approximate, from Python's tracemalloc/);
 });
 
 test("a Python file's hint names its own way of calling a function", () => {
@@ -803,8 +876,8 @@ test("C++ structures are drawn as what they are: a linked list's arrows, a tree,
 test("a C++ run's memory is labelled exact, and its examples hint does not mention main", () => {
   const { area, go, count, dom } = run(cppSample("level_order.cpp"), "Solution.levelOrder");
   go(count - 1);
-  assert.match(area().textContent ?? "", /Exact: every byte your code allocated with new/);
-  void dom;
+  void area;
+  assert.match(dom.window.document.querySelector(".memory-note")!.textContent ?? "", /Exact: every byte your code allocated with new/);
   const fresh = run(cppSample("dedupe_with_find.cpp"), "Solution.countDistinct");
   assert.doesNotMatch(fresh.dom.window.document.body.textContent ?? "", /call the method from/);
 });
@@ -851,14 +924,14 @@ test("Rust structures are drawn as what they are: a linked list, a tree, a heap,
 });
 
 test("a Rust variable the compiler will not let be read says why, and the memory note says what is counted", () => {
-  const { area, go, count } = run(rustSample("ownership.rs"), "Solution.ownership");
+  const { area, go, count, dom } = run(rustSample("ownership.rs"), "Solution.ownership");
   const seen = new Set<string>();
   for (let i = 0; i < count; i++) {
     go(i);
     for (const why of ["(moved)", "(borrowed)", "(not set yet)", "(no longer used)"]) if ((area().textContent ?? "").includes(why)) seen.add(why);
   }
   assert.deepEqual([...seen].sort(), ["(borrowed)", "(moved)", "(no longer used)", "(not set yet)"]);
-  assert.match(area().textContent ?? "", /moved, borrowed, not set yet, or no longer used/);
+  assert.match(dom.window.document.querySelector(".memory-note")!.textContent ?? "", /moved, borrowed, not set yet, or no longer used/);
 });
 
 // ---- Java ------------------------------------------------------------------------------------

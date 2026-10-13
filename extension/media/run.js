@@ -234,11 +234,12 @@
     const frames = framesAt(model, index);
     const python = !!(options && options.python);
     const language = (options && options.language) || (python ? "python" : "csharp");
-    const context = { model, index, step, heap, before, ms, frames, python, language, drawn: new Set(), sizes: [] };
+    const context = { model, index, step, heap, before, ms, frames, python, language, drawn: new Set(), sizes: [], pointed: new Set() };
 
     const parts = [
       `<div class="run" style="--anim:${ms}ms">`,
       `<div class="current-step">
+        ${didLine(context)}
         <div class="label">About to run · line ${step.line}</div>
         <code class="statement">${escapeHtml(statement.snippet)}</code>
       </div>`,
@@ -251,6 +252,203 @@
       "</div>"
     ];
     return parts.join("");
+  }
+
+  /** Changes listed for one line before the rest are counted, so the sentence stays one line. */
+  const MAX_CHANGES = 3;
+
+  /**
+   * What the line before this step did, in words: "Line 12 ran: total 9 → 17". The drawing
+   * shows the state after it; this says what the line changed, so a student need not
+   * compare two drawings to see what one line did.
+   */
+  function didLine(context) {
+    const { model, index } = context;
+    if (index === 0) return "";
+    const steps = model.trace.steps;
+    const before = steps[index - 1];
+    const { list, at } = model.calls;
+    const was = list[at[index - 1]], now = list[at[index]];
+
+    let what;
+    if (was && now && was !== now) {
+      if (now.parent === was.id) {
+        what = `called <code>${escapeHtml(callLabel(now))}</code>`;
+      } else if (isAncestor(list, now, was)) {
+        what = was.returned != null
+          ? `<code>${escapeHtml(was.method)}</code> returned <code class="did-value">${escapeHtml(text(was.returned))}</code>`
+          : `<code>${escapeHtml(was.method)}</code> finished`;
+      } else {
+        return "";   // the next of a design problem's calls, which its own box names
+      }
+    } else {
+      const condition = conditionResult(model, index);
+      const changes = (condition ? [condition] : []).concat(changesBetween(model, index));
+      what = changes.length === 0 ? '<span class="muted">nothing changed</span>'
+        : changes.slice(0, MAX_CHANGES).join(", ") +
+          (changes.length > MAX_CHANGES ? ` <span class="muted">and ${changes.length - MAX_CHANGES} more</span>` : "");
+    }
+    return `<div class="did"><span class="label">Line ${before.line} ran</span> ${what}</div>`;
+  }
+
+  const CONDITION = /^(?:else\s+if|elif|if|while)\b\s*/;
+
+  /**
+   * Whether an if or while line's condition held: "total == target was false". Read from
+   * where the run went next — the first statement after the line is its body. Not said
+   * when the line also holds its body (`if (x) continue;`), where it cannot be told apart.
+   */
+  function conditionResult(model, index) {
+    const trace = model.trace;
+    const before = trace.steps[index - 1], now = trace.steps[index];
+    const statement = trace.statements.find(s => s.id === before.statementId);
+    const snippet = statement ? statement.snippet.trim() : "";
+    if (!CONDITION.test(snippet) || now.line === before.line) return null;
+    if (trace.statements.some(s => s.line === before.line && s.id !== statement.id)) return null;
+
+    let body = Infinity;
+    for (const s of trace.statements) if (s.line > before.line && s.line < body) body = s.line;
+    if (body === Infinity) return null;
+
+    let condition = snippet.replace(CONDITION, "").replace(/\s*[:{]\s*$/, "");
+    if (/^\(.*\)$/.test(condition) && balanced(condition.slice(1, -1))) condition = condition.slice(1, -1);
+    return `${code(condition)} was <span class="did-value">${now.line === body ? "true" : "false"}</span>`;
+  }
+
+  /** Whether brackets open and close in order, so "(a) && (b)" keeps its outer pair. */
+  const balanced = text => {
+    let depth = 0;
+    for (const ch of text) {
+      if (ch === "(") depth++;
+      else if (ch === ")" && --depth < 0) return false;
+    }
+    return depth === 0;
+  };
+
+  const isAncestor = (list, maybe, call) => {
+    for (let p = call.parent; p != null; p = list[p].parent) if (p === maybe.id) return true;
+    return false;
+  };
+
+  /** Shown values are cut to this many characters in a sentence. */
+  const SHORT = 24;
+  const short = value => {
+    const t = text(value);
+    return t.length > SHORT ? t.slice(0, SHORT - 1) + "…" : t;
+  };
+  const code = value => `<code>${escapeHtml(value)}</code>`;
+  const changedTo = value => `<code class="did-value">${escapeHtml(short(value))}</code>`;
+
+  /** Each change from the step before to this one, as a phrase. */
+  function changesBetween(model, index) {
+    const old = model.trace.steps[index - 1], now = model.trace.steps[index];
+    const oldHeap = heapAt(model, index - 1), heap = heapAt(model, index);
+    const touched = new Set((now.heap || []).map(change => change.id));
+    const oldByName = new Map(old.variables.map(v => [v.name, v]));
+    const phrases = [];
+    const described = new Set();
+
+    for (const v of now.variables) {
+      const was = oldByName.get(v.name);
+      if (!was) {
+        phrases.push(`${code(v.name)} set to ${changedTo(variableText(heap, v))}`);
+        continue;
+      }
+      if (v.ref != null && v.ref === was.ref) {
+        // The same object, changed inside: said once, under the first name holding it.
+        if (!touched.has(v.ref) || described.has(v.ref)) continue;
+        described.add(v.ref);
+        const inside = objectChange(v.name, oldHeap.get(v.ref), heap.get(v.ref), oldHeap, heap);
+        if (inside) phrases.push(inside);
+        continue;
+      }
+      const from = variableText(oldHeap, was), to = variableText(heap, v);
+      if (from !== to || was.display !== v.display) phrases.push(`${code(v.name)} ${escapeHtml(short(from))} → ${changedTo(to)}`);
+    }
+    return phrases;
+  }
+
+  /** How one object changed: an item added or written, a key added or removed, a push or pop. */
+  function objectChange(name, before, after, oldHeap, heap) {
+    if (!before || !after) return `${code(name)} changed`;
+    switch (after.kind) {
+      case "array":
+      case "list": {
+        const a = before.items || [], b = after.items || [];
+        if (b.length > a.length) return `${code(name)} gained ${b.slice(a.length).map(item => changedTo(valueText(heap, item))).join(", ")}`;
+        if (b.length < a.length) return `${code(name)} lost ${a.length - b.length} item${a.length - b.length === 1 ? "" : "s"}`;
+        const written = [];
+        for (let i = 0; i < b.length; i++) if (text(a[i]) !== text(b[i])) written.push(i);
+        if (written.length === 0) return null;
+        return written.slice(0, 2).map(i => `${code(`${name}[${i}]`)} ${escapeHtml(short(a[i]))} → ${changedTo(b[i])}`).join(", ") +
+          (written.length > 2 ? ` <span class="muted">and ${written.length - 2} more</span>` : "");
+      }
+      case "map": {
+        const was = new Map((before.entries || []).map(e => [text(e.key), e]));
+        const is = new Map((after.entries || []).map(e => [text(e.key), e]));
+        for (const [key, entry] of is) {
+          const old = was.get(key);
+          if (!old) return `${code(`${name}[${key}]`)} set to ${changedTo(entry.value)}`;
+          if (text(old.value) !== text(entry.value)) return `${code(`${name}[${key}]`)} ${escapeHtml(short(old.value))} → ${changedTo(entry.value)}`;
+        }
+        for (const key of was.keys()) if (!is.has(key)) return `${code(name)} lost key ${changedTo(key)}`;
+        // Same keys and values in a new order: an ordered map's entry moved to the end.
+        const order = entries => (entries || []).map(e => text(e.key)).join("\u0000");
+        return order(before.entries) !== order(after.entries) ? `${code(name)} reordered: ${changedTo(objectText(after, heap))}` : null;
+      }
+      case "set": {
+        const was = new Set((before.items || []).map(text)), is = new Set((after.items || []).map(text));
+        for (const item of is) if (!was.has(item)) return `${code(name)} gained ${changedTo(item)}`;
+        for (const item of was) if (!is.has(item)) return `${code(name)} lost ${changedTo(item)}`;
+        return null;
+      }
+      case "stack":
+      case "queue":
+      case "heap": {
+        const a = (before.items || []).length, b = (after.items || []).length;
+        if (b > a) return `${code(name)} grew to ${b}`;
+        if (b < a) return `${code(name)} shrank to ${b}`;
+        return `${code(name)} changed`;
+      }
+      default: {
+        // A node or object: the field that was written, as head.next ListNode(2) → None.
+        const was = new Map((before.fields || []).map(f => [f.name, f.value]));
+        for (const f of after.fields || []) {
+          const old = was.get(f.name);
+          const from = valueText(oldHeap, old), to = valueText(heap, f.value);
+          if (from !== to) return `${code(`${name}.${f.name}`)} ${escapeHtml(short(from))} → ${changedTo(to)}`;
+        }
+        return `${code(name)} changed`;
+      }
+    }
+  }
+
+  /** A variable as a sentence shows it: a list by its items, a node by its value. */
+  function variableText(heap, variable) {
+    const object = variable.ref != null ? heap.get(variable.ref) : null;
+    return object ? objectText(object, heap) : variable.display;
+  }
+
+  /** A field's value: plain text, or the object it refers to. */
+  function valueText(heap, value) {
+    if (value == null) return "";
+    const object = value.ref != null ? heap.get(value.ref) : null;
+    return object ? objectText(object, heap) : text(value);
+  }
+
+  function objectText(object, heap) {
+    const more = object.count > (object.items || object.entries || []).length ? ", …" : "";
+    switch (object.kind) {
+      case "array": case "list": case "stack": case "queue": case "heap":
+        return `[${(object.items || []).map(text).join(", ")}${more}]`;
+      case "set": return `{${(object.items || []).map(text).join(", ")}${more}}`;
+      case "map": return `{${(object.entries || []).map(e => `${text(e.key)}: ${text(e.value)}`).join(", ")}${more}}`;
+      case "listnode": case "tree": {
+        const val = (object.fields || []).find(f => f.name === "val");
+        return `${object.type}(${val ? text(val.value) : ""})`;
+      }
+      default: return object.type || "object";
+    }
   }
 
   /** What the method returned, on the run's last step. */
@@ -297,7 +495,14 @@
       const old = previousByName.get(v.name);
       const changed = before && old && old.display !== v.display;
       const appeared = before && !old;
-      rows.push(row(v.name, drawPlain(v, scalars, context, old), changed, appeared ? "appeared" : ""));
+      rows.push({ name: v.name, html: row(v.name, drawPlain(v, scalars, context, old), changed, appeared ? "appeared" : "") });
+    }
+    // An index drawn as a pointer under its array is not listed again on a row of its own.
+    // Drawings come first in the loop above only by chance, so the rows are filtered after.
+    for (let i = rows.length - 1; i >= 0; i--) {
+      if (typeof rows[i] !== "object") continue;
+      if (context.pointed.has(rows[i].name)) rows.splice(i, 1);
+      else rows[i] = rows[i].html;
     }
 
     // Deep in a recursive tree walk the current call often holds null — the call on a
@@ -367,6 +572,7 @@
   function cells(items, scalars, context, oldItems, oldScalars) {
     const count = items.length;
     const pointers = scalars.filter(s => isIndexName(s.name) && s.number >= 0 && s.number < count);
+    for (const p of pointers) context.pointed.add(p.name);
     const oldPositions = new Map((oldScalars || []).map(s => [s.name, s.number]));
 
     // A long array is windowed around its pointers, so they are always on screen.
@@ -912,17 +1118,19 @@
         <polyline points="${line}"/><line class="cursor" x1="${px(index)}" y1="0" x2="${px(index)}" y2="${H}"/>
       </svg>
       ${sizeList ? `<div class="entries sizes">${sizeList}</div>` : ""}
-      <div class="footnote">${context.python
-        ? "Approximate, from Python's tracemalloc: what your code allocated, not the visualizer. Python allocates even for integers above 256. Sizes are each structure itself (sys.getsizeof), not what its elements point to."
-        : context.language === "java"
-        ? "Exact: every byte your code allocated, from the JVM's own count — objects and arrays alike — not the visualizer's. A variable Java would not let be read yet says so. Sizes are approximate: each structure itself, not what its elements point to."
-        : context.language === "rust"
-        ? "Exact: every byte your code allocated on the heap — each Vec's, String's and map's storage, every Box and Rc — not the visualizer's. Values on the stack are not counted. A variable the compiler would not let be read at a step says why: moved, borrowed, not set yet, or no longer used."
-        : context.language === "cpp"
-        ? "Exact: every byte your code allocated with new — each container's storage — not the visualizer's. Variables on the stack are not counted. Sizes are approximate: each structure itself, not what its elements point to."
-        : "Bytes allocated by your code, not by the visualizer. Sizes are approximate: each structure itself, not what its elements point to."}</div>
     </div>`;
   }
 
-  window.DsaRun = { prepare, render, heapAt, framesAt, MAX_CELLS };
+  /** Where the memory figures come from, in each language. Shown once, under the run. */
+  function memoryNote(language) {
+    switch (language) {
+      case "python": return "Approximate, from Python's tracemalloc: what your code allocated, not the visualizer. Python allocates even for integers above 256. Sizes are each structure itself (sys.getsizeof), not what its elements point to.";
+      case "java": return "Exact: every byte your code allocated, from the JVM's own count — objects and arrays alike — not the visualizer's. A variable Java would not let be read yet says so. Sizes are approximate: each structure itself, not what its elements point to.";
+      case "rust": return "Exact: every byte your code allocated on the heap — each Vec's, String's and map's storage, every Box and Rc — not the visualizer's. Values on the stack are not counted. A variable the compiler would not let be read at a step says why: moved, borrowed, not set yet, or no longer used.";
+      case "cpp": return "Exact: every byte your code allocated with new — each container's storage — not the visualizer's. Variables on the stack are not counted. Sizes are approximate: each structure itself, not what its elements point to.";
+      default: return "Bytes allocated by your code, not by the visualizer. Sizes are approximate: each structure itself, not what its elements point to.";
+    }
+  }
+
+  window.DsaRun = { prepare, render, heapAt, framesAt, memoryNote, MAX_CELLS };
 })();
