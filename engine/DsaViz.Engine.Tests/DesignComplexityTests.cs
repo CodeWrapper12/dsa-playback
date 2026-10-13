@@ -130,7 +130,7 @@ public class DesignComplexityTests
         Assert.All(result.Design.Operations, o =>
         {
             Assert.Equal(ComplexityClass.Constant, o.PerCall);
-            Assert.Contains("O(1) per call", o.Plain);
+            Assert.Contains("costs about the same however many calls came before it", o.Plain);
             Assert.Null(o.Because);
         });
         Assert.Equal(Measurer.DefaultSizes, result.Design.Operations[0].Points.Select(p => p.Size));

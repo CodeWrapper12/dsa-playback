@@ -154,6 +154,24 @@ export interface MeasurementResult {
   parameters: ParameterDescription[];
   errors: string[];
   sizeNote: string | null;
+  /** For a design problem: each method's cost per call. */
+  design?: DesignGrowth | null;
+}
+
+/** A design problem measured per call: each method's average cost of one call, as n grows. */
+export interface DesignGrowth {
+  workload: string;
+  operations: OperationGrowth[];
+}
+
+export interface OperationGrowth {
+  name: string;
+  perCall: ComplexityClass;
+  formula: string | null;
+  plain: string;
+  because: string | null;
+  line: number | null;
+  points: { size: number; calls: number; average: number; largest: number }[];
 }
 
 export interface ParameterDescription {

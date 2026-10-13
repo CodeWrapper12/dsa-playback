@@ -156,15 +156,15 @@ public static class DesignGrowthReader
     private static string Plain(ComplexityClass perCall) => perCall switch
     {
         ComplexityClass.Constant =>
-            "One call costs about the same however many calls came before it: O(1) per call.",
+            "One call costs about the same however many calls came before it.",
         ComplexityClass.Logarithmic =>
-            "One call costs a little more as the object grows — about one step more each time n doubles: O(log n) per call.",
+            "One call costs a little more as the object grows: about one step more each time n doubles.",
         ComplexityClass.Linear =>
-            "One call costs more the bigger the object is: when n doubles, so does the cost of each call. O(n) per call.",
+            "One call costs more the bigger the object is: when n doubles, so does the cost of each call.",
         ComplexityClass.Linearithmic =>
-            "When n doubles, one call costs a little more than twice as much: O(n log n) per call.",
+            "When n doubles, one call costs a little more than twice as much.",
         ComplexityClass.Quadratic =>
-            "When n doubles, one call costs about four times as much: O(n²) per call.",
+            "When n doubles, one call costs about four times as much.",
         _ => "The cost of one call did not follow a standard shape over these sizes, so no class is named."
     };
 

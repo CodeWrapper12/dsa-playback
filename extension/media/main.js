@@ -89,7 +89,8 @@
         showLineButton(problems);
     }
 
-    const parts = [verdicts(primary)];
+    // A design problem is answered per call, as LeetCode asks it; nothing is read from its code.
+    const parts = [primary.design ? designVerdicts(primary) : verdicts(primary)];
     if (primary.disagreement && primary.disagreementNote) {
       parts.push(banner("Time: the code and the measurement disagree", escapeHtml(primary.disagreementNote)));
     }
@@ -238,6 +239,30 @@
     return parts.join("");
   }
 
+  /**
+   * A design problem's answer, the way LeetCode states its requirement: what one call to
+   * each method costs, and how that grows — "get: O(1) per call" — with the line that
+   * makes a call grow. Then the memory the object holds.
+   */
+  function designVerdicts(primary) {
+    const design = primary.design;
+    const label = value => CLASS_LABEL[value] || value;
+    const cards = design.operations.map(op => `<div class="verdict operation">
+        <div class="label"><code>${escapeHtml(op.name)}</code></div>
+        <div class="value ${op.perCall === "Unknown" ? "unknown" : ""}">${label(op.perCall)}${op.perCall === "Unknown" ? "" : ' <span class="per">per call</span>'}</div>
+        <div class="plain">${escapeHtml(op.plain)}</div>
+        ${op.because ? `<div class="because">Because ${formatInlineCode(op.because)}.</div>` : ""}
+        ${op.formula ? `<div class="note">Measured: ${escapeHtml(op.formula)}</div>` : ""}
+        ${op.line ? `<button class="ghost show-line" data-line="${op.line}">Show line ${op.line}</button>` : ""}
+      </div>`).join("");
+
+    const space = primary.space;
+    return `<div class="design-workload"><strong>Cost per call</strong>${escapeHtml(design.workload)}</div>
+      <div class="verdicts">${cards}</div>
+      ${space ? `<div class="verdicts">${card("Space — what the object holds after n calls", label(space.likelyPeak),
+        plainSpace(space.likelyPeak), space.summary)}</div>` : ""}`;
+  }
+
   function controls(primary) {
     const params = primary.parameters || [];
     const sizes = primary.points.map(p => p.size).join(", ");
@@ -275,7 +300,7 @@
     return `<div class="controls">
       ${inputs}
       <div class="control">
-        <label for="sizes">Sizes</label>
+        <label for="sizes">${primary.design ? "Numbers of calls (n)" : "Sizes"}</label>
         <input type="text" id="sizes" value="${escapeHtml(sizes)}" title="Leave unchanged to let the engine choose and adapt">
       </div>
       <button id="rerun">Re-measure</button>
@@ -323,7 +348,7 @@
       <h3>Library calls doing hidden work</h3>
       <p class="footnote">Each of these is one statement on the page and a loop inside the library.
         The work is the number of elements it touched in total.</p>
-      <table class="hot">
+      <div class="table-scroll"><table class="hot">
         <thead><tr><th class="snippet-cell">call</th><th>cost per call</th><th>calls</th><th>work</th><th>at</th></tr></thead>
         <tbody>${calls.map(call => `<tr class="hot-row" data-line="${call.line}" title="Go to line ${call.line}" tabindex="0" role="button">
           <td class="snippet-cell">${escapeHtml(call.member)}</td>
@@ -332,11 +357,12 @@
           <td class="hidden-work">${num(call.work)}</td>
           <td class="muted">${call.line}:${call.column}</td>
         </tr>`).join("")}</tbody>
-      </table>`;
+      </table></div>`;
 
     const why = primary.derivation
-      ? `<div class="derivation"><div class="label">Derivation</div>
-           <p>${formatInlineCode(primary.derivation.summary)}</p></div>`
+      ? `<div class="derivation"><div class="label">${primary.design ? "All n calls together" : "Derivation"}</div>
+           <p>${formatInlineCode(primary.derivation.summary)}</p>
+           ${primary.design ? '<p class="footnote">The cost of one call to each method is above; this is their total.</p>' : ""}</div>`
       : "";
 
     return `${why}<div class="banner info"><strong>The costs are on your code</strong>
@@ -345,14 +371,14 @@
         memory it allocated. Hover a line for the breakdown. Editing the file clears the
         annotations, because once a line moves the numbers beside it are no longer about that line.</div>
 
-      <table class="hot">
+      <div class="table-scroll"><table class="hot">
         <thead><tr>
           <th class="rank">#</th><th></th><th>executions</th>
           ${anyLibraryWork ? "<th>library work</th>" : ""}
           <th>memory</th><th>grows as</th><th class="snippet-cell">statement</th><th>at</th>
         </tr></thead>
         <tbody>${rows}</tbody>
-      </table>
+      </table></div>
       ${library}
       <div class="footnote">
         Measured at n = ${largest === null ? "\u2014" : num(largest)}:
@@ -536,6 +562,24 @@
     };
   }
 
+  const OPERATION_COLORS = ["var(--hot)", "var(--cool)", "var(--compare)", "var(--vscode-descriptionForeground)"];
+
+  /** A design problem's growth: the average cost of one call to each method, against n. */
+  function designGrowth(primary, useLog) {
+    const series = primary.design.operations.map((op, i) => ({
+      label: op.name,
+      color: OPERATION_COLORS[i % OPERATION_COLORS.length],
+      points: op.points.map(p => ({ size: p.size, operations: p.average, bytesAllocated: 0 })),
+      fit: null
+    }));
+    return `<h3>Average cost of one call</h3>
+      <div class="legend">${series.map(s =>
+        `<span class="key"><span class="swatch" style="background:${s.color}"></span><code>${escapeHtml(s.label)}</code></span>`).join("")}</div>
+      ${chart(series, useLog, "operations per call")}
+      <div class="footnote">A flat line is O(1) per call: each call costs the same however many came before it.</div>
+      <h3>All n calls together</h3>`;
+  }
+
   function growthPanel(primary) {
     const useLog = state.log === true;
     const bar = metricBar([primary]);
@@ -543,7 +587,7 @@
     const series = [seriesFor(primary, "measured", "var(--hot)")];
     const fitted = series[0].fit;
 
-    return `${bar}<div class="legend">
+    return `${primary.design ? designGrowth(primary, useLog) : ""}${bar}<div class="legend">
         <span class="key"><span class="swatch" style="background:var(--hot)"></span>measured</span>
         <span class="key"><span class="swatch" style="background:var(--hot);opacity:.6"></span>fitted ${
           fitted ? (CLASS_LABEL[fitted.best] || fitted.best) : "—"}</span>
@@ -613,7 +657,7 @@
         const point = e.result.points.find(p => p.size === size);
         return `<td>${point ? num(point.operations) : "\u2014"}</td>`;
       }).join("")}</tr>`).join("");
-      return `<table><thead><tr><th>size</th>${head}</tr></thead><tbody>${rows}</tbody></table>`;
+      return `<div class="table-scroll"><table><thead><tr><th>size</th>${head}</tr></thead><tbody>${rows}</tbody></table></div>`;
     }
 
     // Operations split into what is on the page (statements) and what is hidden inside
@@ -633,10 +677,10 @@
         <td>${bytes(p.bytesAllocated)}</td></tr>`;
     }).join("");
 
-    return `<table><thead><tr><th>size</th><th>operations</th>
+    return `<div class="table-scroll"><table><thead><tr><th>size</th><th>operations</th>
       ${hasLibrary ? "<th>statements</th><th>library work</th>" : ""}
       ${hasDepth ? "<th>call depth</th>" : ""}
-      <th>memory allocated</th></tr></thead><tbody>${rows}</tbody></table>`;
+      <th>memory allocated</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   }
 
   // ---- step through --------------------------------------------------------------
@@ -777,7 +821,7 @@
 
     return `<div class="example-results">
       <div class="summary">${escapeHtml(summary)}</div>
-      <table><thead><tr><th></th><th>Example</th><th>Expected</th><th>Got</th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="table-scroll"><table><thead><tr><th></th><th>Example</th><th>Expected</th><th>Got</th></tr></thead><tbody>${rows}</tbody></table></div>
     </div>`;
   }
 

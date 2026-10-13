@@ -157,7 +157,7 @@ public sealed class DesignWorkload
         scaled.AddRange(_constructor.Where(a => a.Kind is DesignArgKind.IntArray or DesignArgKind.StringArray).Select(a => $"{a.Name} holds n items"));
         if (scaled.Count > 0) sentence.Append($" The object is made with {string.Join(" and ", scaled)}.");
         if (_parameters.SelectMany(p => p).Any(a => a.Kind == DesignArgKind.Int))
-            sentence.Append(" Whole numbers passed to the calls are drawn from 0 to n − 1, so they repeat as the calls go on: a key looked up is sometimes there and sometimes not.");
+            sentence.Append(" Whole numbers passed to the calls are drawn from 0 to n − 1, so the same values come up again as the calls go on.");
         return sentence.ToString();
     }
 

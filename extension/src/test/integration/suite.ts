@@ -194,9 +194,9 @@ const checks: [string, (api: TestApi) => Promise<void>][] = [
     assert.equal(steps.check?.matches, true);
   }],
 
-  ["a design problem gets one ▶ Visualize on its class, and its calls run and are checked", async api => {
+  ["a design problem gets ▶ Visualize and Complexity on its class, and its calls run and are checked", async api => {
     const document = await open("samples/design/LRUCache.cs");
-    assert.deepEqual((await api.lenses(document)).map(lens => lens.command?.title), ["$(play) Visualize"]);
+    assert.deepEqual((await api.lenses(document)).map(lens => lens.command?.title), ["$(play) Visualize", "$(graph) Complexity"]);
 
     const before = api.lastSteps();
     await vscode.commands.executeCommand("dsaPlayback.visualize", document.uri, "LRUCache");
@@ -204,6 +204,19 @@ const checks: [string, (api: TestApi) => Promise<void>][] = [
     assert.equal(steps.status, "Completed", steps.errors.join("; "));
     assert.equal(steps.check?.matches, true);
     assert.equal(steps.calls.length, 10);
+  }],
+
+  ["a design problem's Complexity is measured per call, and its costs land on the file", async api => {
+    const document = await open("samples/design/LRUCacheSlow.cs");
+    const before = api.lastResponse();
+    await vscode.commands.executeCommand("dsaPlayback.measure", document.uri, "LRUCache");
+    const response = await waitFor(() => (api.lastResponse() !== before ? api.lastResponse() : undefined), "a measurement");
+
+    assert.equal(response.primary?.status, "Completed", response.primary?.errors.join("; "));
+    const operations = response.primary?.design?.operations ?? [];
+    assert.deepEqual(operations.map(o => [o.name, o.perCall]), [["put", "Linear"], ["get", "Linear"]]);
+    assert.equal(operations.find(o => o.name === "get")?.line, 23);
+    await waitFor(() => api.linesDecoratedIn(document.uri) || undefined, "annotations on the file", 10_000);
   }],
 
   ["Explain this step sends nothing while off, and explains why when no Copilot is available", async api => {
@@ -290,10 +303,10 @@ const checks: [string, (api: TestApi) => Promise<void>][] = [
     await waitFor(() => api.linesDecoratedIn(measured.uri) || undefined, "costs beside the Java lines", 10_000);
   }],
 
-  ["a C++ and a Rust design problem each get one ▶ Visualize, and their calls run and are checked", async api => {
+  ["a C++ and a Rust design problem each get ▶ Visualize and Complexity, and their calls run and are checked", async api => {
     for (const file of ["samples/design/lru_cache.cpp", "samples/design/lru_cache.rs"]) {
       const document = await open(file);
-      assert.deepEqual((await api.lenses(document)).map(lens => lens.command?.title), ["$(play) Visualize"], file);
+      assert.deepEqual((await api.lenses(document)).map(lens => lens.command?.title), ["$(play) Visualize", "$(graph) Complexity"], file);
       const before = api.lastSteps();
       await vscode.commands.executeCommand("dsaPlayback.visualize", document.uri, "LRUCache");
       const steps = await waitFor(() => (api.lastSteps() !== before && api.lastStepsFile() === document.uri.fsPath ? api.lastSteps() : undefined),

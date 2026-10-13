@@ -88,6 +88,39 @@ test("a single solution renders every tab without error", () => {
   assert.match(document.body.textContent ?? "", /0\.5·n²/);
 });
 
+test("a design problem's complexity is shown per call, each method with the line that makes it grow", () => {
+  const { document } = exercise(measure({ file: sample("design/LRUCacheSlow.cs"), entry: "LRUCache" }), "LRUCache");
+  document.querySelector<HTMLElement>('.tab[data-tab="cost"]')!.click();
+
+  const cards = Array.from(document.querySelectorAll<HTMLElement>(".verdict.operation"));
+  assert.deepEqual(cards.map(c => c.querySelector(".label")!.textContent), ["put", "get"]);
+  for (const card of cards) {
+    assert.match(card.querySelector(".value")!.textContent!, /^O\(n\) per call$/);
+    assert.match(card.querySelector(".because")!.textContent!, /List<T>\.Remove is O\(n\) per call/);
+  }
+  assert.match(document.querySelector(".design-workload")!.textContent!, /Each size n makes n calls/);
+  assert.match(document.body.textContent ?? "", /All n calls together/);
+  assert.match(document.querySelector('label[for="sizes"]')!.textContent!, /Numbers of calls/);
+
+  document.querySelector<HTMLElement>('.tab[data-tab="growth"]')!.click();
+  assert.match(document.body.textContent ?? "", /Average cost of one call/);
+  assert.equal(document.querySelectorAll("svg polyline.series").length >= 3, true, "a line per method, and the total");
+});
+
+test("a design problem's Show line goes to the line that makes a call grow", () => {
+  const response = measure({ file: sample("design/lru_cache_slow.py"), entry: "LRUCache" }) as
+    { primary: { design: { operations: { name: string; line: number }[] } } };
+  const { dom, posted } = load(true);
+  const send = (data: unknown) => dom.window.dispatchEvent(new dom.window.MessageEvent("message", { data }));
+  const request = { file: sample("design/lru_cache_slow.py"), entry: "LRUCache" };
+  send({ type: "open", request, tab: "cost" });
+  send({ type: "result", response, request });
+
+  const put = response.primary.design.operations.find(o => o.name === "put")!;
+  dom.window.document.querySelector<HTMLElement>(`.verdict.operation .show-line[data-line="${put.line}"]`)!.click();
+  assert.deepEqual(posted.at(-1), { type: "reveal", line: 24 });
+});
+
 test("a comparison renders every tab and metric without error", () => {
   const { tabs } = exercise(measure({
     file: sample("leetcode/TwoSum.cs"), entry: "Solution.TwoSum", strategy: "Distinct",

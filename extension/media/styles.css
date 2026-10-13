@@ -99,6 +99,13 @@ body {
 .verdict .value.unknown { color: var(--vscode-descriptionForeground); font-weight: 500; }
 .verdict .plain { line-height: 1.45; margin-bottom: 6px; }
 .verdict .note { font-size: 0.88em; color: var(--vscode-descriptionForeground); line-height: 1.45; }
+.verdict .label code { font-family: var(--vscode-editor-font-family); text-transform: none; letter-spacing: 0; font-size: 1.15em; }
+.verdict .because { line-height: 1.45; margin-bottom: 6px; overflow-wrap: anywhere; }
+.verdict .value .per { font-size: 0.6em; font-weight: 500; color: var(--vscode-descriptionForeground); }
+.verdict .because code { font-family: var(--vscode-editor-font-family); }
+.verdict.operation .show-line { margin: 6px 0 0; }
+.design-workload { margin: 0 0 12px; line-height: 1.5; color: var(--vscode-descriptionForeground); }
+.design-workload strong { display: block; color: var(--vscode-foreground); margin-bottom: 2px; }
 
 .banner {
   border-left: 3px solid var(--hot);
@@ -590,3 +597,6 @@ tr.example-row.current { background: var(--vscode-list-inactiveSelectionBackgrou
 }
 #explain-area .explanation.error { border-left-color: var(--vscode-errorForeground); }
 #explain-area .explanation .footnote { margin-top: 6px; }
+
+/* A wide table scrolls inside its own box, so a narrow panel never scrolls sideways. */
+.table-scroll { overflow-x: auto; max-width: 100%; }
