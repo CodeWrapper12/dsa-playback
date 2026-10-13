@@ -45,6 +45,8 @@ export interface TestApi {
   lastSteps(): StepTrace | undefined;
   lastError(): string | undefined;
   lastExamples(): ExampleReport | undefined;
+  /** The file the last recorded run was of. */
+  lastStepsFile(): string | undefined;
   /** The last answer sent to the panel for "Explain this step". */
   lastExplanation(): Record<string, unknown> | undefined;
   /** The id of the recorded run on screen, as the panel would send it back. */
@@ -58,7 +60,7 @@ export interface TestApi {
 }
 
 const observed: {
-  response?: JobResponse; steps?: StepTrace; error?: string; examples?: ExampleReport; explanation?: Record<string, unknown>
+  response?: JobResponse; steps?: StepTrace; stepsFile?: string; error?: string; examples?: ExampleReport; explanation?: Record<string, unknown>
 } = {};
 
 export function activate(context: vscode.ExtensionContext): TestApi {
@@ -94,6 +96,7 @@ export function activate(context: vscode.ExtensionContext): TestApi {
   return {
     lastResponse: () => observed.response,
     lastSteps: () => observed.steps,
+    lastStepsFile: () => observed.stepsFile,
     lastError: () => observed.error,
     lastExamples: () => observed.examples,
     lastExplanation: () => observed.explanation,
@@ -393,6 +396,12 @@ class ReportPanel {
 
     let panel = ReportPanel.current;
     if (panel) {
+      // Whatever is still running belongs to the method shown before: its answer would land
+      // under this one's heading.
+      panel.measuring?.abort();
+      panel.recording?.abort();
+      panel.checkingExamples?.abort();
+      panel.explaining?.cancel();
       panel.request = request;
       panel.panel.reveal(column, true);
     } else {
@@ -518,6 +527,7 @@ class ReportPanel {
     this.panel.webview.postMessage({ type: "stepsLoading", choice });
 
     const size = Math.max(0, Math.min(choice.size ?? DEFAULT_STEP_SIZE, MAX_STEP_SIZE));
+    const request = this.request;
     try {
       const response = await measure({
         file: this.request.file,
@@ -529,7 +539,8 @@ class ReportPanel {
         cppCompiler: this.request.cppCompiler,
         rustc: this.request.rustc
       }, controller.signal);
-      if (controller.signal.aborted) return;
+      // A run for a method the panel has since moved on from is not shown.
+      if (controller.signal.aborted || this.request.file !== request.file || this.request.entry !== request.entry) return;
 
       if (response.errorCode) {
         this.panel.webview.postMessage({ type: "stepsError", message: response.errors.join(" "), code: response.errorCode });
@@ -541,6 +552,7 @@ class ReportPanel {
       this.shown = response.steps ? { id: traceId, trace: response.steps, source: response.source ?? "" } : undefined;
       this.panel.webview.postMessage({ type: "steps", trace: response.steps, traceId, errors: response.errors, choice });
       observed.steps = response.steps ?? undefined;
+      observed.stepsFile = this.request.file;
       if (response.steps?.status === "Completed") void rating.succeeded();
     } catch (error) {
       this.fail("stepsError", error);

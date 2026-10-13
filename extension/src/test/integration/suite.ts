@@ -132,7 +132,9 @@ const checks: [string, (api: TestApi) => Promise<void>][] = [
     const before = api.lastSteps();
     // Exactly what VS Code passes from an editor/title menu item: the file, then the group.
     await vscode.commands.executeCommand("dsaPlayback.visualize", document.uri, { groupId: 1 });
-    const steps = await waitFor(() => (api.lastSteps() !== before ? api.lastSteps() : undefined), "a run from the title bar");
+    // A run of this file: one still finishing from the check before must not be taken for it.
+    const steps = await waitFor(() => (api.lastSteps() !== before && api.lastStepsFile() === file ? api.lastSteps() : undefined),
+      "a run from the title bar");
     assert.equal(steps.status, "Completed");
     assert.equal(steps.check?.matches, true);
   }],
