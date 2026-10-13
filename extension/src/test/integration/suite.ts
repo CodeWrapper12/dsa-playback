@@ -304,6 +304,45 @@ const checks: [string, (api: TestApi) => Promise<void>][] = [
     }
   }],
 
+  ["stepping after clicking into the panel keeps the panel in view", async api => {
+    // A student clicked the panel, then stepped: the code opened as a tab over the panel,
+    // in the panel's own group, and the run could no longer be seen.
+    await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+    const file = path.join(repository, "extension/samples/csharp/TwoSumSorted.cs");
+    await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(file), vscode.ViewColumn.One);
+
+    let before = api.lastSteps();
+    await vscode.commands.executeCommand("dsaPlayback.visualize", vscode.Uri.file(file), "Solution.TwoSum");
+    await waitFor(() => (api.lastSteps() !== before ? true : undefined), "a recorded run");
+
+    const panelGroup = () => vscode.window.tabGroups.all.find(g =>
+      g.tabs.some(t => t.input instanceof vscode.TabInputWebview && t.input.viewType.endsWith("dsaPlaybackReport")));
+    const showsPanel = () => {
+      const active = panelGroup()?.activeTab?.input;
+      return active instanceof vscode.TabInputWebview && active.viewType.endsWith("dsaPlaybackReport");
+    };
+    const codeOverPanel = () => panelGroup()?.tabs.some(t =>
+      t.input instanceof vscode.TabInputText && t.input.uri.fsPath === file) ?? false;
+
+    const column = panelGroup()?.viewColumn;
+    assert.ok(column && column !== vscode.ViewColumn.One, "the panel opens beside the code");
+    await vscode.commands.executeCommand("workbench.action.focusSecondEditorGroup");
+
+    for (const message of [{ type: "stepAt", line: 9 }, { type: "stepAt", line: 12 }, { type: "reveal", line: 12 }]) {
+      await api.sendPanelMessage(message);
+      assert.ok(showsPanel(), `the panel is still the visible tab in its group after ${message.type}`);
+      assert.ok(!codeOverPanel(), `the code did not open in the panel's group after ${message.type}`);
+      assert.ok(vscode.window.visibleTextEditors.some(e => e.document.uri.fsPath === file), "the code is in view");
+    }
+
+    // Opening another run from the code keeps the panel where it was.
+    before = api.lastSteps();
+    await vscode.commands.executeCommand("dsaPlayback.visualize", vscode.Uri.file(file), "Solution.TwoSum");
+    await waitFor(() => (api.lastSteps() !== before ? true : undefined), "a second recorded run");
+    assert.equal(panelGroup()?.viewColumn, column, "the panel stayed in its column");
+    assert.equal(vscode.window.tabGroups.all.length, 2, "no extra column was opened");
+  }],
+
   ["the walkthrough opens an editable copy of its sample", async () => {
     await vscode.commands.executeCommand("dsaPlayback.openSample", "LevelOrder.cs");
     const opened = vscode.window.activeTextEditor?.document.fileName ?? "";

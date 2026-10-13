@@ -3,7 +3,7 @@ import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
 import { EntryPointLenses } from "./codeLens";
-import { CostDecorations } from "./decorations";
+import { codeColumn, CostDecorations } from "./decorations";
 import {
   configureEngine, EngineCancelledError, EngineFailedError, EngineNotFoundError, EntryListError, listEntryPoints, measure,
   resolveEnginePath
@@ -399,8 +399,6 @@ class ReportPanel {
   }
 
   static show(context: vscode.ExtensionContext, request: JobRequest, tab: "steps" | "cost") {
-    const column = vscode.ViewColumn.Beside;
-
     let panel = ReportPanel.current;
     if (panel) {
       // Whatever is still running belongs to the method shown before: its answer would land
@@ -410,10 +408,11 @@ class ReportPanel {
       panel.checkingExamples?.abort();
       panel.explaining?.cancel();
       panel.request = request;
-      panel.panel.reveal(column, true);
+      // Revealed where the student left it: "beside" the active group would move it each time.
+      panel.panel.reveal(undefined, true);
     } else {
       const webview = vscode.window.createWebviewPanel(
-        "dsaPlaybackReport", "DSA Playback", { viewColumn: column, preserveFocus: true },
+        "dsaPlaybackReport", "DSA Playback", { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true },
         {
           enableScripts: true,
           retainContextWhenHidden: true,
@@ -443,7 +442,7 @@ class ReportPanel {
       }
       case "measure": await this.measure(); return;
       case "runExamples": await this.runExamples(); return;
-      case "stepAt": await decorations.showStep(this.request.file, message.line); return;
+      case "stepAt": await decorations.showStep(this.request.file, message.line, this.panel.viewColumn); return;
       case "showLog": showLog(); return;
       case "reportProblem": await vscode.commands.executeCommand("dsaPlayback.reportProblem"); return;
       case "explain": await this.explain(message); return;
@@ -464,7 +463,8 @@ class ReportPanel {
 
   private async reveal(line: number) {
     const document = await vscode.workspace.openTextDocument(this.request.file);
-    const editor = await vscode.window.showTextDocument(document, { preview: false, viewColumn: vscode.ViewColumn.One });
+    const editor = await vscode.window.showTextDocument(document,
+      { preview: false, viewColumn: codeColumn(this.request.file, this.panel.viewColumn) });
     const target = Math.max(0, Math.min(line - 1, document.lineCount - 1));
     const range = document.lineAt(target).range;
     editor.selection = new vscode.Selection(range.start, range.start);
@@ -512,7 +512,7 @@ class ReportPanel {
       if (detail && response.primary?.status === "Completed") {
         const points = response.primary.points;
         const measuredAt = points.length ? points[points.length - 1].size : null;
-        await decorations.apply(request.file, detail, measuredAt, response.primary.derivation);
+        await decorations.apply(request.file, detail, measuredAt, response.primary.derivation, this.panel.viewColumn);
       } else {
         decorations.clear();
       }

@@ -5,6 +5,23 @@ import { Derivation, LibraryCall, StatementCost, StatementGrowth, TraceResult } 
 const HOT = "rgba(224, 108, 43, 0.85)";
 
 /**
+ * The editor column to show the student's file in, never the panel's own: one already
+ * showing the file, else a group holding it as a tab, else any other group. Given no
+ * column, VS Code uses the active group — the panel's, once the student has clicked in
+ * it — and the file would open as a tab over the panel, hiding the run.
+ */
+export function codeColumn(file: string, panel: vscode.ViewColumn | undefined): vscode.ViewColumn {
+  const uri = vscode.Uri.file(file).toString();
+  const shown = vscode.window.visibleTextEditors.find(e =>
+    e.document.uri.toString() === uri && e.viewColumn !== undefined && e.viewColumn !== panel);
+  if (shown?.viewColumn) return shown.viewColumn;
+
+  const groups = vscode.window.tabGroups.all.filter(g => g.viewColumn !== panel);
+  const holding = groups.find(g => g.tabs.some(t => t.input instanceof vscode.TabInputText && t.input.uri.toString() === uri));
+  return (holding ?? groups[0])?.viewColumn ?? vscode.ViewColumn.Beside;
+}
+
+/**
  * Lays measured costs over the user's actual file rather than a copy of it.
  *
  * The costs stop being true the moment the file is edited — line 10 is no longer the
@@ -55,9 +72,11 @@ export class CostDecorations {
     });
   }
 
-  async apply(file: string, detail: TraceResult, measuredAt: number | null, derivation?: Derivation | null): Promise<void> {
+  async apply(file: string, detail: TraceResult, measuredAt: number | null, derivation: Derivation | null | undefined,
+    panel: vscode.ViewColumn | undefined): Promise<void> {
     const document = await vscode.workspace.openTextDocument(file);
     const editor = await vscode.window.showTextDocument(document, {
+      viewColumn: codeColumn(file, panel),
       preserveFocus: true,
       preview: false
     });
@@ -186,9 +205,10 @@ export class CostDecorations {
   }
 
   /** Highlights the line a step-through is on and brings it into view without taking focus. */
-  async showStep(file: string, line: number): Promise<void> {
+  async showStep(file: string, line: number, panel: vscode.ViewColumn | undefined): Promise<void> {
     const document = await vscode.workspace.openTextDocument(file);
-    const editor = await vscode.window.showTextDocument(document, { preserveFocus: true, preview: false });
+    const editor = await vscode.window.showTextDocument(document,
+      { viewColumn: codeColumn(file, panel), preserveFocus: true, preview: false });
     const index = Math.max(0, Math.min(line - 1, document.lineCount - 1));
     const range = document.lineAt(index).range;
     editor.setDecorations(this.step, [range]);
