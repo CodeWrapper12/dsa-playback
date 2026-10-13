@@ -503,7 +503,7 @@ version copied the argument text, and `erase(s[left++])` moved `left` twice.
 | 50 | Met, without `string +` (above). Measured classes for linear, hidden-quadratic, memoised, exponential, n log n and 2-D samples; peak memory measured directly; a reading of the code beside it. | `CppTests.Growth_is_measured…` (6), `A_scan_hidden_in_the_library_is_named`, `Memory_is_measured_exactly…`, `The_code_is_read…` (5) |
 | 51 | Met: compile errors on the student's line with nothing of the visualizer's; budget; depth limit; crashes and exceptions with their line. | `CppTests` (5 failure cases) |
 | 52 | Met on this Mac: first ▶ Visualize of Two Sum about 2.3 s including the compile; a re-run with new values reuses the build. | By hand |
-| 53 | Pending: CI on macOS, Linux and Windows (MinGW-w64), and the release dry run on all six platforms. | CI |
+| 53 | Met: every engine and panel test, the package build and `verify-package` — including a C++ run — pass on all six platforms in release dry run 38340779196: Apple clang on both Macs, g++ on both Linux, MinGW-w64 g++ on Windows x64 and MinGW clang on Windows ARM. The VS Code integration checks run in CI once merged. | Release dry run |
  — Rust, and 7c — Java (outline)
 
 Rust's borrow checker would reject code that reads variables while they are borrowed, so
