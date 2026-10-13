@@ -2,6 +2,8 @@ src/**
 out/test/**
 **/*.map
 **/*.ts
+# The walkthrough's TypeScript samples are for students to open.
+!samples/typescript/*.ts
 tsconfig.json
 scripts/**
 dist/**
