@@ -4,6 +4,7 @@ using Xunit;
 
 namespace DsaViz.Engine.Tests;
 
+[Collection(TimingCollection.Name)]
 public class BudgetTests
 {
     [Fact]

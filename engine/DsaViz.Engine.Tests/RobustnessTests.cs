@@ -11,6 +11,7 @@ namespace DsaViz.Engine.Tests;
 /// The ways a practice solution goes wrong — a missing base case, a hang, a typo — must
 /// end in a readable result, never a dead engine or a frozen editor.
 /// </summary>
+[Collection(TimingCollection.Name)]
 public class RobustnessTests
 {
     [Fact]
@@ -120,8 +121,11 @@ public class RobustnessTests
     [Fact]
     public void A_later_run_is_unaffected_by_an_abandoned_one()
     {
+        // A loop with a statement in it, so the abandoned thread stops itself at its next
+        // statement. An empty while (true) { } has none, and would burn a core for the rest
+        // of the test run — slowing every timing test after it on a three-core runner.
         var hung = Runner.Compile(
-            "public static class Hung { public static object Solve() { while (true) { } } }", "Solve").Solution!;
+            "public static class Hung { public static long Ticks; public static object Solve() { while (true) { Ticks++; } } }", "Solve").Solution!;
         Runner.Invoke(hung, budget: long.MaxValue, timeout: TimeSpan.FromMilliseconds(200));
 
         var result = Runner.Run(Samples.Read("BubbleSortSample.cs"), "Solve");

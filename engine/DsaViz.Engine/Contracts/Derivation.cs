@@ -62,4 +62,13 @@ public sealed record SpaceReading
     public required StaticEstimate Static { get; init; }
     public bool Disagreement { get; init; }
     public string? DisagreementNote { get; init; }
+
+    /// <summary>
+    /// What each size measured: allocated in all, the most one statement's execution
+    /// allocated, and collections seen during the run. Not sent to the editor; it is what a
+    /// test shows when a reading surprises it.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public IReadOnlyList<(int Size, long Total, long Largest, int Collections)> Evidence { get; init; } =
+        Array.Empty<(int, long, long, int)>();
 }

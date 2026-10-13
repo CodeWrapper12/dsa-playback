@@ -122,6 +122,34 @@ public static class Derivations
 
     // ---- space ------------------------------------------------------------------
 
+    /// <summary>
+    /// The fit, or — when it names no class and leaving out exactly one size gives a clean fit —
+    /// that fit, saying which size was left out. The most one execution allocated is a single
+    /// reading, and the runtime's allocation bookkeeping can now and then add a one-off amount
+    /// to it: measured on GitHub's Intel Mac, one int[1000] of 4,024 bytes read 6,400, with no
+    /// collection during the run. One such reading among seven sizes is enough to hide a line.
+    /// </summary>
+    private static CurveFit FitAllowingOneOutlier(IReadOnlyList<int> sizes, IReadOnlyList<long> values)
+    {
+        var all = Growth.Fit(sizes, values);
+        if (all.Best != ComplexityClass.Unknown || sizes.Count < MinimumRunsForOutlier) return all;
+
+        CurveFit? best = null;
+        int left = -1;
+        for (int skip = 0; skip < sizes.Count; skip++)
+        {
+            var fit = Growth.Fit(sizes.Where((_, i) => i != skip).ToList(), values.Where((_, i) => i != skip).ToList());
+            if (fit.Best != ComplexityClass.Unknown && (best is null || fit.RSquared > best.RSquared)) { best = fit; left = skip; }
+        }
+        return best is null ? all : best with
+        {
+            Explanation = $"{best.Explanation} One reading, at n={sizes[left]:N0}, was left out: it did not fit the others."
+        };
+    }
+
+    /// <summary>Sizes needed before one may be set aside: six still leave five to fit.</summary>
+    private const int MinimumRunsForOutlier = 6;
+
     public static SpaceReading? Space(IReadOnlyList<MeasuredRun> runs, Derivation? derivation, StaticEstimate staticSpace)
     {
         if (runs.Count < MinimumRuns) return null;
@@ -133,7 +161,8 @@ public static class Derivations
         // Call depth is the series that needs the intercept: it is small, offset by a
         // constant, and log n + 1 cannot be fitted through zero at all.
         var allocation = Growth.Fit(sizes, runs.Select(r => r.Trace.TotalBytesAllocated).ToList());
-        var largest = Growth.Fit(sizes, runs.Select(r => r.Trace.Statements.Select(s => s.LargestAllocation).DefaultIfEmpty(0).Max()).ToList());
+        var largest = FitAllowingOneOutlier(sizes,
+            runs.Select(r => r.Trace.Statements.Select(s => s.LargestAllocation).DefaultIfEmpty(0).Max()).ToList());
         var depth = Growth.Fit(sizes, runs.Select(r => (long)r.Trace.MaxRecursionDepth).ToList(), allowIntercept: true);
 
         bool allocates = runs.Any(r => r.Trace.TotalBytesAllocated > 0);
@@ -224,6 +253,8 @@ public static class Derivations
         bool disagree = peak != ComplexityClass.Unknown && staticSpace.Class != ComplexityClass.Unknown && peak != staticSpace.Class;
         return new SpaceReading
         {
+            Evidence = runs.Select(r => (r.Size, r.Trace.TotalBytesAllocated,
+                r.Trace.Statements.Select(s => s.LargestAllocation).DefaultIfEmpty(0).Max(), r.Trace.CollectionsDuringRun)).ToList(),
             Held = held,
             Allocation = allocation,
             LargestAllocation = largest,

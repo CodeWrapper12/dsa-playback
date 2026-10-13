@@ -132,7 +132,9 @@ const checks: [string, (api: TestApi) => Promise<void>][] = [
     const before = api.lastSteps();
     // Exactly what VS Code passes from an editor/title menu item: the file, then the group.
     await vscode.commands.executeCommand("dsaPlayback.visualize", document.uri, { groupId: 1 });
-    const steps = await waitFor(() => (api.lastSteps() !== before ? api.lastSteps() : undefined), "a run from the title bar");
+    // A run of this file: one still finishing from the check before must not be taken for it.
+    const steps = await waitFor(() => (api.lastSteps() !== before && api.lastStepsFile() === file ? api.lastSteps() : undefined),
+      "a run from the title bar");
     assert.equal(steps.status, "Completed");
     assert.equal(steps.check?.matches, true);
   }],
@@ -244,7 +246,8 @@ const checks: [string, (api: TestApi) => Promise<void>][] = [
     const response = await waitFor(() => (api.lastResponse() !== previous ? api.lastResponse() : undefined), "a measurement");
     assert.equal(response.primary?.status, "Completed", response.primary?.errors.join("; "));
     assert.ok(["Quadratic", "Unknown"].includes(response.primary!.empirical.best), response.primary!.empirical.best);
-    assert.ok(api.linesDecoratedIn(measured.uri) > 0, "costs are written beside the C++ lines");
+    // The result is noted before the editor is decorated: the costs follow a moment later.
+    await waitFor(() => api.linesDecoratedIn(measured.uri) || undefined, "costs beside the C++ lines", 10_000);
   }],
 
   ["a Rust file gets its buttons, runs its example and is measured with the rustc on this machine", async api => {
@@ -263,7 +266,8 @@ const checks: [string, (api: TestApi) => Promise<void>][] = [
     await vscode.commands.executeCommand("dsaPlayback.measure", measured.uri, "Solution.count_distinct");
     const response = await waitFor(() => (api.lastResponse() !== previous ? api.lastResponse() : undefined), "a measurement", 120_000);
     assert.equal(response.primary?.status, "Completed", response.primary?.errors.join("; "));
-    assert.ok(api.linesDecoratedIn(measured.uri) > 0, "costs are written beside the Rust lines");
+    // The result is noted before the editor is decorated: the costs follow a moment later.
+    await waitFor(() => api.linesDecoratedIn(measured.uri) || undefined, "costs beside the Rust lines", 10_000);
   }],
 
   ["a Java file gets its buttons, runs its example and is measured with the JDK on this machine", async api => {
