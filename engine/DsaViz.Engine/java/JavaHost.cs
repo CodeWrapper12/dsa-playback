@@ -107,7 +107,9 @@ public sealed class JavaHost
     private string Version()
     {
         if (_version is not null) return _version;
-        var (_, output) = Execute(Javac, new[] { "-version" }, null, TimeSpan.FromSeconds(30));
+        // The first JVM a machine starts can be slow — on a cold Windows runner, over 30 s — so
+        // asking its version is allowed as long as compiling is.
+        var (_, output) = Execute(Javac, new[] { "-version" }, null, CompileTimeout);
         return _version = output.Trim();
     }
 

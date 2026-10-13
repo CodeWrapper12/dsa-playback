@@ -114,7 +114,9 @@ public class JavaTests
     [MemberData(nameof(Samples))]
     public void Every_sample_runs_its_example_and_matches(string file, string entry)
     {
-        var report = Job(new JobRequest { File = Sample(file), Entry = entry, AllExamples = true }).Examples!;
+        var response = Job(new JobRequest { File = Sample(file), Entry = entry, AllExamples = true });
+        Assert.True(response.Examples is not null, string.Join("; ", response.Errors));
+        var report = response.Examples!;
         Assert.True(report.Status == RunStatus.Completed, string.Join("; ", report.Errors));
         Assert.NotEmpty(report.Runs);
         Assert.All(report.Runs, run => Assert.True(run.Matches == true, $"{run.Label}: expected {run.Expected}, got {run.Actual}. {run.Error}"));
