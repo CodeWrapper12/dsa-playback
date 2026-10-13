@@ -22,6 +22,8 @@
     <None Include="cpp/*.hpp" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <!-- The Rust runtime is compiled by the student's rustc, once per Rust version. -->
     <None Include="rust/*.rs" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <!-- The Java runtime is compiled by the student's javac, once per JDK. -->
+    <None Include="java/*.java" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../DsaViz.Runtime/DsaViz.Runtime.csproj" />

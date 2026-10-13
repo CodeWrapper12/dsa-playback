@@ -45,6 +45,9 @@ public sealed record JobRequest
     /// </summary>
     public bool AllExamples { get; init; }
 
+    /// <summary>The JDK to build Java files with: the dsaPlayback.javaHome setting, when set.</summary>
+    public string? JavaHome { get; init; }
+
     /// <summary>The Rust compiler to build Rust files with: the dsaPlayback.rustc setting, when set.</summary>
     public string? Rustc { get; init; }
 

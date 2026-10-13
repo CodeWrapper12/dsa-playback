@@ -25,6 +25,9 @@ public sealed class NativeTarget : IRunTarget
         private readonly int _depthLimit;
         private readonly TimeSpan _timeout;
 
+        /// <summary>For a program run through a launcher, what goes before the run's own arguments.</summary>
+        public IReadOnlyList<string>? Launcher { get; init; }
+
         public NativeTarget(string executable, IReadOnlyList<StatementInfo> statements, IReadOnlyList<LibraryCallSite> sites,
             IReadOnlyList<SolutionParameter> parameters, string language, int depthLimit, TimeSpan timeout)
         {
@@ -48,7 +51,7 @@ public sealed class NativeTarget : IRunTarget
             int exit;
             try
             {
-                lines = NativeRun.Run(_executable, stepping: false, NativeRun.Inputs(arguments()), budget, _depthLimit, 0, _timeout, out exit);
+                lines = NativeRun.Run(_executable, stepping: false, NativeRun.Inputs(arguments()), budget, _depthLimit, 0, _timeout, out exit, Launcher);
             }
             catch (NativeRunFailedException ex) when (ex.TimedOut)
             {
@@ -327,8 +330,12 @@ public static class NativeRun
     /// Runs a built program: `run` to measure, `step` to record. Inputs go in one per line,
     /// in LeetCode's format; what comes out is one JSON object per line.
     /// </summary>
+    /// <param name="launcher">
+    /// For a program run through a launcher — Java's: the launcher is <paramref name="executable"/>,
+    /// and these come before the run's own arguments.
+    /// </param>
     public static IReadOnlyList<string> Run(string executable, bool stepping, IReadOnlyList<string> inputs,
-        long budget, int depthLimit, int maxSteps, TimeSpan timeout, out int exitCode)
+        long budget, int depthLimit, int maxSteps, TimeSpan timeout, out int exitCode, IReadOnlyList<string>? launcher = null)
     {
         var start = new ProcessStartInfo(executable)
         {
@@ -339,6 +346,7 @@ public static class NativeRun
             StandardOutputEncoding = Encoding.UTF8,
             StandardInputEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false)
         };
+        foreach (var argument in launcher ?? Array.Empty<string>()) start.ArgumentList.Add(argument);
         start.ArgumentList.Add(stepping ? "step" : "run");
         start.ArgumentList.Add(budget.ToString(System.Globalization.CultureInfo.InvariantCulture));
         start.ArgumentList.Add(depthLimit.ToString(System.Globalization.CultureInfo.InvariantCulture));

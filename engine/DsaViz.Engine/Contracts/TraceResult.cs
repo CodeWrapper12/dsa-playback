@@ -136,7 +136,11 @@ public sealed record TraceResult
     /// <summary>The language the solution is in: "csharp" or "python".</summary>
     public string Language { get; init; } = "csharp";
 
-    public string MemoryModel => Language == "rust"
+    public string MemoryModel => Language == "java"
+        ? "Exact: every byte your code allocated, from the JVM's own count for the thread running it, per statement — " +
+          "objects and arrays alike. The visualizer's own work is left out. What is held at once is inferred from what was " +
+          "allocated, as for C#; the garbage collector frees memory on its own schedule."
+        : Language == "rust"
         ? "Exact: every byte your code allocated on the heap — each Vec's, String's and map's storage, every Box and Rc — " +
           "counted per statement by a counting allocator, and the peak held at once measured directly. Values on the stack, " +
           "and the visualizer's own bookkeeping, are not counted."

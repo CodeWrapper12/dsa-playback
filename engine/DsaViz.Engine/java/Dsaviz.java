@@ -138,6 +138,12 @@ public final class Dsaviz {
         return index;
     }
 
+    // A char, short or byte passes through as itself: widened to int, it would choose a
+    // different overload — set.remove(c) would look for an Integer and never find it.
+    public static char at(int site, Object list, char index) { at(site, list, (int) index); return index; }
+    public static short at(int site, Object list, short index) { at(site, list, (int) index); return index; }
+    public static byte at(int site, Object list, byte index) { at(site, list, (int) index); return index; }
+
     /** remove(Object) on a list searches it; on a set or a map it does not. */
     public static <T> T at(int site, Object list, T value) {
         charge(site, list instanceof List ? size(list) : 0);
@@ -185,7 +191,8 @@ public final class Dsaviz {
             if (!recording) return;
             recording = false;
             long before = allocated();
-            try { record(this); } finally { for (int i = 0; i < count; i++) objects[i] = null; excludeSince(before); }
+            long student = before - allocBase - own;      // read first: recording allocates
+            try { record(this, student); } finally { for (int i = 0; i < count; i++) objects[i] = null; excludeSince(before); }
         }
     }
 
@@ -195,7 +202,7 @@ public final class Dsaviz {
     public static Step s(int id) {
         hit(id);
         STEP.count = 0;
-        STEP.recording = active && stepping && steps < maxSteps;
+        STEP.recording = active && stepping && !warming && steps < maxSteps;
         if (active && stepping && steps >= maxSteps) truncated = true;
         return STEP;
     }
@@ -409,11 +416,11 @@ public final class Dsaviz {
         return 4;
     }
 
-    private static void record(Step step) {
+    private static void record(Step step, long studentAllocated) {
         steps++;
         Shot shot = new Shot();
         StringBuilder j = new StringBuilder(256);
-        j.append("{\"s\":").append(current).append(",\"d\":").append(depth).append(",\"a\":").append(allocatedSoFar()).append(",\"v\":[");
+        j.append("{\"s\":").append(current).append(",\"d\":").append(depth).append(",\"a\":").append(studentAllocated).append(",\"v\":[");
         for (int i = 0; i < step.count && i < step.names.length; i++) {
             if (i > 0) j.append(',');
             j.append("{\"n\":"); quote(j, step.names[i]); j.append(",\"t\":\"\",\"v\":");
@@ -754,6 +761,42 @@ public final class Dsaviz {
         if (args.length > 1) budget = Long.parseLong(args[1]);
         if (args.length > 2) depthLimit = Integer.parseInt(args[2]);
         if (args.length > 3) maxSteps = Long.parseLong(args[3]);
+        preload();
+    }
+
+    /**
+     * Loads and uses the collections solutions use, before anything is counted: the first use
+     * of a class allocates for the JVM's own bookkeeping, and that is not the solution's.
+     */
+    private static void preload() {
+        List<Integer> list = new ArrayList<>(List.of(3, 1, 2));
+        Collections.sort(list);
+        list.sort(Comparator.reverseOrder());
+        new LinkedList<>(list).poll();
+        ArrayDeque<Integer> deque = new ArrayDeque<>(list);
+        deque.push(4); deque.pop(); deque.offer(5); deque.poll(); deque.peekLast();
+        new Stack<Integer>().push(1);
+        PriorityQueue<Integer> heap = new PriorityQueue<>(list);
+        heap.offer(0); heap.poll();
+        new PriorityQueue<Integer>(Comparator.reverseOrder()).offer(1);
+        Map<Integer, Integer> map = new HashMap<>();
+        map.put(1, 1); map.merge(1, 1, Integer::sum); map.getOrDefault(2, 0); map.computeIfAbsent(3, k -> 0);
+        new TreeMap<>(map).firstKey();
+        new LinkedHashMap<>(map).keySet().iterator().next();
+        new HashSet<>(list).contains(1);
+        new TreeSet<>(list).first();
+        int[] array = { 3, 1, 2 };
+        Arrays.sort(array);
+        Arrays.fill(array, 0);
+        Arrays.copyOf(array, 4);
+        Arrays.stream(array).sum();
+        list.stream().map(x -> x + 1).collect(java.util.stream.Collectors.toList());
+        StringBuilder text = new StringBuilder("ab");
+        text.append('c').append(1).insert(0, 'x').reverse().deleteCharAt(0).toString().toCharArray();
+        "abc".substring(1).indexOf('c');
+        String.valueOf(new char[] { 'a' });
+        Integer.valueOf(1000).hashCode();
+        Math.max(1, 2);
     }
 
     public static String[] inputs() {
@@ -765,8 +808,35 @@ public final class Dsaviz {
         }
     }
 
+    /**
+     * The warm-up run: the solution runs once, counted only so a runaway loop is still stopped,
+     * and nothing recorded. The JVM loads classes and links lambdas the first time code runs,
+     * and what that allocates is not the solution's — the measured run that follows is clean.
+     */
+    public static void warm() {
+        begin();
+        warming = true;
+    }
+
+    static boolean warming;
+
+    /** Whether this run measures (rather than records a run to step through). */
+    public static boolean measuring() { return !stepping; }
+
+    /** The solution has returned: nothing after this is its work. */
+    public static void stop() {
+        if (!active) return;
+        flush(allocated());
+        active = false;
+    }
+
     /** Starts counting: everything from here is the student's code. */
     public static void begin() {
+        warming = false;
+        Arrays.fill(hits, 0); Arrays.fill(bytes, 0); Arrays.fill(largest, 0); Arrays.fill(work, 0);
+        Arrays.fill(siteCalls, 0); Arrays.fill(siteWork, 0);
+        steps = 0;
+        truncated = false;
         operations = statementsRun = 0;
         depth = maxDepth = 0;
         current = -1;
@@ -778,9 +848,7 @@ public final class Dsaviz {
 
     /** Ends a run that completed, with what it returned; `voidResult` when it returns nothing. */
     public static void succeed(Object result, boolean voidResult) {
-        long now = allocated();
-        flush(now);
-        active = false;
+        stop();
         StringBuilder j = new StringBuilder("{\"end\":\"Completed\",\"result\":");
         if (voidResult) j.append("null"); else quote(j, format(result));
         end(j, -1);

@@ -325,13 +325,65 @@ public static class Stepper
         return RunEach(plan.Search, index => RecordWith(plan, null, DefaultSize, ResultOnlySteps, null, null, index, solution.Methods, run));
     }
 
+    /// <summary>A Java method's, or design problem's, recorded run, built with the student's own JDK.</summary>
+    public static StepTrace RecordJava(
+        Java.JavaHost host,
+        string source,
+        string entry,
+        IReadOnlyList<InputSpec>? inputs = null,
+        int size = DefaultSize,
+        int maxSteps = DefaultMaxSteps,
+        GenerationStrategy? strategy = null,
+        long budget = Runner.DefaultBudget,
+        IReadOnlyList<string?>? values = null,
+        int? example = null)
+    {
+        var solution = Java.JavaSolution.Read(source, entry);
+        var built = solution.Build(host, stepping: true);
+        if (built.Classes is null) return Failed(built.Status, built.Errors, size);
+        return RecordWith(JavaPlanFor(solution), inputs, size, maxSteps, strategy, values, example, solution.Methods,
+            JavaRun(host, built.Classes, built.Plan!, solution.File.LineCount, budget, maxSteps));
+    }
+
+    /// <summary>Runs every example in a Java file against one build, each recording a single step.</summary>
+    public static ExampleReport RunExamplesJava(Java.JavaHost host, string source, string entry, long budget = Runner.DefaultBudget)
+    {
+        var solution = Java.JavaSolution.Read(source, entry);
+        var built = solution.Build(host, stepping: true);
+        if (built.Classes is null) return new ExampleReport(built.Status, Array.Empty<ExampleRun>()) { Errors = built.Errors };
+        var plan = JavaPlanFor(solution);
+        var run = JavaRun(host, built.Classes, built.Plan!, solution.File.LineCount, budget, ResultOnlySteps);
+        return RunEach(plan.Search, index => RecordWith(plan, null, DefaultSize, ResultOnlySteps, null, null, index, solution.Methods, run));
+    }
+
+    private static Plan JavaPlanFor(Java.JavaSolution solution)
+    {
+        if (solution.DesignClass is not null)
+        {
+            // Java checks the calls against the class itself, by reflection: the arguments go as written.
+            return new Plan(DesignParameters, solution.DesignExamplesFound())
+            {
+                NotGenerated = DesignNotGenerated,
+                Read = (index, text, read) => index == 0
+                    ? Literals.ToObject(text, typeof(string[]))
+                    : PlainArguments(read[0] as string[], text)
+            };
+        }
+        return new Plan(Java.JavaSolution.Parameters(solution.Method!), Java.JavaSolution.Examples(solution.File, solution.Method!));
+    }
+
+    private static Func<object?[], RecordedRun> JavaRun(Java.JavaHost host, string classes, Java.JavaPlan plan, int sourceLines,
+        long budget, int maxSteps)
+        => NativeRecordedRun(host.Java, plan.Statements, sourceLines, Java.JavaSolution.DepthLimit, Java.JavaSolution.RunTimeout,
+            budget, maxSteps, host.Launcher(classes));
+
     private static Func<object?[], RecordedRun> CppRun(string executable, Cpp.CppProgram program, long budget, int maxSteps)
         => NativeRecordedRun(executable, program.Statements, int.MaxValue, Cpp.CppSolution.DepthLimit, Cpp.CppSolution.RunTimeout,
             budget, maxSteps);
 
     /// <summary>A recorded run of a compiled program, C++ or Rust, keeping at most <paramref name="maxSteps"/> steps.</summary>
     private static Func<object?[], RecordedRun> NativeRecordedRun(string executable, IReadOnlyList<StatementInfo> statements,
-        int sourceLines, int depthLimit, TimeSpan timeout, long budget, int maxSteps)
+        int sourceLines, int depthLimit, TimeSpan timeout, long budget, int maxSteps, IReadOnlyList<string>? launcher = null)
         => arguments =>
         {
             IReadOnlyList<string> lines;
@@ -339,7 +391,7 @@ public static class Stepper
             try
             {
                 lines = Native.NativeRun.Run(executable, stepping: true, Native.NativeRun.Inputs(arguments), budget,
-                    depthLimit, maxSteps, timeout, out exit);
+                    depthLimit, maxSteps, timeout, out exit, launcher);
             }
             catch (Native.NativeRunFailedException ex) when (ex.TimedOut)
             {
@@ -351,7 +403,10 @@ public static class Stepper
             recording.Read(lines);
             var end = Native.NativeRun.ReadEnding(lines, exit, statements, sourceLines);
             return new RecordedRun(end.Status, recording.Steps, recording.Returns, statements, end.Truncated,
-                end.Allocated, end.Errors, end.ErrorLine, end.Result);
+                end.Allocated, end.Errors, end.ErrorLine, end.Result)
+            {
+                CallStarts = recording.CallStarts
+            };
         };
 
     private static Plan PythonPlan(Python.PythonSolution solution)

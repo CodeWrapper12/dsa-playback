@@ -103,6 +103,14 @@ public static class JavaInstrumenter
         "class ListNode { int val; ListNode next; ListNode() {} ListNode(int val) { this.val = val; } " +
         "ListNode(int val, ListNode next) { this.val = val; this.next = next; } }";
 
+    /// <summary>
+    /// Whether a class keeps state in a static field that is not final: a warm-up run would
+    /// change it, and the measured run would not be the one the student wrote.
+    /// </summary>
+    public static bool HasStaticState(JvFile file)
+        => System.Text.RegularExpressions.Regex.IsMatch(System.Text.RegularExpressions.Regex.Replace(file.Text, @"//.*|/\*[\s\S]*?\*/", ""),
+            @"\bstatic\s+(?!final\b|class\b|interface\b|enum\b|record\b|void\b)(?:[\w$<>\[\],.?]+\s+)+\w+\s*(=|;)(?![^\n]*\))");
+
     /// <summary>The file the program is compiled as: its public class's name, else Solution.java.</summary>
     public static string FileNameOf(JvFile file)
         => (file.Classes.FirstOrDefault(c => c.TopLevel && c.IsPublic)?.Name ?? "Solution") + ".java";
@@ -157,17 +165,31 @@ public static class JavaInstrumenter
                 a.Append($"            final {type} a{i} = Dsaviz.read(in, {i}, \"{type}\");\n");
                 arguments.Add($"a{i}");
             }
+            string Arguments(string prefix) => string.Join(", ", Enumerable.Range(0, entry.Parameters.Count).Select(i => $"{prefix}{i}"));
+            if (!HasStaticState(file))
+            {
+                // A warm-up on a fresh copy of the same inputs, when measuring: see Dsaviz.warm.
+                string warmCall = entry.IsStatic
+                    ? $"{entry.Owner}.{entry.Name}({Arguments("w")})"
+                    : $"new {entry.Owner}().{entry.Name}({Arguments("w")})";
+                a.Append("            if (Dsaviz.measuring()) {\n");
+                for (int i = 0; i < entry.Parameters.Count; i++)
+                    a.Append($"                final {entry.Parameters[i].Type} w{i} = Dsaviz.read(in, {i}, \"{entry.Parameters[i].Type}\");\n");
+                a.Append($"                try {{ Dsaviz.warm(); {warmCall}; }} catch (Throwable ignored) {{ }}\n");
+                a.Append("            }\n");
+            }
             a.Append("            try {\n");
             string call;
-            if (entry.IsStatic) call = $"{entry.Owner}.{entry.Name}({string.Join(", ", arguments)})";
+            if (entry.IsStatic) call = $"{entry.Owner}.{entry.Name}({Arguments("a")})";
             else
             {
                 a.Append($"                final {entry.Owner} target = new {entry.Owner}();\n");
                 call = $"target.{entry.Name}({string.Join(", ", arguments)})";
             }
             a.Append("                Dsaviz.begin();\n");
-            if (entry.ReturnType == "void") a.Append($"                {call};\n                Dsaviz.succeed(null, true);\n");
-            else a.Append($"                Object r = {call};\n                Dsaviz.succeed(r, false);\n");
+            // The result is held as it is, and counting stops, before it is boxed for writing out.
+            if (entry.ReturnType == "void") a.Append($"                {call};\n                Dsaviz.stop();\n                Dsaviz.succeed(null, true);\n");
+            else a.Append($"                final var r = {call};\n                Dsaviz.stop();\n                Dsaviz.succeed(r, false);\n");
             a.Append("            } catch (Throwable t) { Dsaviz.threw(t); }\n");
         }
         a.Append("        });\n    }\n}\n");

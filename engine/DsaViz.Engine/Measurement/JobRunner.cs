@@ -30,6 +30,11 @@ public static class JobRunner
         {
             return new JobResponse { Errors = new[] { ex.Message } };
         }
+        catch (Java.JavaUnavailableException ex)
+        {
+            // Nothing runs without a JDK, and the editor can say how to get one.
+            return new JobResponse { Errors = new[] { ex.Message }, ErrorCode = ex.Code };
+        }
         catch (Rust.RustUnavailableException ex)
         {
             // Nothing runs without rustc, or without the linker it needs, and the editor can say how to get them.
@@ -61,6 +66,9 @@ public static class JobRunner
         Rust.RustHost? rust = null;
         Rust.RustHost RustHost() => rust ??= Rust.RustHost.Locate(request.Rustc);
         bool isRust = Rust.RustSolution.IsRust(request.File);
+        Java.JavaHost? java = null;
+        Java.JavaHost JavaHost() => java ??= Java.JavaHost.Locate(request.JavaHome);
+        bool isJava = Java.JavaSolution.IsJava(request.File);
 
         if (request.AllExamples)
         {
@@ -70,6 +78,8 @@ public static class JobRunner
                 ? Stepper.RunExamplesCpp(CppHost(), primarySource, request.Entry, request.Budget)
                 : isRust
                 ? Stepper.RunExamplesRust(RustHost(), primarySource, request.Entry, request.Budget)
+                : isJava
+                ? Stepper.RunExamplesJava(JavaHost(), primarySource, request.Entry, request.Budget)
                 : Stepper.RunExamples(DsaViz.Engine.Analysis.SourceAnalysis.Create(primarySource), request.Entry, request.Budget);
             return new JobResponse
             {
@@ -90,6 +100,9 @@ public static class JobRunner
                 : isRust
                 ? Stepper.RecordRust(RustHost(), primarySource, request.Entry, request.Inputs,
                     stepSize, request.MaxSteps, request.Strategy, request.Budget, request.Values, request.Example)
+                : isJava
+                ? Stepper.RecordJava(JavaHost(), primarySource, request.Entry, request.Inputs,
+                    stepSize, request.MaxSteps, request.Strategy, request.Budget, request.Values, request.Example)
                 : Stepper.Record(
                     DsaViz.Engine.Analysis.SourceAnalysis.Create(primarySource), request.Entry, request.Inputs,
                     stepSize, request.MaxSteps, request.Strategy, request.Budget, request.Values, request.Example);
@@ -109,6 +122,8 @@ public static class JobRunner
                 ? Measurer.MeasureCpp(CppHost(), source, entry, inputs, sizes, request.Budget, strategy)
                 : Rust.RustSolution.IsRust(file)
                 ? Measurer.MeasureRust(RustHost(), source, entry, inputs, sizes, request.Budget, strategy)
+                : Java.JavaSolution.IsJava(file)
+                ? Measurer.MeasureJava(JavaHost(), source, entry, inputs, sizes, request.Budget, strategy)
                 : Measurer.Measure(source, entry, inputs, sizes, request.Budget, strategy);
 
         var primary = Measure(request.File, primarySource, request.Entry, request.Inputs, request.Sizes, request.Strategy);

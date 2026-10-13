@@ -114,6 +114,28 @@ public static class Measurer
             () => Cpp.CppEstimator.Space);
     }
 
+    /// <summary>A Java method, measured as the others are, built once with the student's own JDK.</summary>
+    public static MeasurementResult MeasureJava(
+        Java.JavaHost host,
+        string source,
+        string entry,
+        IReadOnlyList<InputSpec>? inputs = null,
+        IReadOnlyList<int>? sizes = null,
+        long budget = Runner.DefaultBudget,
+        GenerationStrategy? strategy = null)
+    {
+        var solution = Java.JavaSolution.Read(source, entry);
+        if (solution.DesignClass is not null)
+            return Failed(RunStatus.RuntimeError, new[] { DesignNotMeasured }, inputs ?? Array.Empty<InputSpec>());
+        var built = solution.Build(host, stepping: false);
+        if (built.Classes is null) return Failed(built.Status, built.Errors, inputs ?? Array.Empty<InputSpec>());
+
+        using var target = solution.Target(host, built.Classes, built.Plan!);
+        return MeasureTarget(target, inputs, sizes, budget, strategy,
+            () => Java.JavaEstimator.Time(solution.File, solution.Method!),
+            () => Java.JavaEstimator.Space);
+    }
+
     /// <summary>A Rust function, measured as the others are, built once with the student's own rustc.</summary>
     public static MeasurementResult MeasureRust(
         Rust.RustHost host,
