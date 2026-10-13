@@ -1,8 +1,8 @@
 {
   "name": "dsa-playback",
   "displayName": "DSA Playback \u2014 Algorithm Visualizer & Big-O Explainer",
-  "description": "Watch your C#, Python, C++, Rust or Java solution run step by step \u2014 pointers sliding, lists rewiring, trees filling \u2014 and see in plain words why it is O(n\u00b2). Runs on your machine, no sign-in. Built for learning data structures and algorithms.",
-  "version": "1.7.0",
+  "description": "Watch your C#, Python, Java, C++, JavaScript, TypeScript or Rust solution run step by step \u2014 pointers sliding, lists rewiring, trees filling \u2014 and see in plain words why it is O(n\u00b2). Runs on your machine, no sign-in. Built for learning data structures and algorithms.",
+  "version": "1.8.0",
   "publisher": "codewrapper12",
   "license": "MIT",
   "icon": "images/icon.png",

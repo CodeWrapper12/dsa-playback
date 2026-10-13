@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.8.0
+
+- **JavaScript and TypeScript.** ▶ Visualize and Complexity for both, run with your own
+  Node.js (18 or later); TypeScript's compiler ships with the extension. LeetCode's code as
+  written: JavaScript with its JSDoc types, TypeScript with its annotations, `TreeNode` and
+  `ListNode` supplied, and LeetCode's `MinPriorityQueue`, `MaxPriorityQueue`,
+  `PriorityQueue`, `Queue` and `Deque` there without an import.
+- The run view draws arrays (an array used with `shift` as a queue, with `push` and `pop`
+  as a stack), `Map` and `Set`, linked lists, trees, heaps, objects and the recursion tree,
+  and says what each line did.
+- Complexity charges the work hidden in `includes`, `indexOf`, `shift`, `splice`, `slice`,
+  sorting, spreading and string `+=`. Memory is estimated where it is created.
+- Design problems in both languages — TypeScript classes, and JavaScript's prototype style
+  — with ▶ Visualize and per-call Complexity.
+- If Node.js is missing or too old, DSA Playback says how to install it. The walkthrough's
+  three samples are in JavaScript and TypeScript too.
+
 ## 1.7.0
 
 - **Fixed: the run could disappear in a split editor.** After clicking into the panel,

@@ -1,7 +1,8 @@
 # DSA Playback — Algorithm Visualizer & Big-O Explainer
 
 Watch your data-structures-and-algorithms code run, one step at a time — and see why it
-has the complexity it has. For C#, Python, C++, Rust and Java, written the way LeetCode writes it.
+has the complexity it has. For C#, Python, Java, C++, JavaScript, TypeScript and Rust, written the way
+LeetCode writes it.
 
 - **Runs on your machine.** Nothing to set up for C#: the engine is inside the
   extension. For Python, the Python you already have is used (3.9 or later).
@@ -15,7 +16,8 @@ has the complexity it has. For C#, Python, C++, Rust and Java, written the way L
 
 ## Watch it run
 
-Open a C#, Python, C++, Rust or Java solution. Above every method you can run there are two buttons:
+Open a C#, Python, Java, C++, JavaScript, TypeScript or Rust solution. Above every method you can run
+there are two buttons:
 
 - **▶ Visualize** — plays your code step by step, with your data drawn and moving:
   - arrays with `i`, `j`, `left`, `right`, `mid`… as pointers that slide, and swapped
@@ -140,8 +142,10 @@ repeating your example's calls with new values (a cache of capacity n; keys from
 n − 1), and each method gets its own verdict: *put: O(1) per call*, or *get: O(n) per call,
 because `order.remove(key)` on line 23 scans the list*.
 
-In every language DSA Playback supports: C#, Python, Java, C++ — a class, as LeetCode
-writes it — and Rust — a struct with `fn new` and methods taking `&self` or `&mut self`.
+In every language DSA Playback supports: C#, Python, Java, C++ and TypeScript — a class,
+as LeetCode writes it; JavaScript — a class, or LeetCode's prototype style,
+`LRUCache.prototype.get = function`; and Rust — a struct with `fn new` and methods taking
+`&self` or `&mut self`.
 
 ## Files from LeetCode
 
@@ -182,6 +186,25 @@ fields, which a second run would change.
 
 Not yet for Java: examples written as calls in `main`, code split across several files,
 and libraries outside the JDK.
+
+## JavaScript and TypeScript
+
+JavaScript and TypeScript files work the same way, run with your own Node.js (18 or later;
+set `dsaPlayback.node` to choose one). TypeScript needs nothing more: its compiler ships
+with the extension. Write it as LeetCode does — `var twoSum = function(nums, target)` with
+LeetCode's JSDoc (`@param {number[]} nums`), or a TypeScript `function` with its types — and
+leave `TreeNode` and `ListNode` commented out; they are supplied. So are LeetCode's
+`MinPriorityQueue`, `MaxPriorityQueue`, `PriorityQueue`, `Queue` and `Deque`, drawn as a
+heap and a queue.
+
+Complexity charges the work hidden in `includes` and `indexOf` on an array, `shift` and
+`unshift`, `splice`, `slice`, sorting, spreading and string `+=` — never `Set.has` or
+`Map.get`. Memory is an estimate, made where each array, object, map, set and string is
+created; Node cannot report what one line allocated, so the figures are the same on every run
+but approximate.
+
+Not yet for JavaScript and TypeScript: `require` or `import` of packages beyond LeetCode's
+own, and Node.js before 18.
 
 ## Rust
 
