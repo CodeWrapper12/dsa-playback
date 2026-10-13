@@ -52,7 +52,7 @@ public static class Derivations
         var runsFit = Growth.Fit(sizes, hits);
         var costFit = Growth.Fit(sizes, costs);
         var memoryFit = Growth.Fit(sizes, bytes);
-        var largestFit = Growth.Fit(sizes, largest);
+        var largestFit = FitAllowingOneOutlier(sizes, largest);
 
         // When a statement costs more than it runs, the difference was spent inside a
         // library call on that line, and naming the call is the explanation.
