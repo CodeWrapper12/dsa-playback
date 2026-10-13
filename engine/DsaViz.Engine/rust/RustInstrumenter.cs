@@ -64,8 +64,14 @@ public sealed class RustPlan
         var step = Steps.FirstOrDefault(s => s.Groups.Values.Contains(group));
         if (step is null || Groups[group] is not { } variable) return true;
         var t = File.Tokens;
+        // A field, self.items, is used where self . items is written.
+        string name = variable.Name.StartsWith("self.", StringComparison.Ordinal) ? variable.Name[5..] : variable.Name;
+        bool field = name != variable.Name;
         for (int i = step.FirstToken; i <= step.RootLast && i < t.Count; i++)
-            if (t[i].Kind == RsTokenKind.Identifier && t[i].Text == variable.Name && (i == 0 || t[i - 1].Text is not ("." or "::"))) return true;
+        {
+            if (t[i].Kind != RsTokenKind.Identifier || t[i].Text != name) continue;
+            if (field ? i >= 2 && t[i - 1].Text == "." && t[i - 2].Text == "self" : i == 0 || t[i - 1].Text is not ("." or "::")) return true;
+        }
         return false;
     }
 
@@ -165,13 +171,14 @@ public static class RustInstrumenter
         """;
 
     /// <summary>The program with nothing inserted: compiled to find the student's own errors.</summary>
-    public static string Plain(RsFile file, RsFunction entry)
+    public static string Plain(RsFile file, RsFunction? entry, string? design = null)
     {
-        var plan = Build(file, entry, stepping: false, instrument: false);
+        var plan = Build(file, entry, stepping: false, instrument: false, design);
         return plan.Render(new Dictionary<int, string>()).Source;
     }
 
-    public static RustPlan Build(RsFile file, RsFunction entry, bool stepping, bool instrument = true)
+    /// <param name="design">For a design problem, its struct: the program then makes the calls its example lists.</param>
+    public static RustPlan Build(RsFile file, RsFunction? entry, bool stepping, bool instrument = true, string? design = null)
     {
         var rewriter = new Rewriter(file, stepping);
         if (instrument) rewriter.Instrument();
@@ -179,7 +186,7 @@ public static class RustInstrumenter
         return new RustPlan
         {
             Student = file.Text,
-            Appended = Appended(file, entry, rewriter.StatementCount, rewriter.SiteCount),
+            Appended = Appended(file, entry, design, rewriter.StatementCount, rewriter.SiteCount),
             Edits = rewriter.Edits,
             Statements = rewriter.Statements,
             Sites = rewriter.Sites,
@@ -190,7 +197,7 @@ public static class RustInstrumenter
     }
 
     /// <summary>What goes after the student's code: imports, LeetCode's types where the file leaves them out, and main.</summary>
-    private static string Appended(RsFile file, RsFunction entry, int statements, int sites)
+    private static string Appended(RsFile file, RsFunction? entry, string? design, int statements, int sites)
     {
         var a = new StringBuilder("\n\n// ---- added by DSA Playback ----\n");
         a.Append("#[allow(unused_imports)] use dsaviz::prelude::*;\n");
@@ -209,7 +216,7 @@ public static class RustInstrumenter
         if (used.Contains("TreeNode") && HasFields("TreeNode", "val", "left", "right")) a.Append(TreeShape).Append('\n');
         if (used.Contains("ListNode") && HasFields("ListNode", "val", "next")) a.Append(ListShape).Append('\n');
 
-        a.Append(Driver(entry, statements, sites));
+        a.Append(design is not null ? DesignDriver(file, design, statements, sites) : Driver(entry!, statements, sites));
         return a.ToString();
     }
 
@@ -239,6 +246,73 @@ public static class RustInstrumenter
             : "            Ok(dsaviz_result) => dsaviz::succeed(Some((&&&dsaviz::W(&dsaviz_result)).result_text())),\n");
         d.Append("            Err(_) => dsaviz::panicked(),\n");
         d.Append("        }\n    });\n}\n");
+        return d.ToString();
+    }
+
+    /// <summary>
+    /// A design problem's calls. Rust cannot find a method by its name at run time, so this
+    /// writes the matching out: `new` for the first operation, then each method taking self
+    /// by reference, by name and argument count, each argument built as the type it declares.
+    /// </summary>
+    private static string DesignDriver(RsFile file, string type, int statements, int sites)
+    {
+        var functions = file.Functions.Where(f => f.Owner == type && !f.IsNested && !f.IsGeneric).ToList();
+        var constructor = functions.FirstOrDefault(f => f.Name == "new" && !f.HasSelf);
+        var methods = functions.Where(f => f.HasSelf && !f.SelfByValue).ToList();
+
+        string Build(RsFunction f, string indent, StringBuilder into)
+        {
+            var passed = new List<string>();
+            for (int k = 0; k < f.Parameters.Count; k++)
+            {
+                var (owned, pass) = Passing(f.Parameters[k].Type);
+                into.Append($"{indent}#[allow(unused_mut)] let mut p{k}: {owned} = dsaviz::arg(&dsaviz_a[{k}]);\n");
+                passed.Add(pass.Replace("ARG", $"p{k}"));
+            }
+            return string.Join(", ", passed);
+        }
+
+        var d = new StringBuilder();
+        d.Append("fn main() {\n");
+        d.Append($"    dsaviz::configure({statements}, {sites}, \"{ProgramFile}\");\n");
+        d.Append("    let dsaviz_inputs = dsaviz::read_inputs();\n");
+        d.Append("    dsaviz::deep(move || {\n");
+        d.Append($"        let (dsaviz_ops, dsaviz_args) = dsaviz::design_inputs(&dsaviz_inputs, \"{type}\");\n");
+        d.Append($"        dsaviz::design_validate(&dsaviz_ops, &dsaviz_args, \"{type}\", {constructor?.Parameters.Count ?? 0}, &[");
+        d.Append(string.Join(", ", methods.Select(m => $"(\"{m.Name}\", {m.Parameters.Count})")));
+        d.Append("]);\n");
+        d.Append("        dsaviz::begin();\n");
+        d.Append("        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {\n");
+        d.Append($"            let mut dsaviz_target: Option<{type}> = None;\n");
+        d.Append("            for (dsaviz_i, dsaviz_op) in dsaviz_ops.iter().enumerate() {\n");
+        d.Append("                dsaviz::call_starting(dsaviz_i);\n");
+        d.Append("                let dsaviz_a = &dsaviz_args[dsaviz_i];\n");
+        d.Append("                if dsaviz_i == 0 {\n");
+        int takes = constructor?.Parameters.Count ?? 0;
+        d.Append($"                    if dsaviz_a.len() != {takes} {{ dsaviz::invalid_constructor(\"{type}\", dsaviz_a.len(), {takes}); }}\n");
+        if (constructor is not null)
+        {
+            string args = Build(constructor, "                    ", d);
+            d.Append($"                    dsaviz_target = Some({type}::new({args}));\n");
+        }
+        else d.Append($"                    dsaviz::invalid(\"{type} has no fn new to create it with.\");\n");
+        d.Append("                    dsaviz::result_none();\n                    continue;\n                }\n");
+        d.Append("                let dsaviz_o = dsaviz_target.as_mut().unwrap();\n");
+        d.Append("                match (dsaviz_op.as_str(), dsaviz_a.len()) {\n");
+        foreach (var m in methods)
+        {
+            d.Append($"                    (\"{m.Name}\", {m.Parameters.Count}) => {{\n");
+            string args = Build(m, "                        ", d);
+            d.Append(IsUnit(m.ReturnType)
+                ? $"                        dsaviz_o.{m.Name}({args});\n                        dsaviz::result_none();\n"
+                : $"                        let dsaviz_r = dsaviz_o.{m.Name}({args});\n                        dsaviz::result(|| (&&&dsaviz::W(&dsaviz_r)).result_text());\n");
+            d.Append("                    }\n");
+            d.Append($"                    (\"{m.Name}\", dsaviz_n) => dsaviz::invalid_arity(dsaviz_i, \"{m.Name}\", dsaviz_n, {m.Parameters.Count}),\n");
+        }
+        d.Append($"                    (dsaviz_other, _) => dsaviz::invalid_operation(dsaviz_i, dsaviz_other, \"{type}\"),\n");
+        d.Append("                }\n            }\n        })) {\n");
+        d.Append("            Ok(_) => dsaviz::succeed_results(),\n");
+        d.Append("            Err(_) => dsaviz::panicked(),\n        }\n    });\n}\n");
         return d.ToString();
     }
 
@@ -328,7 +402,11 @@ public static class RustInstrumenter
                 if (function.IsConst || (function.Name == "main" && function.Owner is null && !function.IsNested)) continue;
                 _method = function.Name;
                 _stacks = StackLike(function);
-                var visible = function.Parameters.Select(p => p.Name).ToList();
+                // A method taking self can see its fields: a design problem's state is there.
+                var fields = function.HasSelf && function.Owner is { } owner
+                    ? _file.Structs.Where(s => s.Name == owner).SelectMany(s => s.Fields).Select(f => $"self.{f}")
+                    : Enumerable.Empty<string>();
+                var visible = fields.Concat(function.Parameters.Select(p => p.Name)).ToList();
                 Body(function.Body, visible, function.ReturnType is { } r && r.Replace(" ", "") != "()");
             }
         }

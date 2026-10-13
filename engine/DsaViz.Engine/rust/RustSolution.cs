@@ -27,13 +27,34 @@ public sealed class RustSolution
     public RsFile File { get; }
     public RsFunction? Function { get; }
     public string Entry { get; }
+    /// <summary>For a design problem, its struct's name; null otherwise.</summary>
+    public string? DesignStruct { get; }
 
     private RustSolution(RsFile file, string entry)
     {
         File = file;
         Entry = entry;
-        Function = Find(file, entry);
+        if (!entry.Contains('.') && DesignStructs(file).Contains(entry)) DesignStruct = entry;
+        else Function = Find(file, entry);
     }
+
+    /// <summary>
+    /// The structs run as LeetCode design problems: one its example names, or one with an
+    /// `fn new` and methods taking self, as LeetCode's Rust template writes them.
+    /// </summary>
+    public static IReadOnlyList<string> DesignStructs(RsFile file)
+    {
+        var named = DesignExamples.ClassesNamed(file.Comments);
+        return file.Functions.Where(f => f.Owner is { } o && o != "Solution" && o != "?" && !f.IsNested)
+            .GroupBy(f => f.Owner!)
+            .Where(g => g.Key is not ("TreeNode" or "ListNode") &&
+                        (named.Contains(g.Key) || (g.Any(f => f.Name == "new" && !f.HasSelf) && g.Any(f => f.HasSelf))))
+            .Select(g => g.Key)
+            .ToList();
+    }
+
+    public ExampleSearch DesignExamplesFound()
+        => new(DesignExamples.FromCommentLines(File.Comments, Entry).ToList(), Array.Empty<string>());
 
     public static RustSolution Read(string source, string entry) => new(RustReader.Read(source), entry);
 
@@ -53,9 +74,30 @@ public sealed class RustSolution
     {
         var nodes = new HashSet<string>(StringComparer.Ordinal) { "TreeNode", "ListNode" };
         var entries = new List<EntryPoint>();
+        var named = DesignExamples.ClassesNamed(file.Comments);
+        var designs = DesignStructs(file);
+        foreach (var type in designs)
+        {
+            bool example = named.Contains(type);
+            int line = file.Structs.FirstOrDefault(s => s.Name == type)?.Line ?? file.Functions.First(f => f.Owner == type).Line;
+            entries.Add(new EntryPoint("", type, new[]
+            {
+                new EntryParameter(DesignExamples.Parameters[0], "list of operations", example),
+                new EntryParameter(DesignExamples.Parameters[1], "list of arguments", example)
+            })
+            {
+                Design = true,
+                Generatable = false,
+                Line = line,
+                Reason = example ? null : EntryPointScanner.DesignNeedsExample(type)
+            });
+        }
+
         foreach (var function in file.Functions)
         {
             if (function.IsNested || (function.Owner is null && function.Name == "main")) continue;
+            // A design struct's methods are run through its example's calls, not one by one.
+            if (function.Owner is { } designOwner && designs.Contains(designOwner)) continue;
             if (function.Owner is { } owner && (nodes.Contains(owner) || owner == "?")) continue;
             // In impl Solution, LeetCode's entry is pub; private ones are its helpers.
             if (function.Owner == "Solution" && !function.IsPublic) continue;
@@ -73,8 +115,8 @@ public sealed class RustSolution
 
             string? reason = null;
             if (function.HasSelf || (function.Owner is not null && function.Owner != "Solution"))
-                reason = $"{function.Owner}::{function.Name} belongs to an object that is created and then called, as in a LeetCode " +
-                         "design problem. Design problems in Rust are not supported yet.";
+                reason = $"{function.Owner}::{function.Name} belongs to an object that is created and then called. Give " +
+                         $"{function.Owner} an fn new, and LeetCode's example of the calls, and it runs as a design problem.";
             else if (function.IsGeneric)
                 reason = $"{function.Name} is generic, so there is no single type to build its inputs as.";
             else if (parameters.FirstOrDefault(p => !p.Parameter.Supported) is { Parameter: not null } unsupported)
@@ -126,10 +168,10 @@ public sealed class RustSolution
     {
         if (File.Problem is { } problem)
             return (null, null, RunStatus.CompileError, new[] { $"{problem}. The visualizer could not read this Rust." });
-        if (Function is null)
+        if (Function is null && DesignStruct is null)
             return (null, null, RunStatus.CompileError, new[] { $"No function named '{Entry}' was found." });
 
-        var plan = RustInstrumenter.Build(File, Function, stepping);
+        var plan = RustInstrumenter.Build(File, Function, stepping, design: DesignStruct);
         string key = RustHost.Hash(plan.Render(new Dictionary<int, string>()).Source);
         var left = host.Remembered(key) ?? new Dictionary<int, string>();
         bool everything = false;
@@ -195,7 +237,7 @@ public sealed class RustSolution
             foreach (var g in plan.Groups.Keys) left.TryAdd(g, "not readable here");
         }
 
-        var plain = host.Compile(RustInstrumenter.Plain(File, Function));
+        var plain = host.Compile(RustInstrumenter.Plain(File, Function, DesignStruct));
         if (plain.Executable is null)
         {
             var own = plain.Errors.Where(e => e.Line >= 1 && e.Line <= File.LineCount)

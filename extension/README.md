@@ -132,8 +132,12 @@ public class LRUCache { … }
 
 **▶ Visualize** appears above the class. It creates the object, makes every call in
 order, and checks the list of results against Output. The run view says which call is
-running — *Call 4 of 10: get*. Type other calls in the same two-list format to try your
-own. Complexity is not measured for design problems.
+running — *Call 4 of 10: get* — and, inside its methods, the object's own fields beside the
+other variables. Type other calls in the same two-list format to try your own. Complexity
+is not measured for design problems.
+
+In every language DSA Playback supports: C#, Python, Java, C++ — a class, as LeetCode
+writes it — and Rust — a struct with `fn new` and methods taking `&self` or `&mut self`.
 
 ## Files from LeetCode
 
@@ -157,8 +161,7 @@ byte your code allocates with `new`, each container's storage included. The firs
 compiles your code, which takes a second or two; later runs reuse the build until you
 change the file. No compiler? DSA Playback says how to install one for your system.
 
-Not yet for C++: design problems, examples written as calls in `main`, and Microsoft's
-compiler (MSVC).
+Not yet for C++: examples written as calls in `main`, and Microsoft's compiler (MSVC).
 
 ## Java
 
@@ -191,8 +194,8 @@ its last use, when its borrow has ended.
 An integer overflow panics when you press Visualize, as in a debug build, and names its
 line. When measuring complexity at large sizes it wraps instead, as in a release build.
 
-Not yet for Rust: design problems, examples written as calls in `main`, crates outside
-the standard library, and stepping inside a closure whose body is a single expression.
+Not yet for Rust: examples written as calls in `main`, crates outside the standard
+library, and stepping inside a closure whose body is a single expression.
 
 ## Python
 

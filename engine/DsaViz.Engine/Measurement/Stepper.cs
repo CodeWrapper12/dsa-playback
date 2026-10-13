@@ -274,7 +274,7 @@ public static class Stepper
         var built = solution.Build(host, stepping: true);
         if (built.Executable is null) return Failed(built.Status, built.Errors, size);
 
-        var plan = new Plan(Cpp.CppSolution.Parameters(solution.Function!), Cpp.CppSolution.Examples(solution.File, solution.Function!));
+        var plan = CppPlanFor(solution);
         return RecordWith(plan, inputs, size, maxSteps, strategy, values, example, solution.Methods,
             CppRun(built.Executable, built.Program!, budget, maxSteps));
     }
@@ -286,7 +286,7 @@ public static class Stepper
         var built = solution.Build(host, stepping: true);
         if (built.Executable is null) return new ExampleReport(built.Status, Array.Empty<ExampleRun>()) { Errors = built.Errors };
 
-        var plan = new Plan(Cpp.CppSolution.Parameters(solution.Function!), Cpp.CppSolution.Examples(solution.File, solution.Function!));
+        var plan = CppPlanFor(solution);
         var run = CppRun(built.Executable, built.Program!, budget, ResultOnlySteps);
         return RunEach(plan.Search, index => RecordWith(plan, null, DefaultSize, ResultOnlySteps, null, null, index, solution.Methods, run));
     }
@@ -308,7 +308,9 @@ public static class Stepper
         var built = solution.Build(host, stepping: true);
         if (built.Executable is null) return Failed(built.Status, built.Errors, size);
 
-        var plan = new Plan(Rust.RustSolution.Parameters(solution.Function!), Rust.RustSolution.Examples(solution.File, solution.Function!));
+        var plan = solution.DesignStruct is not null
+            ? DesignPlan(solution.DesignExamplesFound())
+            : new Plan(Rust.RustSolution.Parameters(solution.Function!), Rust.RustSolution.Examples(solution.File, solution.Function!));
         return RecordWith(plan, inputs, size, maxSteps, strategy, values, example, solution.Methods,
             NativeRecordedRun(built.Executable, built.Plan!.Statements, solution.File.LineCount, Rust.RustSolution.DepthLimit, Rust.RustSolution.RunTimeout, budget, maxSteps));
     }
@@ -320,7 +322,9 @@ public static class Stepper
         var built = solution.Build(host, stepping: true);
         if (built.Executable is null) return new ExampleReport(built.Status, Array.Empty<ExampleRun>()) { Errors = built.Errors };
 
-        var plan = new Plan(Rust.RustSolution.Parameters(solution.Function!), Rust.RustSolution.Examples(solution.File, solution.Function!));
+        var plan = solution.DesignStruct is not null
+            ? DesignPlan(solution.DesignExamplesFound())
+            : new Plan(Rust.RustSolution.Parameters(solution.Function!), Rust.RustSolution.Examples(solution.File, solution.Function!));
         var run = NativeRecordedRun(built.Executable, built.Plan!.Statements, solution.File.LineCount, Rust.RustSolution.DepthLimit, Rust.RustSolution.RunTimeout, budget, ResultOnlySteps);
         return RunEach(plan.Search, index => RecordWith(plan, null, DefaultSize, ResultOnlySteps, null, null, index, solution.Methods, run));
     }
@@ -376,6 +380,24 @@ public static class Stepper
         long budget, int maxSteps)
         => NativeRecordedRun(host.Java, plan.Statements, sourceLines, Java.JavaSolution.DepthLimit, Java.JavaSolution.RunTimeout,
             budget, maxSteps, host.Launcher(classes));
+
+    private static Plan CppPlanFor(Cpp.CppSolution solution)
+        => solution.DesignClass is not null
+            ? DesignPlan(solution.DesignExamplesFound())
+            : new Plan(Cpp.CppSolution.Parameters(solution.Function!), Cpp.CppSolution.Examples(solution.File, solution.Function!));
+
+    /// <summary>
+    /// A design problem in a language whose own program checks the calls against the class —
+    /// Python, Java, C++, Rust: the operations as text, the arguments as written.
+    /// </summary>
+    private static Plan DesignPlan(ExampleSearch search)
+        => new(DesignParameters, search)
+        {
+            NotGenerated = DesignNotGenerated,
+            Read = (index, text, read) => index == 0
+                ? Literals.ToObject(text, typeof(string[]))
+                : PlainArguments(read[0] as string[], text)
+        };
 
     private static Func<object?[], RecordedRun> CppRun(string executable, Cpp.CppProgram program, long budget, int maxSteps)
         => NativeRecordedRun(executable, program.Statements, int.MaxValue, Cpp.CppSolution.DepthLimit, Cpp.CppSolution.RunTimeout,

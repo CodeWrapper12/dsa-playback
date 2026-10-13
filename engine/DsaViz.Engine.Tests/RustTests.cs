@@ -71,7 +71,7 @@ public class RustTests
     }
 
     [Fact]
-    public void A_design_problem_says_it_is_not_supported_yet()
+    public void A_design_struct_without_an_example_is_offered_once_and_asks_for_one()
     {
         var entries = RustSolution.Entries(RustReader.Read("""
             struct MinStack { items: Vec<i32> }
@@ -80,9 +80,10 @@ public class RustTests
                 fn push(&mut self, val: i32) { self.items.push(val); }
             }
             """));
-        var push = entries.Single(e => e.Name == "push");
-        Assert.False(push.Measurable);
-        Assert.Contains("Design problems in Rust are not supported yet", push.Reason);
+        var entry = Assert.Single(entries);
+        Assert.True(entry.Design);
+        Assert.False(entry.Measurable);
+        Assert.Contains("Add LeetCode's example as a comment", entry.Reason);
     }
 
     [Fact]

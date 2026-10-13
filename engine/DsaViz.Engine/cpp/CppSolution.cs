@@ -26,13 +26,35 @@ public sealed class CppSolution
     public CppFile File { get; }
     public CppFunction? Function { get; }
     public string Entry { get; }
+    /// <summary>For a design problem, its class; null otherwise.</summary>
+    public CppClass? DesignClass { get; }
 
     private CppSolution(CppFile file, string entry)
     {
         File = file;
         Entry = entry;
-        Function = Find(file, entry);
+        if (!entry.Contains('.') && file.Classes.FirstOrDefault(c => c.Name == entry) is { } type) DesignClass = type;
+        else Function = Find(file, entry);
     }
+
+    /// <summary>
+    /// The classes run as LeetCode design problems: one its example names, or one that cannot
+    /// be created without arguments and has public member functions.
+    /// </summary>
+    public static IReadOnlyList<CppClass> DesignClasses(CppFile file)
+    {
+        var named = DesignExamples.ClassesNamed(file.Comments);
+        var nodes = NodeClasses(file);
+        return file.Classes
+            .Where(c => !nodes.Contains(c.Name) && c.Name != "Solution" &&
+                        (named.Contains(c.Name) ||
+                         (!c.Constructible && file.Functions.Any(f => f.Owner == c.Name && f.IsPublic && !f.IsConstructor && !f.IsStatic))))
+            .GroupBy(c => c.Name).Select(g => g.First())
+            .ToList();
+    }
+
+    public ExampleSearch DesignExamplesFound()
+        => new(DesignExamples.FromCommentLines(File.Comments, Entry).ToList(), Array.Empty<string>());
 
     public static CppSolution Read(string source, string entry) => new(CppReader.Read(source), entry);
 
@@ -55,9 +77,30 @@ public sealed class CppSolution
         var classes = file.Classes.GroupBy(c => c.Name).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
 
         var entries = new List<EntryPoint>();
+        var named = DesignExamples.ClassesNamed(file.Comments);
+        var designs = DesignClasses(file);
+        foreach (var type in designs)
+        {
+            bool example = named.Contains(type.Name);
+            entries.Add(new EntryPoint("", type.Name, new[]
+            {
+                new EntryParameter(DesignExamples.Parameters[0], "list of operations", example),
+                new EntryParameter(DesignExamples.Parameters[1], "list of arguments", example)
+            })
+            {
+                Design = true,
+                Generatable = false,
+                Line = type.Line,
+                Reason = example ? null : EntryPointScanner.DesignNeedsExample(type.Name)
+            });
+        }
+        var designNames = designs.Select(d => d.Name).ToHashSet(StringComparer.Ordinal);
+
         foreach (var function in file.Functions)
         {
             if (function.IsConstructor || !function.IsPublic) continue;
+            // A design class's members are run through its example's calls, not one by one.
+            if (function.Owner is not null && designNames.Contains(function.Owner)) continue;
             if (function.Owner is null && function.Name == "main") continue;
             if (function.Owner is not null && nodes.Contains(function.Owner)) continue;
 
@@ -73,7 +116,7 @@ public sealed class CppSolution
 
             string? reason = null;
             if (function.Owner is { } owner && !function.IsStatic && classes.TryGetValue(owner, out var type) && !type.Constructible)
-                reason = $"{owner} needs arguments to be created. Design problems in C++ are not supported yet.";
+                reason = $"{owner} needs arguments to be created, so this member cannot be called on its own.";
             else if (parameters.FirstOrDefault(p => !p.Parameter.Supported) is { Parameter: not null } unsupported)
                 reason = CppTypes.Map(unsupported.Parameter.Type) is null
                     ? $"Parameter '{unsupported.Parameter.Name}' is '{unsupported.Parameter.Type}', which the visualizer can neither generate nor read from an example."
@@ -132,14 +175,14 @@ public sealed class CppSolution
     {
         if (File.Problem is { } problem)
             return (null, null, RunStatus.CompileError, new[] { $"{problem}. The visualizer could not read this C++." });
-        if (Function is null)
+        if (Function is null && DesignClass is null)
             return (null, null, RunStatus.CompileError, new[] { $"No function named '{Entry}' was found." });
 
-        var program = CppInstrumenter.Build(File, Function, stepping);
+        var program = CppInstrumenter.Build(File, Function, stepping, DesignClass);
         var compiled = host.Compile(program.Source);
         if (compiled.Executable is { } executable) return (program, executable, RunStatus.Completed, Array.Empty<string>());
 
-        var plain = host.Compile(CppInstrumenter.Plain(File, Function));
+        var plain = host.Compile(CppInstrumenter.Plain(File, Function, DesignClass));
         if (plain.Executable is null && !plain.InVisualizerCode)
             return (null, null, RunStatus.CompileError, plain.Errors);
 

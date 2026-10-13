@@ -235,6 +235,9 @@ template <class T, class = void> struct Iterable : std::false_type {};
 template <class T> struct Iterable<T, std::void_t<decltype(std::begin(std::declval<const T&>())),
                                                    decltype(std::end(std::declval<const T&>()))>> : std::true_type {};
 
+template <class T, class = void> struct IsIterator : std::false_type {};
+template <class T> struct IsIterator<T, std::void_t<typename std::iterator_traits<T>::iterator_category>> : std::true_type {};
+
 template <class T> struct IsPair : std::false_type {};
 template <class A, class B> struct IsPair<std::pair<A, B>> : std::true_type {};
 
@@ -558,6 +561,7 @@ template <class T> void Snapshot::value(Json& j, const T& v, const char* type) {
         j.raw("{\"r\":"); j.raw(address(&v)); j.raw(",\"x\":"); j.string("(" + std::to_string(v.size()) + ")"); j.raw("}");
         object(v, type);
     }
+    else if constexpr (IsIterator<D>::value) { j.raw("{\"x\":\"(iterator)\"}"); }
     else { j.raw("{\"x\":\"{…}\"}"); }
 }
 
@@ -787,6 +791,92 @@ inline void deep(void (*body)()) {
 }
 
 [[noreturn]] inline void threwSomething() { finish("RuntimeError", "Your code threw an exception", state().current); }
+
+// ---- design problems ---------------------------------------------------------------------------
+
+/// A design problem's calls that do not fit its class: the input's fault, so nothing more runs.
+[[noreturn]] inline void invalid(const std::string& message) { finish("InvalidInput", message, -1); }
+
+inline std::string count(std::size_t n) { return n == 1 ? "1 argument" : std::to_string(n) + " arguments"; }
+
+/// The operations and their arguments, checked against the class before anything runs.
+inline void design_check(const std::vector<std::string>& operations, const Value& arguments, const char* type) {
+    if (operations.empty())
+        invalid(std::string("The list of operations is empty. The first one creates the object, like \"") + type + "\".");
+    if (arguments.kind != Value::List || arguments.items.size() != operations.size())
+        invalid("There are " + std::to_string(operations.size()) + " operations but " + std::to_string(arguments.items.size()) +
+                " argument lists. Each operation needs its own list, [] when it takes none.");
+    for (const Value& list : arguments.items)
+        if (list.kind != Value::List) invalid("Each operation's arguments are a list, [] when it takes none.");
+    if (operations[0] != type)
+        invalid(std::string("The first operation creates the object, so it must be \"") + type + "\", not \"" + operations[0] + "\".");
+}
+
+[[noreturn]] inline void invalid_operation(std::size_t index, const std::string& name, const char* type) {
+    invalid("Operation " + std::to_string(index + 1) + " is \"" + name + "\", but " + type + " has no public method by that name.");
+}
+
+[[noreturn]] inline void invalid_arity(std::size_t index, const char* name, std::size_t given, std::size_t takes) {
+    invalid("Operation " + std::to_string(index + 1) + " calls " + name + " with " + count(given) + ", but it takes " + count(takes) + ".");
+}
+
+[[noreturn]] inline void invalid_constructor(const char* type, std::size_t given) {
+    invalid(std::string(type) + " has no public constructor taking " + count(given) + ".");
+}
+
+/// Every call checked against the class before any is made: a name it does not have, or a
+/// count of arguments none of its overloads takes, stops the run before anything happens.
+inline void design_validate(const std::vector<std::string>& operations, const Value& arguments, const char* type,
+                            const std::vector<std::size_t>& constructors,
+                            const std::vector<std::pair<std::string, std::vector<std::size_t>>>& methods) {
+    auto has = [](const std::vector<std::size_t>& counts, std::size_t n) { return std::find(counts.begin(), counts.end(), n) != counts.end(); };
+    std::size_t made = arguments.items[0].items.size();
+    if (!(constructors.empty() ? made == 0 : has(constructors, made))) invalid_constructor(type, made);
+    for (std::size_t i = 1; i < operations.size(); i++) {
+        auto found = std::find_if(methods.begin(), methods.end(), [&](const auto& m) { return m.first == operations[i]; });
+        if (found == methods.end()) invalid_operation(i, operations[i], type);
+        std::size_t given = arguments.items[i].items.size();
+        if (!has(found->second, given)) invalid_arity(i, found->first.c_str(), given, found->second.front());
+    }
+}
+
+/// Marks where call `index` begins, so the run view can tell one call from the next.
+inline void call_starting(std::size_t index) {
+    if (!state().active || !state().stepping) return;
+    Quiet quiet;
+    emit("{\"call\":" + std::to_string(index) + ",\"step\":" + std::to_string(state().steps) + "}");
+}
+
+/// An argument built as the type the method declares. Building it is not the solution's work.
+template <class T> T arg(const Value& value) {
+    Quiet quiet;
+    try { return build<T>(value); }
+    catch (const std::exception& e) { invalid(std::string("An argument could not be read: ") + e.what()); }
+}
+
+/// Each call's result, in LeetCode's format, collected as the calls are made.
+struct Results {
+    std::string text = "[";
+    bool first = true;
+    void add(const std::string& item) { Quiet quiet; if (!first) text += ','; first = false; text += item; }
+    void none() { add("null"); }
+    template <class T> void value(const T& v) { Quiet quiet; Json j; format(j, v); add(j.text); }
+};
+
+/// Ends a design run that completed, with the list of results already written out.
+[[noreturn]] inline void succeed_text(const std::string& result) {
+    State& s = state();
+    s.active = false;
+    Quiet quiet;
+    Json j;
+    j.raw("{\"end\":\"Completed\",\"result\":");
+    j.string(result + "]");
+    writeCounts(j);
+    j.raw("}");
+    emit(j.text);
+    std::fflush(s.out);
+    std::_Exit(0);
+}
 
 /// Reads the run's settings from the command line: run|step, budget, depth limit, steps kept.
 inline void configure(int argc, char** argv, int statements, int sites) {

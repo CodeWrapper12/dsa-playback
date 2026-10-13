@@ -652,3 +652,47 @@ charged call keeps its type: widened to an int, `set.remove(c)` looked for an In
 | 67 | Met. | `JavaTests.Growth_is_measured…` (8), `Hidden_work_is_named…`, `Memory_counts_only_the_solution`, `The_code_is_read…` (6) |
 | 68 | Met. | `JavaTests` (compile error, exception, budget, depth) |
 | 69 | Met: first ▶ Visualize of Two Sum 1.5 s on this Mac, including compiling the runtime; every engine and panel test, the package build and `verify-package` — including a Java run — pass on all six platforms with Temurin 21 in release dry run 38384969619. | By hand; release dry run |
+
+## Phase 8 — design problems in C++ and Rust (planned in detail)
+
+LRU Cache, Min Stack and the rest already work in C#, Python and Java. C++ and Rust have
+no reflection to find a method by its name at run time, so the engine writes the dispatch
+itself: from the class it has read, a small main that creates the object, matches each
+operation's name to a method, builds each argument as the type that method declares, and
+collects the results. Everything after that — the example reader, checking against Output,
+naming the call running, the run view — is the one the other languages use.
+
+70. **C++.** A class that LeetCode's two-list example names, or one that cannot be created
+    without arguments and has public methods, gets one ▶ Visualize on the class (no
+    Complexity). The first operation calls the constructor that takes that many arguments;
+    each later one calls the public member function of that name and arity. Results are
+    checked against Output; calls typed in the same format are used instead.
+71. **Rust.** The same for a struct with an `impl` holding `fn new` and methods taking
+    `self`, as LeetCode's Rust template writes it: the first operation calls `new`, the
+    rest call methods by name.
+72. **The object's state is shown.** At every step inside its methods, the object's fields
+    are listed with the other variables — in C++ by their own names, in Rust as
+    `self.items` — and drawn like any other value. In Rust, a field the borrow checker will
+    not let be read at that moment says why, as other variables do.
+73. **Calls that do not fit** — an unknown operation, the wrong number of arguments, a
+    first operation that is not the class, two lists of different lengths — are explained
+    in the words the other languages use, above the run, and nothing runs: every call is
+    checked against the class before the first is made.
+74. **Checked like the rest:** LRU Cache and Min Stack samples in both languages; engine,
+    panel and VS Code tests; all six platforms.
+
+Not in 8: complexity for design problems, in any language (each call's cost would need
+measuring on its own).
+
+Released as 1.6.0.
+
+### Phase 8 status
+
+| # | Status | Checked by |
+|---|---|---|
+| 70 | Met: a class named by an example, or needing constructor arguments and having public member functions; constructors and overloads matched by argument count; results checked; typed calls used. | `NativeDesignTests` (C++ cases); panel: *a C++ design problem names the call running…* |
+| 71 | Met: a struct with `fn new` and methods taking `&self` or `&mut self`. | `NativeDesignTests` (Rust cases); `RustTests.A_design_struct_without_an_example…` |
+| 72 | Met: fields shown in member functions — C++ by name, Rust as `self.field`, with the repair's reasons. | `NativeDesignTests.The_calls_run_in_order_are_checked_and_show_the_objects_fields` (4) |
+| 73 | Met: checked in full before the first call, so a bad call stops the run with no step taken. | `NativeDesignTests.Calls_that_do_not_fit…` (8); panel: *…calls that do not fit are explained above the run* |
+| 74 | On this Mac: engine, panel and VS Code tests pass. All six platforms: pending the release dry run. | Tests; CI |
+

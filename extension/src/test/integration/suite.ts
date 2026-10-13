@@ -290,6 +290,20 @@ const checks: [string, (api: TestApi) => Promise<void>][] = [
     await waitFor(() => api.linesDecoratedIn(measured.uri) || undefined, "costs beside the Java lines", 10_000);
   }],
 
+  ["a C++ and a Rust design problem each get one ▶ Visualize, and their calls run and are checked", async api => {
+    for (const file of ["samples/design/lru_cache.cpp", "samples/design/lru_cache.rs"]) {
+      const document = await open(file);
+      assert.deepEqual((await api.lenses(document)).map(lens => lens.command?.title), ["$(play) Visualize"], file);
+      const before = api.lastSteps();
+      await vscode.commands.executeCommand("dsaPlayback.visualize", document.uri, "LRUCache");
+      const steps = await waitFor(() => (api.lastSteps() !== before && api.lastStepsFile() === document.uri.fsPath ? api.lastSteps() : undefined),
+        `a recorded run of ${file}`, 120_000);
+      assert.equal(steps.status, "Completed", steps.errors.join("; "));
+      assert.equal(steps.check?.matches, true, file);
+      assert.equal(steps.calls.length, 10, file);
+    }
+  }],
+
   ["the walkthrough opens an editable copy of its sample", async () => {
     await vscode.commands.executeCommand("dsaPlayback.openSample", "LevelOrder.cs");
     const opened = vscode.window.activeTextEditor?.document.fileName ?? "";

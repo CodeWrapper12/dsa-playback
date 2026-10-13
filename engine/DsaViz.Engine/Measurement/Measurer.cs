@@ -105,6 +105,8 @@ public static class Measurer
         GenerationStrategy? strategy = null)
     {
         var solution = Cpp.CppSolution.Read(source, entry);
+        if (solution.DesignClass is not null)
+            return Failed(RunStatus.RuntimeError, new[] { DesignNotMeasured }, inputs ?? Array.Empty<InputSpec>());
         var built = solution.Build(host, stepping: false);
         if (built.Executable is null) return Failed(built.Status, built.Errors, inputs ?? Array.Empty<InputSpec>());
 
@@ -147,6 +149,8 @@ public static class Measurer
         GenerationStrategy? strategy = null)
     {
         var solution = Rust.RustSolution.Read(source, entry);
+        if (solution.DesignStruct is not null)
+            return Failed(RunStatus.RuntimeError, new[] { DesignNotMeasured }, inputs ?? Array.Empty<InputSpec>());
         var built = solution.Build(host, stepping: false);
         if (built.Executable is null) return Failed(built.Status, built.Errors, inputs ?? Array.Empty<InputSpec>());
 

@@ -1198,6 +1198,107 @@ pub fn deep<F: FnOnce() + Send + 'static>(body: F) {
     }
 }
 
+// ---- design problems -----------------------------------------------------------------------------
+
+/// A design problem's calls that do not fit its struct: the input's fault, so nothing more runs.
+pub fn invalid(message: &str) -> ! {
+    finish("InvalidInput", message, 0)
+}
+
+fn count(n: usize) -> String {
+    if n == 1 { "1 argument".to_string() } else { format!("{} arguments", n) }
+}
+
+/// The operations and each one's arguments, checked against the struct before anything runs.
+pub fn design_inputs(inputs: &[String], type_name: &str) -> (Vec<String>, Vec<Vec<Value>>) {
+    let _quiet = Quiet::new();
+    let operations: Vec<String> = match Vec::<String>::from_leet(&parse(inputs.first().map(String::as_str).unwrap_or(""))) {
+        Ok(operations) => operations,
+        Err(error) => invalid(&format!("The operations could not be read: {}", error)),
+    };
+    let arguments: Vec<Vec<Value>> = match parse(inputs.get(1).map(String::as_str).unwrap_or("")) {
+        Value::List(lists) => lists.into_iter().map(|list| match list {
+            Value::List(items) => items,
+            _ => invalid("Each operation's arguments are a list, [] when it takes none."),
+        }).collect(),
+        _ => Vec::new(),
+    };
+    if operations.is_empty() {
+        invalid(&format!("The list of operations is empty. The first one creates the object, like \"{}\".", type_name));
+    }
+    if arguments.len() != operations.len() {
+        invalid(&format!("There are {} operations but {} argument lists. Each operation needs its own list, [] when it takes none.",
+                         operations.len(), arguments.len()));
+    }
+    if operations[0] != type_name {
+        invalid(&format!("The first operation creates the object, so it must be \"{}\", not \"{}\".", type_name, operations[0]));
+    }
+    (operations, arguments)
+}
+
+pub fn invalid_operation(index: usize, name: &str, type_name: &str) -> ! {
+    invalid(&format!("Operation {} is \"{}\", but {} has no method by that name.", index + 1, name, type_name))
+}
+
+pub fn invalid_arity(index: usize, name: &str, given: usize, takes: usize) -> ! {
+    invalid(&format!("Operation {} calls {} with {}, but it takes {}.", index + 1, name, count(given), count(takes)))
+}
+
+pub fn invalid_constructor(type_name: &str, given: usize, takes: usize) -> ! {
+    invalid(&format!("{}::new takes {}, but the first operation gives {}.", type_name, count(takes), count(given)))
+}
+
+/// Every call checked against the struct before any is made: a name it does not have, or the
+/// wrong number of arguments, stops the run before anything happens.
+pub fn design_validate(operations: &[String], arguments: &[Vec<Value>], type_name: &str, new_takes: usize, methods: &[(&str, usize)]) {
+    if arguments[0].len() != new_takes { invalid_constructor(type_name, arguments[0].len(), new_takes); }
+    for i in 1..operations.len() {
+        match methods.iter().find(|(name, _)| *name == operations[i]) {
+            None => invalid_operation(i, &operations[i], type_name),
+            Some(&(name, takes)) if arguments[i].len() != takes => invalid_arity(i, name, arguments[i].len(), takes),
+            Some(_) => {}
+        }
+    }
+}
+
+/// Marks where call `index` begins, so the run view can tell one call from the next.
+pub fn call_starting(index: usize) {
+    if !ACTIVE.load(Relaxed) || !st().stepping { return; }
+    let _quiet = Quiet::new();
+    let steps = st().steps;
+    emit(&format!("{{\"call\":{},\"step\":{}}}", index, steps));
+}
+
+/// An argument built as the type the method declares. Building it is not the solution's work.
+pub fn arg<T: FromLeet>(value: &Value) -> T {
+    let _quiet = Quiet::new();
+    match T::from_leet(value) {
+        Ok(v) => v,
+        Err(error) => invalid(&format!("An argument could not be read: {}", error)),
+    }
+}
+
+static mut RESULTS: Vec<String> = Vec::new();
+
+/// A call's result, written by `text` — LeetCode's format — and kept for the end.
+pub fn result<F: FnOnce() -> String>(text: F) {
+    let _quiet = Quiet::new();
+    let value = text();
+    unsafe { (*std::ptr::addr_of_mut!(RESULTS)).push(value) }
+}
+
+/// A call that returns nothing: the constructor, or a method with no result.
+pub fn result_none() {
+    result(|| "null".to_string())
+}
+
+/// Ends a design run that completed: every call's result, in order.
+pub fn succeed_results() -> ! {
+    let _quiet = Quiet::new();
+    let all = unsafe { (*std::ptr::addr_of!(RESULTS)).join(",") };
+    succeed(Some(format!("[{}]", all)))
+}
+
 /// Everything generated code refers to, in one import.
 pub mod prelude {
     pub use super::{CapDebug as _, CapOpaque as _, CapSnap as _, CopyCost as _, CopyFree as _, ResultDebug as _,

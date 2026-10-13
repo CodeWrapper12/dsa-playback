@@ -67,6 +67,8 @@ public sealed class RsFunction
     public string? Owner { get; init; }
     public bool IsPublic { get; init; }
     public bool HasSelf { get; init; }
+    /// <summary>Takes self by value — `self` or `mut self` — consuming the object.</summary>
+    public bool SelfByValue { get; init; }
     public bool IsGeneric { get; init; }
     public bool IsConst { get; init; }
     /// <summary>Declared inside another function's body.</summary>
@@ -506,6 +508,8 @@ public static class RustReader
             if (T(k) != "(") throw Problem(k, $"expected '(' after fn {name}");
             int paramClose = Match(k);
             var (parameters, hasSelf) = Parameters(k, paramClose);
+            bool byValue = hasSelf && !Enumerable.Range(k + 1, Math.Max(0, paramClose - k - 1)).TakeWhile(x => T(x) != ",")
+                .Any(x => T(x) == "&");
             k = paramClose + 1;
 
             string? returnType = null;
@@ -526,6 +530,7 @@ public static class RustReader
                 Owner = owner,
                 IsPublic = isPublic,
                 HasSelf = hasSelf,
+                SelfByValue = byValue,
                 IsGeneric = generic,
                 IsConst = isConst,
                 IsNested = nested,
@@ -847,7 +852,8 @@ public static class RustReader
                     arm = new RsArm { Bindings = bindings, BodyFirst = bodyFirst, BodyLast = block.Last, Block = block };
                     k = block.Last + 1;
                     // A block body may still go on as an expression — { .. }.len() — up to the comma.
-                    if (T(k) is not "," and not "}" && k < close)
+                    // Anything else after it starts the next arm: its comma is optional.
+                    if (T(k) is "." or "?" or "as" && k < close)
                     {
                         int end = TopLevel(k, close, ",");
                         arm = new RsArm { Bindings = bindings, BodyFirst = bodyFirst, BodyLast = end - 1 };

@@ -914,3 +914,33 @@ test("a Java design problem names the call running, and a variable not yet set s
   unset.go(1);
   assert.match(unset.area().textContent ?? "", /\(not set yet\)/);
 });
+
+// ---- design problems in C++ and Rust -----------------------------------------------------------
+
+for (const [file, fields] of [["design/lru_cache.cpp", ["capacity", "order", "where"]], ["design/lru_cache.rs", ["self.values", "self.order"]]] as const) {
+  test(`a ${file.endsWith(".rs") ? "Rust" : "C++"} design problem names the call running and shows the object's fields`, () => {
+    const { go, count, area, trace, dom } = run(sample(file), "LRUCache");
+    assert.match(dom.window.document.body.textContent ?? "", /Matches the expected output/);
+    const fourth = (trace as unknown as { calls: { step: number }[] }).calls[3];
+    go(fourth.step);
+    assert.match(area().textContent ?? "", /Call 4 of 10: get/);
+    let sawFields = false;
+    for (let i = 0; i < count; i++) {
+      go(i);
+      sawFields ||= fields.every(f => (area().textContent ?? "").includes(f));
+    }
+    assert.ok(sawFields, `the fields ${fields.join(", ")} are shown`);
+  });
+}
+
+test("a C++ or Rust design problem's calls that do not fit are explained above the run", () => {
+  for (const file of ["design/lru_cache.cpp", "design/lru_cache.rs"]) {
+    const recorded = measure({
+      file: sample(file), entry: "LRUCache", stepSize: 8, values: ['["LRUCache","put","gett"]', "[[1],[1,1],[1]]"]
+    }) as { steps: unknown };
+    const { text, errors } = showRun(recorded.steps);
+    assert.deepEqual(errors, []);
+    assert.match(text(), /Fix the input/, file);
+    assert.match(text(), /Operation 3 is "gett", but LRUCache has no/, file);
+  }
+});

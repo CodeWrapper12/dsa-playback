@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.6.0
+
+- **Design problems in C++ and Rust.** LRU Cache, Min Stack and the rest now work in all
+  five languages. One ▶ Visualize on the class (or, in Rust, the struct with `fn new`);
+  the object is created, every call is made in order and checked against Output, and the
+  run view says which call is running. Calls that do not fit the class are explained
+  before anything runs.
+- Inside a design problem's methods, the object's fields are shown with the other
+  variables — in Rust as `self.items`, with the borrow checker's reasons where a field
+  cannot be read at that moment.
+- A C++ iterator is shown as *(iterator)* rather than `{…}`.
+- Fixed: in Rust, a match arm with a block body followed by another arm with no comma
+  between them was read as one arm.
+
 ## 1.5.0
 
 - **Java.** ▶ Visualize and Complexity for Java solutions, built with your own JDK (17 or

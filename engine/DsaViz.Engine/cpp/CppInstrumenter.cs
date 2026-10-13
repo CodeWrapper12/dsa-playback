@@ -53,14 +53,15 @@ public static class CppInstrumenter
         return new[] { "TreeNode", "ListNode" }.Where(n => used.Contains(n) && !defined.Contains(n)).ToList();
     }
 
-    public static CppProgram Build(CppFile file, CppFunction entry, bool stepping)
-        => new Rewriter(file, stepping).Build(entry);
+    /// <param name="design">For a design problem, its class: the program then makes the calls its example lists.</param>
+    public static CppProgram Build(CppFile file, CppFunction? entry, bool stepping, CppClass? design = null)
+        => new Rewriter(file, stepping).Build(entry, design);
 
     /// <summary>The solution with nothing inserted, and the same driver: compiled to find the student's own errors.</summary>
-    public static string Plain(CppFile file, CppFunction entry)
-        => Assemble(file, file.Text, entry, statements: 0, sites: 0);
+    public static string Plain(CppFile file, CppFunction? entry, CppClass? design = null)
+        => Assemble(file, file.Text, entry, design, statements: 0, sites: 0);
 
-    private static string Assemble(CppFile file, string solution, CppFunction entry, int statements, int sites)
+    private static string Assemble(CppFile file, string solution, CppFunction? entry, CppClass? design, int statements, int sites)
     {
         var program = new StringBuilder();
         program.Append("#include \"dsaviz.hpp\"\n");
@@ -69,7 +70,7 @@ public static class CppInstrumenter
         program.Append($"#line 1 \"{SolutionFile}\"\n");
         program.Append(solution);
         program.Append($"\n#line 1 \"{DriverFile}\"\n");
-        program.Append(Driver(entry, statements, sites));
+        program.Append(design is not null ? DesignDriver(file, design, statements, sites) : Driver(entry!, statements, sites));
         return program.ToString();
     }
 
@@ -106,6 +107,80 @@ public static class CppInstrumenter
             d.Append($"    {call}({args});\n    dsaviz::succeed<int>(nullptr);\n");
         else
             d.Append($"    auto dsaviz_result = {call}({args});\n    dsaviz::succeed(&dsaviz_result);\n");
+        d.Append("  } catch (const std::exception& e) { dsaviz::threw(e); } catch (...) { dsaviz::threwSomething(); }\n");
+        d.Append("}\n");
+        d.Append("int main(int argc, char** argv) {\n");
+        d.Append($"  dsaviz::configure(argc, argv, {statements}, {sites});\n");
+        d.Append("  dsaviz_inputs = dsaviz::readInputs();\n");
+        d.Append("  dsaviz::deep(dsaviz_run);\n");
+        d.Append("  return 0;\n}\n");
+        return d.ToString();
+    }
+
+    /// <summary>
+    /// A design problem's calls. C++ cannot find a method by its name at run time, so this
+    /// writes the matching out: each operation's name and argument count to one of the
+    /// class's public members, each argument built as the type that member declares.
+    /// </summary>
+    private static string DesignDriver(CppFile file, CppClass type, int statements, int sites)
+    {
+        string name = type.Name;
+        var members = file.Functions.Where(f => f.Owner == name && f.IsPublic && !f.IsStatic).ToList();
+        var constructors = members.Where(f => f.IsConstructor).ToList();
+        var methods = members.Where(f => !f.IsConstructor).GroupBy(f => f.Name).ToList();
+
+        string Arguments(CppFunction f, string indent, StringBuilder into)
+        {
+            for (int k = 0; k < f.Parameters.Count; k++)
+                into.Append($"{indent}auto p{k} = dsaviz::arg<{ValueType(f.Parameters[k].Type)}>(a[{k}]);\n");
+            return string.Join(", ", Enumerable.Range(0, f.Parameters.Count).Select(k => $"p{k}"));
+        }
+
+        var d = new StringBuilder();
+        d.Append("static std::vector<std::string> dsaviz_inputs;\n");
+        d.Append("static void dsaviz_run() {\n");
+        d.Append("  std::vector<std::string> operations;\n  dsaviz::Value arguments;\n");
+        d.Append("  try {\n");
+        d.Append("    operations = dsaviz::build<std::vector<std::string>>(dsaviz::Parser{dsaviz_inputs.at(0)}.parse());\n");
+        d.Append("    arguments = dsaviz::Parser{dsaviz_inputs.at(1)}.parse();\n");
+        d.Append("  } catch (const std::exception& e) { dsaviz::invalid(std::string(\"The calls could not be read: \") + e.what()); }\n");
+        d.Append($"  dsaviz::design_check(operations, arguments, \"{name}\");\n");
+        d.Append($"  dsaviz::design_validate(operations, arguments, \"{name}\", {{{string.Join(", ", constructors.Select(c => c.Parameters.Count))}}}, {{");
+        d.Append(string.Join(", ", methods.Select(g => $"{{\"{g.Key}\", {{{string.Join(", ", g.Select(m => m.Parameters.Count))}}}}}")));
+        d.Append("});\n");
+        d.Append("  dsaviz::Results results;\n");
+        d.Append($"  {name}* target = nullptr;\n");
+        d.Append("  try {\n    dsaviz::begin();\n");
+        d.Append("    for (std::size_t i = 0; i < operations.size(); i++) {\n");
+        d.Append("      dsaviz::call_starting(i);\n");
+        d.Append("      const auto& a = arguments.items[i].items;\n");
+        d.Append("      const std::string& op = operations[i];\n");
+        d.Append("      if (i == 0) {\n");
+        if (constructors.Count == 0)
+            d.Append($"        if (a.size() == 0) {{ target = new {name}(); results.none(); continue; }}\n");
+        foreach (var c in constructors)
+        {
+            d.Append($"        if (a.size() == {c.Parameters.Count}) {{\n");
+            string args = Arguments(c, "          ", d);
+            d.Append($"          target = new {name}({args}); results.none(); continue;\n        }}\n");
+        }
+        d.Append($"        dsaviz::invalid_constructor(\"{name}\", a.size());\n      }}\n");
+        foreach (var group in methods)
+        {
+            d.Append($"      if (op == \"{group.Key}\") {{\n");
+            foreach (var m in group)
+            {
+                d.Append($"        if (a.size() == {m.Parameters.Count}) {{\n");
+                string args = Arguments(m, "          ", d);
+                d.Append(m.ReturnType == "void"
+                    ? $"          target->{m.Name}({args}); results.none(); continue;\n"
+                    : $"          auto r = target->{m.Name}({args}); results.value(r); continue;\n");
+                d.Append("        }\n");
+            }
+            d.Append($"        dsaviz::invalid_arity(i, \"{group.Key}\", a.size(), {group.First().Parameters.Count});\n      }}\n");
+        }
+        d.Append($"      dsaviz::invalid_operation(i, op, \"{name}\");\n");
+        d.Append("    }\n    dsaviz::succeed_text(results.text);\n");
         d.Append("  } catch (const std::exception& e) { dsaviz::threw(e); } catch (...) { dsaviz::threwSomething(); }\n");
         d.Append("}\n");
         d.Append("int main(int argc, char** argv) {\n");
@@ -163,14 +238,18 @@ public static class CppInstrumenter
 
         private void Insert(int offset, string text, int rank) => _edits.Add(new Edit(offset, offset, text, rank, _edits.Count));
 
-        public CppProgram Build(CppFunction entry)
+        public CppProgram Build(CppFunction? entry, CppClass? design)
         {
             foreach (var function in _file.Functions)
             {
                 _method = function.IsConstructor ? function.Owner ?? function.Name : function.Name;
                 _returnType = function.ReturnType;
-                var visible = function.Parameters
-                    .Select(p => new CppVariable(p.Name, CppInstrumenter.ValueType(p.Type)))
+                // A member function can see its object's fields: a design problem's state is there.
+                var fields = function.Owner is { } owner && !function.IsStatic
+                    ? _file.Classes.Where(c => c.Name == owner).SelectMany(c => c.Fields).Select(f => new CppVariable(f.Name, f.Type))
+                    : Enumerable.Empty<CppVariable>();
+                var visible = fields.Concat(function.Parameters
+                    .Select(p => new CppVariable(p.Name, CppInstrumenter.ValueType(p.Type))))
                     .ToList();
                 Body(function.Body, visible, function.Name == "main" && function.Owner is null);
             }
@@ -193,7 +272,7 @@ public static class CppInstrumenter
             }
             text.Append(_file.Text, at, _file.Text.Length - at);
 
-            return new CppProgram(Assemble(_file, text.ToString(), entry, _statements.Count, _sites.Count), _statements, _sites);
+            return new CppProgram(Assemble(_file, text.ToString(), entry, design, _statements.Count, _sites.Count), _statements, _sites);
         }
 
         // ---- frames and statements -----------------------------------------------------------
