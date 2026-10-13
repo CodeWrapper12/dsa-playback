@@ -9,6 +9,7 @@ namespace DsaViz.Engine.Tests;
 /// C++ solutions, read, built with the compiler on this machine, run and measured. These
 /// need clang++ or g++; without one they fail, rather than pass while testing nothing.
 /// </summary>
+[Collection(CppCollection.Name)]
 public class CppTests
 {
     private static string Sample(string name) => Path.Combine(AppContext.BaseDirectory, "samples", "cpp", name);

@@ -151,6 +151,11 @@ public sealed class CppHost
             UseShellExecute = false,
             WorkingDirectory = Path.GetDirectoryName(file)!
         };
+        // MinGW's g++ runs helper programs that load DLLs from its own folder, which Windows
+        // only finds on PATH. A student who names the compiler in the setting, without that
+        // folder on PATH, would otherwise see every compile fail with no error at all.
+        if (Path.GetDirectoryName(Compiler) is { Length: > 0 } folder)
+            start.Environment["PATH"] = folder + Path.PathSeparator + (Environment.GetEnvironmentVariable("PATH") ?? "");
         foreach (var flag in new[] { "-std=c++17", "-O1", "-w", "-I", HeaderFolder }) start.ArgumentList.Add(flag);
         foreach (var flag in fix) start.ArgumentList.Add(flag);
         // Deep recursion needs a deep stack. Elsewhere the header runs the solution on a
