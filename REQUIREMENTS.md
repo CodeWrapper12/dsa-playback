@@ -694,5 +694,5 @@ Released as 1.6.0.
 | 71 | Met: a struct with `fn new` and methods taking `&self` or `&mut self`. | `NativeDesignTests` (Rust cases); `RustTests.A_design_struct_without_an_example…` |
 | 72 | Met: fields shown in member functions — C++ by name, Rust as `self.field`, with the repair's reasons. | `NativeDesignTests.The_calls_run_in_order_are_checked_and_show_the_objects_fields` (4) |
 | 73 | Met: checked in full before the first call, so a bad call stops the run with no step taken. | `NativeDesignTests.Calls_that_do_not_fit…` (8); panel: *…calls that do not fit are explained above the run* |
-| 74 | On this Mac: engine, panel and VS Code tests pass. All six platforms: pending the release dry run. | Tests; CI |
+| 74 | Met: LRU Cache and Min Stack in both languages; engine, panel and VS Code tests; all six platforms pass in release dry run 38399961577. | Tests; release dry run |
 
