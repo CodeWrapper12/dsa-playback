@@ -118,7 +118,7 @@ if (file is null)
         "                [--sizes 10,100,1000] [--strategy <" + string.Join("|", Enum.GetNames<GenerationStrategy>()) + ">]\n" +
         "                [--budget <n>]\n" +
         "  DsaViz.Engine --file <solution.cs> --entry <Method> --steps <n> [--strategy <...>]\n" +
-        "  DsaViz.Engine --file <solution.cs|solution.py|solution.cpp|-> --list-entries [--language python|cpp] [--python <path>]\n" +
+        "  DsaViz.Engine --file <solution.cs|solution.py|solution.cpp|solution.rs|-> --list-entries [--language python|cpp|rust] [--python <path>]\n" +
         "  DsaViz.Engine --job <request.json|->");
 
 // "-" reads the source from stdin, so the editor can list the methods of a file with
@@ -132,6 +132,13 @@ if (listEntries)
 {
     bool isPython = language == "python" || (language is null && JobRunner.IsPython(file));
     bool isCpp = language == "cpp" || (language is null && DsaViz.Engine.Cpp.CppSolution.IsCpp(file));
+    bool isRust = language == "rust" || (language is null && DsaViz.Engine.Rust.RustSolution.IsRust(file));
+    if (isRust)
+    {
+        // Read without compiling, so the buttons appear even before Rust is installed.
+        var read = DsaViz.Engine.Rust.RustReader.Read(source);
+        return Emit(new { Entries = DsaViz.Engine.Rust.RustSolution.Entries(read), CompileError = read.Problem }, 0);
+    }
     if (isCpp)
     {
         // Read without compiling, so the buttons appear even before a compiler is installed.

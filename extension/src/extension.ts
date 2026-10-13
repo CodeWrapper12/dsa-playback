@@ -29,10 +29,11 @@ const EXTENSION_ID = "codewrapper12.dsa-playback";
 const SAMPLES = new Map([
   ["TwoSumSorted.cs", "csharp"], ["LevelOrder.cs", "csharp"], ["ClimbStairs.cs", "csharp"],
   ["two_sum_sorted.py", "python"], ["level_order.py", "python"], ["climb_stairs.py", "python"],
-  ["two_sum_sorted.cpp", "cpp"], ["level_order.cpp", "cpp"], ["climb_stairs.cpp", "cpp"]
+  ["two_sum_sorted.cpp", "cpp"], ["level_order.cpp", "cpp"], ["climb_stairs.cpp", "cpp"],
+  ["two_sum_sorted.rs", "rust"], ["level_order.rs", "rust"], ["climb_stairs.rs", "rust"]
 ]);
 
-const LANGUAGES = ["csharp", "python", "cpp"];
+const LANGUAGES = ["csharp", "python", "cpp", "rust"];
 
 /**
  * What the integration tests can observe. Decorations and webviews are not readable
@@ -125,7 +126,7 @@ async function start(context: vscode.ExtensionContext, tab: Tab, uri?: vscode.Ur
     : vscode.window.activeTextEditor?.document;
 
   if (!document || !LANGUAGES.includes(document.languageId)) {
-    vscode.window.showWarningMessage("Open a C#, Python or C++ file first, then press ▶ Visualize above a method.");
+    vscode.window.showWarningMessage("Open a C#, Python, C++ or Rust file first, then press ▶ Visualize above a method.");
     return;
   }
   const python = document.languageId === "python" ? await pythonInterpreter(document.uri) : undefined;
@@ -145,7 +146,7 @@ async function start(context: vscode.ExtensionContext, tab: Tab, uri?: vscode.Ur
     if (tab === "compare") {
       const picked = await vscode.window.showOpenDialog({
         canSelectMany: false,
-        filters: { "Solutions": ["cs", "py", "cpp", "cc", "cxx"] },
+        filters: { "Solutions": ["cs", "py", "cpp", "cc", "cxx", "rs"] },
         openLabel: "Compare against",
         title: "Pick the second solution"
       });
@@ -169,7 +170,8 @@ async function start(context: vscode.ExtensionContext, tab: Tab, uri?: vscode.Ur
       compareFile,
       compareEntry,
       python,
-      cppCompiler: cppCompiler()
+      cppCompiler: cppCompiler(),
+      rustc: rustc()
     };
 
     ReportPanel.show(context, request, tab === "steps" ? "steps" : "cost");
@@ -264,6 +266,11 @@ async function reportProblem(context: vscode.ExtensionContext) {
   // extension host also takes the address as a string and hands that on untouched
   // (openUri in VS Code's extHostWindow), so the string is what is passed.
   await vscode.env.openExternal(url as unknown as vscode.Uri);
+}
+
+/** The rustc the student chose, if they did; otherwise the engine finds it on the path or in ~/.cargo/bin. */
+function rustc(): string | undefined {
+  return vscode.workspace.getConfiguration("dsaPlayback").get<string>("rustc")?.trim() || undefined;
 }
 
 /** The C++ compiler the student chose, if they did; otherwise the engine finds clang++ or g++. */
@@ -519,7 +526,8 @@ class ReportPanel {
         values: choice.values,
         example: choice.example,
         python: this.request.python,
-        cppCompiler: this.request.cppCompiler
+        cppCompiler: this.request.cppCompiler,
+        rustc: this.request.rustc
       }, controller.signal);
       if (controller.signal.aborted) return;
 
@@ -569,7 +577,7 @@ class ReportPanel {
 
     const lines = shown.source.split(/\r?\n/);
     const toExplain: StepToExplain = {
-      language: { ".py": "Python", ".cpp": "C++", ".cc": "C++", ".cxx": "C++" }[path.extname(this.request.file).toLowerCase()] ?? "C#",
+      language: { ".py": "Python", ".cpp": "C++", ".cc": "C++", ".cxx": "C++", ".rs": "Rust" }[path.extname(this.request.file).toLowerCase()] ?? "C#",
       code: solutionCode(lines, shown.trace),
       line: step.line,
       lineText: lines[step.line - 1] ?? "",
@@ -606,7 +614,8 @@ class ReportPanel {
         allExamples: true,
         budget: this.request.budget,
         python: this.request.python,
-        cppCompiler: this.request.cppCompiler
+        cppCompiler: this.request.cppCompiler,
+        rustc: this.request.rustc
       }, controller.signal);
       if (controller.signal.aborted) return;
 

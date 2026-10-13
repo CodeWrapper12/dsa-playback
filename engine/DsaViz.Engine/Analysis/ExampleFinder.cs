@@ -231,6 +231,9 @@ public static class ExampleFinder
     {
         for (int i = 0; i < names.Count; i++)
             if (string.Equals(names[i], name, StringComparison.OrdinalIgnoreCase)) return i;
+        // LeetCode's examples keep the problem's names — numRows — where Rust writes num_rows.
+        for (int i = 0; i < names.Count; i++)
+            if (string.Equals(names[i].Replace("_", ""), name.Replace("_", ""), StringComparison.OrdinalIgnoreCase)) return i;
         return -1;
     }
 

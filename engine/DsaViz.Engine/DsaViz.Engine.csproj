@@ -20,6 +20,8 @@
     <None Include="python/*.py" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <!-- The C++ runtime header is compiled into each C++ solution by the student's compiler. -->
     <None Include="cpp/*.hpp" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <!-- The Rust runtime is compiled by the student's rustc, once per Rust version. -->
+    <None Include="rust/*.rs" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../DsaViz.Runtime/DsaViz.Runtime.csproj" />

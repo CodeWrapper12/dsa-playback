@@ -12,13 +12,6 @@ public sealed class CppUnavailableException : Exception
     public CppUnavailableException(string code, string message) : base(message) => Code = code;
 }
 
-/// <summary>The program did not answer: it was stopped, or failed in a way that is the visualizer's bug.</summary>
-public sealed class CppRunFailedException : Exception
-{
-    public bool TimedOut { get; }
-    public CppRunFailedException(string message, bool timedOut = false) : base(message) => TimedOut = timedOut;
-}
-
 /// <summary>A compile that failed: the compiler's errors, each as "line 12, column 5: message".</summary>
 public sealed record CppCompileResult(string? Executable, IReadOnlyList<string> Errors, bool InVisualizerCode);
 
@@ -174,13 +167,13 @@ public sealed class CppHost
         start.ArgumentList.Add("-o");
         start.ArgumentList.Add(executable);
 
-        using var process = Process.Start(start) ?? throw new CppRunFailedException($"Could not start {Compiler}.");
+        using var process = Process.Start(start) ?? throw new DsaViz.Engine.Native.NativeRunFailedException($"Could not start {Compiler}.");
         var output = process.StandardOutput.ReadToEndAsync();
         var errors = process.StandardError.ReadToEndAsync();
         if (!process.WaitForExit((int)CompileTimeout.TotalMilliseconds))
         {
             try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { /* already gone */ }
-            throw new CppRunFailedException($"Compiling took longer than {CompileTimeout.TotalSeconds:0} seconds and was stopped.", timedOut: true);
+            throw new DsaViz.Engine.Native.NativeRunFailedException($"Compiling took longer than {CompileTimeout.TotalSeconds:0} seconds and was stopped.", timedOut: true);
         }
         return (process.ExitCode, output.Result + errors.Result);
     }
@@ -269,44 +262,4 @@ public sealed class CppHost
     }
 
     private static string Hash(string text) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
-
-    // ---- running ------------------------------------------------------------------------------
-
-    /// <summary>
-    /// Runs a built program: `run` to measure, `step` to record. Inputs go in one per line,
-    /// in LeetCode's format; what comes out is one JSON object per line.
-    /// </summary>
-    public static IReadOnlyList<string> Run(string executable, bool stepping, IReadOnlyList<string> inputs,
-        long budget, int depthLimit, int maxSteps, TimeSpan timeout, out int exitCode)
-    {
-        var start = new ProcessStartInfo(executable)
-        {
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            StandardOutputEncoding = Encoding.UTF8,
-            StandardInputEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false)
-        };
-        start.ArgumentList.Add(stepping ? "step" : "run");
-        start.ArgumentList.Add(budget.ToString(System.Globalization.CultureInfo.InvariantCulture));
-        start.ArgumentList.Add(depthLimit.ToString(System.Globalization.CultureInfo.InvariantCulture));
-        start.ArgumentList.Add(maxSteps.ToString(System.Globalization.CultureInfo.InvariantCulture));
-
-        using var process = Process.Start(start) ?? throw new CppRunFailedException($"Could not start {executable}.");
-        var output = process.StandardOutput.ReadToEndAsync();
-        var errors = process.StandardError.ReadToEndAsync();
-        foreach (var input in inputs) process.StandardInput.WriteLine(input);
-        process.StandardInput.Close();
-
-        if (!process.WaitForExit((int)timeout.TotalMilliseconds))
-        {
-            try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { /* already gone */ }
-            throw new CppRunFailedException(
-                $"The run did not finish within {timeout.TotalSeconds:0} seconds and was stopped.", timedOut: true);
-        }
-        exitCode = process.ExitCode;
-        if (errors.Result.Length > 0) Console.Error.WriteLine($"C++ program stderr: {errors.Result.Trim()}");
-        return output.Result.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-    }
 }

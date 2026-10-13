@@ -808,3 +808,55 @@ test("a C++ run's memory is labelled exact, and its examples hint does not menti
   const fresh = run(cppSample("dedupe_with_find.cpp"), "Solution.countDistinct");
   assert.doesNotMatch(fresh.dom.window.document.body.textContent ?? "", /call the method from/);
 });
+
+// ---- Rust ------------------------------------------------------------------------------------
+
+const rustSample = (name: string) => sample(`rust/${name}`);
+
+test("every step of every Rust sample draws without error", () => {
+  const cases: [string, string][] = [
+    ["two_sum.rs", "Solution.two_sum"], ["reverse_list.rs", "Solution.reverse_list"], ["max_depth.rs", "Solution.max_depth"],
+    ["level_order.rs", "Solution.level_order"], ["climb_stairs.rs", "Solution.climb_stairs"], ["fib.rs", "fib"],
+    ["num_islands.rs", "Solution.num_islands"], ["kth_largest.rs", "Solution.find_kth_largest"],
+    ["valid_parentheses.rs", "Solution.is_valid"], ["binary_search.rs", "Solution.search"],
+    ["unique_paths.rs", "Solution.unique_paths"], ["group_count.rs", "Solution.by_frequency"],
+    ["longest_substring.rs", "Solution.length_of_longest_substring"], ["ownership.rs", "Solution.ownership"]
+  ];
+  for (const [file, entry] of cases) {
+    const { go, count, dom } = run(rustSample(file), entry);
+    for (let i = 0; i < count; i++) go(i);
+    for (let i = count - 1; i >= 0; i -= 5) go(i);
+    assert.match(dom.window.document.body.textContent ?? "", /Matches the expected output/, file);
+  }
+});
+
+test("Rust structures are drawn as what they are: a linked list, a tree, a heap, a stack", () => {
+  const list = run(rustSample("reverse_list.rs"), "Solution.reverse_list");
+  list.go(list.count - 2);
+  assert.equal(list.area().querySelectorAll("svg[aria-label='linked list']").length, 1, "one list");
+
+  const tree = run(rustSample("max_depth.rs"), "Solution.max_depth");
+  tree.go(4);
+  assert.equal(tree.area().querySelectorAll("svg[aria-label='tree'] .node").length, 5, "the whole tree is drawn");
+  assert.ok(tree.dom.window.document.querySelector("svg[aria-label='recursion tree']"), "recursion gets a recursion tree");
+
+  const heap = run(rustSample("kth_largest.rs"), "Solution.find_kth_largest");
+  heap.go(heap.count - 2);
+  assert.match(heap.area().textContent ?? "", /two children/, "a BinaryHeap is drawn as a binary heap");
+
+  const stack = run(rustSample("valid_parentheses.rs"), "Solution.is_valid", { values: ['"(([]"'] });
+  let sawStack = false;
+  for (let i = 0; i < stack.count; i++) { stack.go(i); sawStack ||= !!stack.area().querySelector(".lane.stack .slot"); }
+  assert.ok(sawStack, "a Vec used with push and pop is drawn as a stack");
+});
+
+test("a Rust variable the compiler will not let be read says why, and the memory note says what is counted", () => {
+  const { area, go, count } = run(rustSample("ownership.rs"), "Solution.ownership");
+  const seen = new Set<string>();
+  for (let i = 0; i < count; i++) {
+    go(i);
+    for (const why of ["(moved)", "(borrowed)", "(not set yet)", "(no longer used)"]) if ((area().textContent ?? "").includes(why)) seen.add(why);
+  }
+  assert.deepEqual([...seen].sort(), ["(borrowed)", "(moved)", "(no longer used)", "(not set yet)"]);
+  assert.match(area().textContent ?? "", /moved, borrowed, not set yet, or no longer used/);
+});

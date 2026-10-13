@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.4.0
+
+- **Rust.** ▶ Visualize and Complexity for Rust solutions, built with your own `rustc`.
+  LeetCode's Rust as written: no `struct Solution;`, `TreeNode` and `ListNode` supplied.
+  The run view draws `Vec`, `VecDeque`, `HashMap`, `HashSet`, `BTreeMap`, `BinaryHeap`,
+  linked lists and trees, and a `Vec` used as a stack as a stack.
+- **Ownership, as it happens.** A variable the borrow checker would not let be read at a
+  step is shown with the reason — moved, borrowed, not set yet, or no longer used.
+- Complexity charges the work hidden in `contains`, `sort`, `insert`, `remove`, `clone` and
+  iterator chains — on a `Vec`, never on a set — and measures memory exactly. Panics name
+  their line: *"Your code panicked at line 4: index out of bounds…"*.
+- The Get Started walkthrough has its three samples in Rust too.
+
 ## 1.3.0
 
 - **C++.** ▶ Visualize and Complexity for C++ solutions, built with your own `clang++`

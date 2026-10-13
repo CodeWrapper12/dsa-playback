@@ -217,6 +217,8 @@ export interface JobRequest {
   python?: string;
   /** The C++ compiler for a C++ file, when the student set one. */
   cppCompiler?: string;
+  /** The rustc for a Rust file, when the student set one. */
+  rustc?: string;
   compareFile?: string;
   compareEntry?: string;
 }

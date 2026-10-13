@@ -504,8 +504,87 @@ version copied the argument text, and `erase(s[left++])` moved `left` twice.
 | 51 | Met: compile errors on the student's line with nothing of the visualizer's; budget; depth limit; crashes and exceptions with their line. | `CppTests` (5 failure cases) |
 | 52 | Met on this Mac: first ▶ Visualize of Two Sum about 2.3 s including the compile; a re-run with new values reuses the build. | By hand |
 | 53 | Met: every engine and panel test, the package build and `verify-package` — including a C++ run — pass on all six platforms in release dry run 38340779196: Apple clang on both Macs, g++ on both Linux, MinGW-w64 g++ on Windows x64 and MinGW clang on Windows ARM. The VS Code integration checks run in CI once merged. | Release dry run |
- — Rust, and 7c — Java (outline)
 
-Rust's borrow checker would reject code that reads variables while they are borrowed, so
-the C++ approach may not carry over; its plan starts by testing that. Java uses its own
-debugging interface or bytecode instrumentation, decided when it is planned.
+### Phase 7b — Rust (planned in detail)
+
+**The borrow-checker test, done first as planned.** Seven LeetCode-style functions were
+rewritten by hand to read every visible variable before every statement. The compiler
+rejected five reads: a vector while `last_mut()` held it, a vector after it was moved, a
+`let x;` before it was set, a counter a closure was holding, and a vector during
+`iter_mut()`. Every rejection pointed at an inserted read, never at the student's code.
+Removing exactly those reads and compiling again succeeded in one extra compile (about
+0.5 s), and the run then showed real values.
+
+**So Rust works as C++ does, with one more step:** the engine rewrites the solution, compiles
+it with the student's own `rustc`, and when the compiler rejects some variable reads, it
+drops those reads and compiles once more. A variable that cannot be read at a step is
+still listed, saying why — *moved*, *borrowed*, or *not set yet* — which shows the student
+Rust's ownership rules as their code runs.
+
+54. **A compiler is found.** `rustc` from the setting `dsaPlayback.rustc`, else the path,
+    else `~/.cargo/bin`. Without one, a message gives rustup's install command for the
+    system. On Windows, a missing Visual Studio linker, which rustup's default toolchain
+    needs, is explained with how to install it.
+55. **LeetCode's Rust as written.** `impl Solution { pub fn … }` with no `struct Solution;`;
+    `TreeNode` (`Option<Rc<RefCell<TreeNode>>>`) and `ListNode` (`Option<Box<ListNode>>`)
+    supplied when left commented out, with their `new`. ▶ Visualize and Complexity above
+    every `pub fn` of `impl Solution` and every free function. Edition 2021.
+56. **Inputs** for `i32`, `i64`, `f64`, `bool`, `char`, `String`, `&str`, `Vec` of any of
+    these nested, slices, and the tree and list types — owned, `&` or `&mut`. Values from
+    example comments, typed, or generated; the result checked against Output; Run all
+    examples works. One build per file version, cached.
+57. **The run view** as for the other languages: `Vec` with index pointers, a `Vec` used only
+    with push and pop drawn as a stack, `VecDeque` as a queue, `BinaryHeap` as a heap,
+    `HashMap`, `BTreeMap`, `HashSet`, `BTreeSet`, linked lists and trees drawn by identity,
+    the call stack, the recursion tree, and memory per step. Variables that cannot be read
+    at a step say why. A value of a type the runtime does not know is shown through its
+    `Debug` output, or as its type's name.
+58. **Complexity** as for the other languages, with memory exact (a counting allocator).
+    Hidden work is charged where it depends on the type, decided when the code is compiled:
+    `contains` on a `Vec`, `String` or `VecDeque` (never on a set or map), `sort` and its
+    variants, `insert` and `remove` in the middle of a `Vec`, `clone` and `to_vec` of a
+    collection, and every element an iterator chain pulls (`iter().sum()`, `position`,
+    `any`).
+59. **Failures said plainly.** Compile errors on the student's own lines, from a build
+    without anything inserted. Panics — index out of bounds, `unwrap` on `None`, overflow,
+    a `RefCell` borrowed twice — as *"Your code panicked at line 12: index out of bounds:
+    the len is 3 but the index is 5"*. The statement budget, the time limit and the depth
+    limit as elsewhere.
+60. **Speed.** On a typical laptop, the first ▶ Visualize of a LeetCode solution within 10
+    seconds, a re-run with new values within 2.
+61. **Checked on all six platforms** in CI with rustup's stable toolchain, using the LeetCode
+    samples in Rust.
+
+Not in 7b: design problems, examples written as calls in `main`, code using crates
+outside the standard library, and stepping inside a closure whose body is a single
+expression.
+
+Released as 1.4.0.
+
+Learned while building: the compiler reports a moved variable once per move, not once per
+read, so each reject would have cost another compile. A read rejected as moved, not set,
+or no longer used is left out at every step that follows it in the same run of the code —
+never in another branch — up to where the code sets the variable again. And a read of a
+reference at a later step can keep its borrow alive, so the student's own line collides
+with it: the compiler then names the student's line, and the read only as where the
+borrow is "later used". Those reads are left out, as *no longer used*, when the student's
+code does not use the reference again. Measuring builds wrap on overflow, as release
+builds do; step-through builds panic, as debug builds do.
+
+#### Phase 7b status
+
+| # | Status | Checked by |
+|---|---|---|
+| 54 | Met: setting, `DSAVIZ_RUSTC`, the path, then `~/.cargo/bin`. Missing Rust: `rust-missing` with rustup's command; missing linker: `rust-linker`, said per system. Buttons appear before Rust is installed. | `RustHost`; `toolchain.ts`; verify-package |
+| 55 | Met: no `struct Solution;`; `TreeNode`/`ListNode` and their `new` supplied; `pub fn`s of `impl Solution` and free functions offered; private helpers and nested functions not; design problems say they are not supported. | `RustTests.LeetCodes_template…`, `Private_helpers…`, `A_design_problem…`, `A_file_in_the_LeetCode_extensions_layout…`; integration: *a Rust file gets its buttons…* |
+| 56 | Met for every listed type; LeetCode's camelCase names match snake_case parameters. | `RustTests.Every_sample_runs_its_example_and_matches` (14), `Examples_written_with_LeetCodes_camelCase…` |
+| 57 | Met: every listed structure; reads that cannot be made say why. | `RustTests.Ownership_is_shown_as_it_happens`, `A_variable_moved_and_set_again…`, `A_Vec_used_only_with_push_and_pop…`; panel tests: *every step of every Rust sample*, *Rust structures…*, *a Rust variable the compiler will not let be read says why* |
+| 58 | Met: linear, hidden-quadratic, memoised, exponential, n log n and 2-D samples; a set's `contains` is not charged; peak memory measured directly; the code's own estimate, nested helpers included. | `RustTests.Growth_is_measured…` (7), `A_scan_hidden_in_the_library…`, `Memory_is_exact…`, `The_code_is_read…` (5) |
+| 59 | Met. | `RustTests` (compile error, panic, overflow, budget, depth) |
+| 60 | Met on this Mac: first ▶ Visualize of Two Sum 2.4 s including building the runtime, about 1 s after; repairs are remembered, so a re-run compiles nothing. | By hand |
+| 61 | Pending: CI and the release dry run on all six platforms. | CI |
+
+### Phase 7c — Java (outline)
+
+Java uses its own debugging interface or bytecode instrumentation, decided when it is
+planned.

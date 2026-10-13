@@ -45,11 +45,13 @@ try {
     !files.some(f => f.startsWith("src/") || f.startsWith("out/test/") || f.startsWith(".devharness/") || f.endsWith(".map")));
   for (const sample of ["csharp/TwoSumSorted.cs", "csharp/LevelOrder.cs", "csharp/ClimbStairs.cs",
                         "python/two_sum_sorted.py", "python/level_order.py", "python/climb_stairs.py",
-                        "cpp/two_sum_sorted.cpp", "cpp/level_order.cpp", "cpp/climb_stairs.cpp"]) {
+                        "cpp/two_sum_sorted.cpp", "cpp/level_order.cpp", "cpp/climb_stairs.cpp",
+                        "rust/two_sum_sorted.rs", "rust/level_order.rs", "rust/climb_stairs.rs"]) {
     check(`walkthrough sample ${sample} is shipped`, files.includes(`samples/${sample}`));
   }
   check("the Python runner is shipped beside the engine", files.includes("engine/python/dsaviz_py.py"));
   check("the C++ runtime header is shipped beside the engine", files.includes("engine/cpp/dsaviz.hpp"));
+  check("the Rust runtime is shipped beside the engine", files.includes("engine/rust/dsaviz.rs"));
   check("the icon, licence and changelog are shipped",
     files.includes("images/icon.png") && files.includes("LICENSE.txt") && files.includes("changelog.md"));
 
@@ -126,6 +128,21 @@ try {
   check("records a C++ run with the bundled engine", cppSteps?.status === "Completed" && cppSteps.check?.matches === true,
     cppSteps ? `${cppSteps.steps.length} steps${cppSteps.errors.length ? ": " + cppSteps.errors.join("; ") : ""}`
              : (cppRun.stdout || cppRun.stderr).slice(0, 300));
+
+  // Rust is the student's own too: rustc on the path, or rustup's.
+  const rustc = process.env.DSAVIZ_RUSTC || onPath("rustc") ||
+    [path.join(os.homedir(), ".cargo", "bin", process.platform === "win32" ? "rustc.exe" : "rustc")].find(fs.existsSync) || "";
+  check("Rust is available to check with", rustc.length > 0, rustc || "set DSAVIZ_RUSTC");
+  const rustSample = path.join(root, "samples", "rust", "two_sum_sorted.rs");
+  // rustc needs the system's linker, found through the real PATH; .NET is still kept out.
+  const rustRun = spawnSync(engine, ["--job", "-"], {
+    input: JSON.stringify({ file: rustSample, entry: "Solution.two_sum", stepSize: 8, rustc }),
+    env: { ...bare, PATH: process.env.PATH }, encoding: "utf8", timeout: 300_000
+  });
+  const rustSteps = rustRun.stdout ? JSON.parse(rustRun.stdout).steps : null;
+  check("records a Rust run with the bundled engine", rustSteps?.status === "Completed" && rustSteps.check?.matches === true,
+    rustSteps ? `${rustSteps.steps.length} steps${rustSteps.errors.length ? ": " + rustSteps.errors.join("; ") : ""}`
+              : (rustRun.stdout || rustRun.stderr).slice(0, 300));
 
   const measured = job({ file: sample, entry: "Solution.TwoSum" });
   const primary = measured.stdout ? JSON.parse(measured.stdout).primary : null;

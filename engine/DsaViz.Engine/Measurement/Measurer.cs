@@ -114,6 +114,26 @@ public static class Measurer
             () => Cpp.CppEstimator.Space);
     }
 
+    /// <summary>A Rust function, measured as the others are, built once with the student's own rustc.</summary>
+    public static MeasurementResult MeasureRust(
+        Rust.RustHost host,
+        string source,
+        string entry,
+        IReadOnlyList<InputSpec>? inputs = null,
+        IReadOnlyList<int>? sizes = null,
+        long budget = Runner.DefaultBudget,
+        GenerationStrategy? strategy = null)
+    {
+        var solution = Rust.RustSolution.Read(source, entry);
+        var built = solution.Build(host, stepping: false);
+        if (built.Executable is null) return Failed(built.Status, built.Errors, inputs ?? Array.Empty<InputSpec>());
+
+        using var target = solution.Target(built.Executable, built.Plan!);
+        return MeasureTarget(target, inputs, sizes, budget, strategy,
+            () => Rust.RustEstimator.Time(solution.File, solution.Function!),
+            () => Rust.RustEstimator.Space);
+    }
+
     private static MeasurementResult MeasureTarget(
         IRunTarget target,
         IReadOnlyList<InputSpec>? inputs,

@@ -30,12 +30,17 @@ public static class JobRunner
         {
             return new JobResponse { Errors = new[] { ex.Message } };
         }
+        catch (Rust.RustUnavailableException ex)
+        {
+            // Nothing runs without rustc, or without the linker it needs, and the editor can say how to get them.
+            return new JobResponse { Errors = new[] { ex.Message }, ErrorCode = ex.Code };
+        }
         catch (Cpp.CppUnavailableException ex)
         {
             // Nothing runs without a compiler, and the editor can say how to get one.
             return new JobResponse { Errors = new[] { ex.Message }, ErrorCode = ex.Code };
         }
-        catch (Cpp.CppRunFailedException ex)
+        catch (Native.NativeRunFailedException ex)
         {
             return new JobResponse { Errors = new[] { ex.Message } };
         }
@@ -53,6 +58,9 @@ public static class JobRunner
         Cpp.CppHost? cpp = null;
         Cpp.CppHost CppHost() => cpp ??= Cpp.CppHost.Locate(request.CppCompiler);
         bool isCpp = Cpp.CppSolution.IsCpp(request.File);
+        Rust.RustHost? rust = null;
+        Rust.RustHost RustHost() => rust ??= Rust.RustHost.Locate(request.Rustc);
+        bool isRust = Rust.RustSolution.IsRust(request.File);
 
         if (request.AllExamples)
         {
@@ -60,6 +68,8 @@ public static class JobRunner
                 ? Stepper.RunExamplesPython(PythonHost(), primarySource, request.Entry, request.Budget)
                 : isCpp
                 ? Stepper.RunExamplesCpp(CppHost(), primarySource, request.Entry, request.Budget)
+                : isRust
+                ? Stepper.RunExamplesRust(RustHost(), primarySource, request.Entry, request.Budget)
                 : Stepper.RunExamples(DsaViz.Engine.Analysis.SourceAnalysis.Create(primarySource), request.Entry, request.Budget);
             return new JobResponse
             {
@@ -76,6 +86,9 @@ public static class JobRunner
                     stepSize, request.MaxSteps, request.Strategy, request.Budget, request.Values, request.Example)
                 : isCpp
                 ? Stepper.RecordCpp(CppHost(), primarySource, request.Entry, request.Inputs,
+                    stepSize, request.MaxSteps, request.Strategy, request.Budget, request.Values, request.Example)
+                : isRust
+                ? Stepper.RecordRust(RustHost(), primarySource, request.Entry, request.Inputs,
                     stepSize, request.MaxSteps, request.Strategy, request.Budget, request.Values, request.Example)
                 : Stepper.Record(
                     DsaViz.Engine.Analysis.SourceAnalysis.Create(primarySource), request.Entry, request.Inputs,
@@ -94,6 +107,8 @@ public static class JobRunner
                 ? Measurer.MeasurePython(PythonHost(), source, entry, inputs, sizes, request.Budget, strategy)
                 : Cpp.CppSolution.IsCpp(file)
                 ? Measurer.MeasureCpp(CppHost(), source, entry, inputs, sizes, request.Budget, strategy)
+                : Rust.RustSolution.IsRust(file)
+                ? Measurer.MeasureRust(RustHost(), source, entry, inputs, sizes, request.Budget, strategy)
                 : Measurer.Measure(source, entry, inputs, sizes, request.Budget, strategy);
 
         var primary = Measure(request.File, primarySource, request.Entry, request.Inputs, request.Sizes, request.Strategy);

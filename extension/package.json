@@ -1,8 +1,8 @@
 {
   "name": "dsa-playback",
   "displayName": "DSA Playback \u2014 Algorithm Visualizer & Big-O Explainer",
-  "description": "Watch your C#, Python or C++ solution run step by step \u2014 pointers sliding, lists rewiring, trees filling \u2014 and see in plain words why it is O(n\u00b2). Runs on your machine, no sign-in. Built for learning data structures and algorithms.",
-  "version": "1.3.0",
+  "description": "Watch your C#, Python, C++ or Rust solution run step by step \u2014 pointers sliding, lists rewiring, trees filling \u2014 and see in plain words why it is O(n\u00b2). Runs on your machine, no sign-in. Built for learning data structures and algorithms.",
+  "version": "1.4.0",
   "publisher": "codewrapper12",
   "license": "MIT",
   "icon": "images/icon.png",
@@ -31,7 +31,7 @@
     "space complexity",
     "complexity",
     "algorithm visualizer",
-    "visualizer",
+    "rust",
     "visualization",
     "step through",
     "step by step",
@@ -64,7 +64,8 @@
   "activationEvents": [
     "onLanguage:csharp",
     "onLanguage:python",
-    "onLanguage:cpp"
+    "onLanguage:cpp",
+    "onLanguage:rust"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -116,7 +117,7 @@
       "editor/title": [
         {
           "command": "dsaPlayback.visualize",
-          "when": "resourceLangId == csharp || resourceLangId == python || resourceLangId == cpp",
+          "when": "resourceLangId == csharp || resourceLangId == python || resourceLangId == cpp || resourceLangId == rust",
           "group": "navigation"
         }
       ],
@@ -127,11 +128,11 @@
         },
         {
           "command": "dsaPlayback.visualize",
-          "when": "editorLangId == csharp || editorLangId == python || editorLangId == cpp"
+          "when": "editorLangId == csharp || editorLangId == python || editorLangId == cpp || editorLangId == rust"
         },
         {
           "command": "dsaPlayback.measure",
-          "when": "editorLangId == csharp || editorLangId == python || editorLangId == cpp"
+          "when": "editorLangId == csharp || editorLangId == python || editorLangId == cpp || editorLangId == rust"
         }
       ]
     },
@@ -172,6 +173,11 @@
           "default": "",
           "markdownDescription": "The C++ compiler for C++ files: a path to `clang++` or `g++`. Leave empty to use `clang++`, or else `g++`, on your path. Needs C++17."
         },
+        "dsaPlayback.rustc": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "The Rust compiler for Rust files: a path to `rustc`. Leave empty to use `rustc` on your path, or rustup's in `~/.cargo/bin`."
+        },
         "dsaPlayback.explainWithAI": {
           "type": "boolean",
           "default": false,
@@ -188,7 +194,7 @@
           {
             "id": "twoPointers",
             "title": "Watch two pointers move",
-            "description": "Open a two-pointer solution, then press **\u25b6 Visualize** above `TwoSum`.\n[Open Two Sum II in C#](command:dsaPlayback.openSample?%5B%22TwoSumSorted.cs%22%5D) \u00b7 [in Python](command:dsaPlayback.openSample?%5B%22two_sum_sorted.py%22%5D) \u00b7 [in C++](command:dsaPlayback.openSample?%5B%22two_sum_sorted.cpp%22%5D)",
+            "description": "Open a two-pointer solution, then press **\u25b6 Visualize** above `TwoSum`.\n[Open Two Sum II in C#](command:dsaPlayback.openSample?%5B%22TwoSumSorted.cs%22%5D) \u00b7 [in Python](command:dsaPlayback.openSample?%5B%22two_sum_sorted.py%22%5D) \u00b7 [in C++](command:dsaPlayback.openSample?%5B%22two_sum_sorted.cpp%22%5D) \u00b7 [in Rust](command:dsaPlayback.openSample?%5B%22two_sum_sorted.rs%22%5D)",
             "media": {
               "markdown": "walkthrough/visualize.md"
             },
@@ -199,7 +205,7 @@
           {
             "id": "bfs",
             "title": "Try your own input on a tree",
-            "description": "Open a breadth-first search, press **\u25b6 Visualize**, then type a different tree in the box.\n[Open Level Order Traversal in C#](command:dsaPlayback.openSample?%5B%22LevelOrder.cs%22%5D) \u00b7 [in Python](command:dsaPlayback.openSample?%5B%22level_order.py%22%5D) \u00b7 [in C++](command:dsaPlayback.openSample?%5B%22level_order.cpp%22%5D)",
+            "description": "Open a breadth-first search, press **\u25b6 Visualize**, then type a different tree in the box.\n[Open Level Order Traversal in C#](command:dsaPlayback.openSample?%5B%22LevelOrder.cs%22%5D) \u00b7 [in Python](command:dsaPlayback.openSample?%5B%22level_order.py%22%5D) \u00b7 [in C++](command:dsaPlayback.openSample?%5B%22level_order.cpp%22%5D) \u00b7 [in Rust](command:dsaPlayback.openSample?%5B%22level_order.rs%22%5D)",
             "media": {
               "markdown": "walkthrough/inputs.md"
             },
@@ -210,7 +216,7 @@
           {
             "id": "complexity",
             "title": "See why it's O(n)",
-            "description": "Open a memoised dynamic-programming solution and press **Complexity**.\n[Open Climbing Stairs in C#](command:dsaPlayback.openSample?%5B%22ClimbStairs.cs%22%5D) \u00b7 [in Python](command:dsaPlayback.openSample?%5B%22climb_stairs.py%22%5D) \u00b7 [in C++](command:dsaPlayback.openSample?%5B%22climb_stairs.cpp%22%5D)",
+            "description": "Open a memoised dynamic-programming solution and press **Complexity**.\n[Open Climbing Stairs in C#](command:dsaPlayback.openSample?%5B%22ClimbStairs.cs%22%5D) \u00b7 [in Python](command:dsaPlayback.openSample?%5B%22climb_stairs.py%22%5D) \u00b7 [in C++](command:dsaPlayback.openSample?%5B%22climb_stairs.cpp%22%5D) \u00b7 [in Rust](command:dsaPlayback.openSample?%5B%22climb_stairs.rs%22%5D)",
             "media": {
               "markdown": "walkthrough/complexity.md"
             },

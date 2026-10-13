@@ -1,7 +1,7 @@
 # DSA Playback — Algorithm Visualizer & Big-O Explainer
 
 Watch your data-structures-and-algorithms code run, one step at a time — and see why it
-has the complexity it has. For C#, Python and C++, written the way LeetCode writes it.
+has the complexity it has. For C#, Python, C++ and Rust, written the way LeetCode writes it.
 
 - **Runs on your machine.** Nothing to set up for C#: the engine is inside the
   extension. For Python, the Python you already have is used (3.9 or later).
@@ -15,7 +15,7 @@ has the complexity it has. For C#, Python and C++, written the way LeetCode writ
 
 ## Watch it run
 
-Open a C#, Python or C++ solution. Above every method you can run there are two buttons:
+Open a C#, Python, C++ or Rust solution. Above every method you can run there are two buttons:
 
 - **▶ Visualize** — plays your code step by step, with your data drawn and moving:
   - arrays with `i`, `j`, `left`, `right`, `mid`… as pointers that slide, and swapped
@@ -159,6 +159,24 @@ change the file. No compiler? DSA Playback says how to install one for your syst
 
 Not yet for C++: design problems, examples written as calls in `main`, and Microsoft's
 compiler (MSVC).
+
+## Rust
+
+Rust files work the same way, built with your own `rustc` (installed by rustup; set
+`dsaPlayback.rustc` to choose one). Write it as LeetCode does — `impl Solution { pub fn … }`
+with no `struct Solution;`, and `TreeNode` and `ListNode` left commented out; they are
+supplied. Memory is exact: every byte your code allocates on the heap.
+
+The run view also shows Rust's ownership rules as your code runs. A variable the
+compiler would not let be read at a step is listed with the reason: **moved**,
+**borrowed**, **not set yet**, or **no longer used** — the last for a reference after
+its last use, when its borrow has ended.
+
+An integer overflow panics when you press Visualize, as in a debug build, and names its
+line. When measuring complexity at large sizes it wraps instead, as in a release build.
+
+Not yet for Rust: design problems, examples written as calls in `main`, crates outside
+the standard library, and stepping inside a closure whose body is a single expression.
 
 ## Python
 

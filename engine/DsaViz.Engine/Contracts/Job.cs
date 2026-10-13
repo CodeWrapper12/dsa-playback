@@ -45,6 +45,9 @@ public sealed record JobRequest
     /// </summary>
     public bool AllExamples { get; init; }
 
+    /// <summary>The Rust compiler to build Rust files with: the dsaPlayback.rustc setting, when set.</summary>
+    public string? Rustc { get; init; }
+
     /// <summary>The C++ compiler to build C++ files with: the dsaPlayback.cppCompiler setting, when set.</summary>
     public string? CppCompiler { get; init; }
 

@@ -70,6 +70,12 @@ jobs:
           compiler="$bin/${{ runner.arch == 'ARM64' && 'clang++' || 'g++' }}.exe"
           echo "$bin" >> "$GITHUB_PATH"
           echo "DSAVIZ_CXX=$compiler" >> "$GITHUB_ENV"
+      # The engine tests build Rust solutions with rustup's stable toolchain, as students install it.
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Show the Rust compiler
+        shell: bash
+        run: rustc --version --verbose
+
       - name: Show the C++ compiler
         shell: bash
         run: ${DSAVIZ_CXX:-$(command -v clang++ || command -v g++)} --version

@@ -914,6 +914,8 @@
       ${sizeList ? `<div class="entries sizes">${sizeList}</div>` : ""}
       <div class="footnote">${context.python
         ? "Approximate, from Python's tracemalloc: what your code allocated, not the visualizer. Python allocates even for integers above 256. Sizes are each structure itself (sys.getsizeof), not what its elements point to."
+        : context.language === "rust"
+        ? "Exact: every byte your code allocated on the heap — each Vec's, String's and map's storage, every Box and Rc — not the visualizer's. Values on the stack are not counted. A variable the compiler would not let be read at a step says why: moved, borrowed, not set yet, or no longer used."
         : context.language === "cpp"
         ? "Exact: every byte your code allocated with new — each container's storage — not the visualizer's. Variables on the stack are not counted. Sizes are approximate: each structure itself, not what its elements point to."
         : "Bytes allocated by your code, not by the visualizer. Sizes are approximate: each structure itself, not what its elements point to."}</div>

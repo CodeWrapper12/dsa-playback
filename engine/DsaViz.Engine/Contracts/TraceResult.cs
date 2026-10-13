@@ -136,7 +136,11 @@ public sealed record TraceResult
     /// <summary>The language the solution is in: "csharp" or "python".</summary>
     public string Language { get; init; } = "csharp";
 
-    public string MemoryModel => Language == "cpp"
+    public string MemoryModel => Language == "rust"
+        ? "Exact: every byte your code allocated on the heap — each Vec's, String's and map's storage, every Box and Rc — " +
+          "counted per statement by a counting allocator, and the peak held at once measured directly. Values on the stack, " +
+          "and the visualizer's own bookkeeping, are not counted."
+        : Language == "cpp"
         ? "Exact: every byte allocated with new — every container's storage — counted per statement by replacing " +
           "the program's operator new and delete, and the peak held at once measured directly. Variables on the stack, " +
           "and the visualizer's own bookkeeping, are not counted."
