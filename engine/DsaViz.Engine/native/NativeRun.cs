@@ -76,7 +76,8 @@ public sealed class NativeTarget : IRunTarget
                 TotalStatements = end.StatementsRun,
                 TotalBytesAllocated = end.Allocated,
                 MaxRecursionDepth = end.MaxDepth,
-                PeakBytes = end.Peak,
+                // Measured directly by the C++ and Rust runtimes; Java's peak is inferred, as C#'s is.
+                PeakBytes = end.Peak >= 0 ? end.Peak : null,
                 ElapsedMs = started.Elapsed.TotalMilliseconds,
                 LibraryCalls = _sites.Select((site, i) => new LibraryCall(site.Site, site.Line, site.Column, site.Member, site.Cost,
                         end.Sites.ElementAtOrDefault(i).Calls, end.Sites.ElementAtOrDefault(i).Work))
@@ -154,6 +155,7 @@ public static class NativeRun
             "RecursionLimitExceeded" => (RunStatus.RecursionLimitExceeded, new[] { error }),
             "Crashed" => (RunStatus.RuntimeError, new[] { Crash(error, line) }),
             "RuntimeError" => (RunStatus.RuntimeError, new[] { line is { } l ? InsertLine(error, l) : error }),
+            "InvalidInput" => (RunStatus.InvalidInput, new[] { error }),
             "InputError" => (RunStatus.RuntimeError, new[] { $"The visualizer could not build the input for your function ({error}). This is a bug in the visualizer." }),
             _ => (RunStatus.RuntimeError, new[] { error })
         };
@@ -206,10 +208,18 @@ public static class NativeRun
         public List<ExecutionStep> Steps { get; } = new();
         public List<ReturnEvent> Returns { get; } = new();
 
+        /// <summary>A design problem's calls: each one's number and the step count when it started.</summary>
+        public List<(int Index, int Step)> CallStarts { get; } = new();
+
         public Recording(IReadOnlyList<StatementInfo> statements) => _statements = statements;
 
         public void Read(IReadOnlyList<string> lines)
         {
+            foreach (var line in lines.Where(l => l.StartsWith("{\"call\"", StringComparison.Ordinal)))
+            {
+                using var call = JsonDocument.Parse(line);
+                CallStarts.Add((call.RootElement.GetProperty("call").GetInt32(), call.RootElement.GetProperty("step").GetInt32()));
+            }
             foreach (var line in lines)
             {
                 if (line.StartsWith("{\"s\"", StringComparison.Ordinal)) Step(line);

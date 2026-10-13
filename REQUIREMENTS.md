@@ -584,7 +584,48 @@ builds do; step-through builds panic, as debug builds do.
 | 60 | Met on this Mac: first ▶ Visualize of Two Sum 2.4 s including building the runtime, about 1 s after; repairs are remembered, so a re-run compiles nothing. | By hand |
 | 61 | Met: every engine and panel test, the package build and `verify-package` — including a Rust run — pass on all six platforms with rustup's stable toolchain in release dry run 38374493266, Windows on ARM included. | Release dry run |
 
-### Phase 7c — Java (outline)
+### Phase 7c — Java (planned in detail)
 
-Java uses its own debugging interface or bytecode instrumentation, decided when it is
-planned.
+**Approach, chosen by testing.** Java is rewritten and compiled like C++ and Rust, with the
+student's own `javac`, rather than driven through the debugger interface or rewritten as
+bytecode: the run view, the protocol and the engine code are the ones already proven, and
+nothing has to be installed but a JDK. Tested by hand on JDK 17: `javac` takes 0.3 s and a
+run 0.08 s. The compiler rejects only two kinds of inserted read — a variable not yet set
+(shown as *not set yet*, repaired as in Rust), and a variable read inside a lambda that
+does not use it, which is never inserted. Memory is the JVM's own per-thread count of bytes
+allocated, read before and after each statement; the reads the engine inserts allocate
+nothing, so nothing of the visualizer's is counted. The peak held is inferred from
+allocation, the largest single allocation and call depth, as for C#.
+
+62. **A JDK is found.** `javac` and `java` from the setting `dsaPlayback.javaHome`, else
+    `JAVA_HOME`, else the path. JDK 11 or later. Without one, a message says how to get one
+    for the system, with a link.
+63. **LeetCode's Java as written.** `class Solution { public … }` with no imports — the
+    imports LeetCode adds itself (`java.util.*` and the rest) are supplied on the file's
+    first line, so no line moves. `TreeNode` and `ListNode` supplied when left commented
+    out. ▶ Visualize and Complexity above every public method of `Solution`.
+64. **Design problems** — LRU Cache, Min Stack — as in C# and Python: one ▶ Visualize on
+    the class, LeetCode's two-list example, every call made in order and checked.
+65. **Inputs** for `int`, `long`, `double`, `boolean`, `char`, `String`, arrays of these up to
+    two dimensions, `List` of these nested, `TreeNode` and `ListNode`. Examples from comments,
+    typed, or generated; Run all examples works. One compile per file version, cached.
+66. **The run view** as for the other languages: arrays and lists with index pointers,
+    `HashMap`, `TreeMap`, `HashSet`, `TreeSet`, `Stack` and a `Deque` used with push and pop
+    as stacks, a `Deque` or `Queue` used with offer and poll as a queue, `PriorityQueue` as a
+    heap, `StringBuilder`, linked lists and trees by identity, the call stack, the recursion
+    tree, memory per step.
+67. **Complexity** as for the other languages. Hidden work charged by the object's real type
+    at run time: `contains`, `indexOf` and `remove(Object)` on a list, never on a set;
+    `add` and `remove` at an index; sorting; copying a collection or array; `substring`,
+    `toCharArray` and `+=` on a `String`; `insert` and `deleteCharAt` at the front of a
+    `StringBuilder`.
+68. **Failures said plainly.** Compile errors on the student's own lines; exceptions as
+    *"Your code threw ArrayIndexOutOfBoundsException at line 12: Index 5 out of bounds for
+    length 3"*; the statement budget, the time limit and the depth limit as elsewhere.
+69. **Speed and platforms.** First ▶ Visualize within 10 seconds, a re-run within 2; checked
+    on all six platforms in CI with a JDK installed.
+
+Not in 7c: examples written as calls in `main`, code split across several files, and
+libraries outside the JDK.
+
+Released as 1.5.0.
