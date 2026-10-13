@@ -91,6 +91,29 @@ public static class Measurer
             () => solution.Description.Space ?? unknown);
     }
 
+    /// <summary>
+    /// A C++ function, measured exactly as C# and Python are. Built once with the student's
+    /// own compiler, then run at every size.
+    /// </summary>
+    public static MeasurementResult MeasureCpp(
+        Cpp.CppHost host,
+        string source,
+        string entry,
+        IReadOnlyList<InputSpec>? inputs = null,
+        IReadOnlyList<int>? sizes = null,
+        long budget = Runner.DefaultBudget,
+        GenerationStrategy? strategy = null)
+    {
+        var solution = Cpp.CppSolution.Read(source, entry);
+        var built = solution.Build(host, stepping: false);
+        if (built.Executable is null) return Failed(built.Status, built.Errors, inputs ?? Array.Empty<InputSpec>());
+
+        using var target = solution.Target(built.Executable, built.Program!);
+        return MeasureTarget(target, inputs, sizes, budget, strategy,
+            () => Cpp.CppEstimator.Time(solution.File, solution.Function!),
+            () => Cpp.CppEstimator.Space);
+    }
+
     private static MeasurementResult MeasureTarget(
         IRunTarget target,
         IReadOnlyList<InputSpec>? inputs,

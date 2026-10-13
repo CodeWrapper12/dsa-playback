@@ -149,6 +149,20 @@ public static class Derivations
             held = peaks.Max() - peaks.Min() < FixedHeldGrowth
                 ? new CurveFit(ComplexityClass.Constant, 1, Array.Empty<ClassFit>(), "Barely changes across the sizes measured.")
                 : Growth.Fit(sizes, peaks, allowIntercept: true);
+
+            // What is held at once can never grow faster than everything allocated. A fit
+            // that says it does was misled by allocation in steps — a vector doubling its
+            // storage, a deque taking another 4 KB block — which bends small sizes upwards.
+            // The total is fitted allowing for a fixed start, as the peak is.
+            // Of classes that fit the total equally well, the simplest is the bound: over these
+            // sizes O(n) and O(n log n) can differ in the fourth decimal of R².
+            var total = Growth.Fit(sizes, runs.Select(r => r.Trace.TotalBytesAllocated).ToList(), allowIntercept: true);
+            var bound = total.Best == ComplexityClass.Unknown || total.Ranked.Count == 0
+                ? ComplexityClass.Unknown
+                : total.Ranked.Where(f => f.RSquared >= total.RSquared - TieMargin).MinBy(f => Growth.Rank(f.Class))!.Class;
+            if (bound != ComplexityClass.Unknown && held.Best != ComplexityClass.Unknown &&
+                Growth.Rank(held.Best) > Growth.Rank(bound))
+                held = held with { Best = bound };
         }
 
         // Allocation that grows faster than its largest single piece is churn: buffers
@@ -174,8 +188,11 @@ public static class Derivations
                 : $"Holds at most {Bytes(most)} at once at n={N(n)}, growing as {ComplexityNames.Format(held.Best)} — measured directly, " +
                   "not inferred from what was allocated.");
             if (allocates)
-                lines.Add($"It allocates {Bytes(last.TotalBytesAllocated)} over the run in all; Python creates objects even for " +
-                          "arithmetic on large numbers, so much of that is short-lived.");
+                lines.Add(last.Language == "python"
+                    ? $"It allocates {Bytes(last.TotalBytesAllocated)} over the run in all; Python creates objects even for " +
+                      "arithmetic on large numbers, so much of that is short-lived."
+                    : $"It allocates {Bytes(last.TotalBytesAllocated)} over the run in all; what is freed again along the way " +
+                      "is not held, so the peak above is the space.");
         }
         else if (!allocates)
             lines.Add("Nothing allocated grows with the input.");
@@ -224,6 +241,9 @@ public static class Derivations
     }
 
     /// <summary>A measured peak that moves less than this over the whole range of sizes is a fixed amount.</summary>
+    /// <summary>R² values this close are a tie: the data cannot tell the classes apart.</summary>
+    private const double TieMargin = 0.002;
+
     private const long FixedHeldGrowth = 1024;
 
     private static string N(long value) => value.ToString("N0", CultureInfo.InvariantCulture);

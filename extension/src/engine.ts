@@ -141,16 +141,23 @@ export class EntryListError extends Error {
 export interface ListOptions {
   /** The file's text, when it has unsaved changes; read from disk otherwise. */
   source?: string;
-  language?: "csharp" | "python";
+  language?: "csharp" | "python" | "cpp";
   python?: string;
   signal?: AbortSignal;
+}
+
+export function languageOfFile(file: string): "csharp" | "python" | "cpp" {
+  const lower = file.toLowerCase();
+  if (lower.endsWith(".py")) return "python";
+  if ([".cpp", ".cc", ".cxx", ".c++"].some(extension => lower.endsWith(extension))) return "cpp";
+  return "csharp";
 }
 
 /** The methods in a file that can be run, read without running anything. */
 export async function listEntryPoints(file: string, options: ListOptions = {}): Promise<EntryPoint[]> {
   const args = ["--file", options.source === undefined ? file : "-", "--list-entries"];
-  const language = options.language ?? (file.toLowerCase().endsWith(".py") ? "python" : "csharp");
-  if (language === "python") args.push("--language", "python");
+  const language = options.language ?? languageOfFile(file);
+  if (language !== "csharp") args.push("--language", language);
   if (options.python) args.push("--python", options.python);
 
   const output = await run(resolveEnginePath(), args, options.source, options.signal);

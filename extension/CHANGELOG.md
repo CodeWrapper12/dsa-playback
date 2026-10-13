@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.3.0
+
+- **C++.** ▶ Visualize and Complexity for C++ solutions, built with your own `clang++`
+  or `g++`. LeetCode's C++ as written: no `#include`, no `using namespace std`,
+  `TreeNode` and `ListNode` supplied. The run view draws vectors, maps, sets, stacks,
+  queues, priority queues, linked lists and trees, with the call stack and the recursion
+  tree. Complexity counts every line, charges the work hidden in `std::find`, `sort`,
+  `erase` and the like, and measures memory exactly. Crashes and exceptions name their
+  line in plain words.
+- The Get Started walkthrough has its three samples in C++ too.
+- Fixed: memory held at once could be read as growing faster than everything allocated,
+  when a container's storage grew in steps at small sizes. It is now bounded by the total.
+
 ## 1.2.0
 
 - **Design problems.** LRU Cache, Min Stack and the rest: a class with LeetCode's

@@ -31,6 +31,30 @@ jobs:
             3.9
             3.13
 
+      # The engine tests build C++ solutions with the compiler a student on each system
+      # would have: Apple's clang, Ubuntu's g++, and on Windows MSYS2's MinGW-w64 — the one
+      # the visualizer's own advice tells Windows students to install.
+      - name: C++ compiler (Windows)
+        if: runner.os == 'Windows'
+        id: msys2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: ${{ runner.arch == 'ARM64' && 'CLANGARM64' || 'UCRT64' }}
+          install: ${{ runner.arch == 'ARM64' && 'mingw-w64-clang-aarch64-clang' || 'mingw-w64-ucrt-x86_64-gcc' }}
+          path-type: inherit
+          update: false
+      - name: Use the MinGW-w64 compiler
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          bin="${{ steps.msys2.outputs.msys2-location }}/${{ runner.arch == 'ARM64' && 'clangarm64' || 'ucrt64' }}/bin"
+          compiler="$bin/${{ runner.arch == 'ARM64' && 'clang++' || 'g++' }}.exe"
+          echo "$bin" >> "$GITHUB_PATH"
+          echo "DSAVIZ_CXX=$compiler" >> "$GITHUB_ENV"
+      - name: Show the C++ compiler
+        shell: bash
+        run: ${DSAVIZ_CXX:-$(command -v clang++ || command -v g++)} --version
+
       - name: Engine tests
         run: dotnet test engine/DsaViz.sln
 

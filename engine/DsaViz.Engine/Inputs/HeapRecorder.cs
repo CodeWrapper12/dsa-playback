@@ -257,7 +257,7 @@ public sealed class HeapRecorder : IStepObserver
         return new HeapValue(Summary(value)) { Ref = Track(value, pending) };
     }
 
-    private static bool Same(HeapObject a, HeapObject b)
+    internal static bool Same(HeapObject a, HeapObject b)
         => a.Kind == b.Kind && a.Count == b.Count && a.Bytes == b.Bytes &&
            SameList(a.Items, b.Items) && SameList(a.Entries, b.Entries) && SameList(a.Fields, b.Fields);
 
@@ -265,7 +265,7 @@ public sealed class HeapRecorder : IStepObserver
         => a is null ? b is null : b is not null && a.SequenceEqual(b);
 
     /// <summary>The change as a few positions, when that is all it is.</summary>
-    private static HeapObject? AsPatch(HeapObject previous, HeapObject current)
+    internal static HeapObject? AsPatch(HeapObject previous, HeapObject current)
     {
         if (current.Kind is not ("array" or "list") || previous.Items is null || current.Items is null) return null;
         if (previous.Items.Count != current.Items.Count || current.Items.Count < MinPatchable) return null;

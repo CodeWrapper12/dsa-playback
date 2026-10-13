@@ -18,6 +18,8 @@
   <ItemGroup>
     <!-- The Python runner ships beside the engine, in the build output and the published package. -->
     <None Include="python/*.py" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <!-- The C++ runtime header is compiled into each C++ solution by the student's compiler. -->
+    <None Include="cpp/*.hpp" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../DsaViz.Runtime/DsaViz.Runtime.csproj" />

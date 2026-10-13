@@ -215,6 +215,8 @@ export interface JobRequest {
   allExamples?: boolean;
   /** The Python interpreter for a Python file. */
   python?: string;
+  /** The C++ compiler for a C++ file, when the student set one. */
+  cppCompiler?: string;
   compareFile?: string;
   compareEntry?: string;
 }

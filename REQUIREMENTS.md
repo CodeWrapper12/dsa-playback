@@ -427,14 +427,85 @@ is pressed.
 | 44 | Met: `win32-arm64` on `windows-11-arm` and `linux-arm64` on `ubuntu-24.04-arm` passed every test and `verify-package` in release dry run 38329086933. | Release dry run |
 | 45 | Met, except the real Copilot answer, which is the publisher's check by hand. Off by default; the setting says the code is sent; nothing is sent until pressed; no API or no model says why. VS Code 1.85 is still supported: the API is found at run time. | `explain.test.ts` (6, stand-in model); panel tests: *Explain this step is absent until…*, *an answer from an earlier run is not shown*; integration: *Explain this step sends nothing while off…* |
 
-## Phase 7 — new languages (outline)
+## Phase 7 — new languages
 
-C++, then Rust, then Java. Each needs the student's own compiler: g++ or clang, rustc,
-or a JDK.
+C++, then Rust, then Java, each planned and approved separately. Each needs the
+student's own compiler or JDK.
 
-The planned approach for C++ and Rust shares most of its code:
-- **Complexity** comes from the compiler's own line counting (clang's and rustc's coverage
-  instrumentation counts every line exactly), plus a counting memory allocator.
-- **The run view** is recorded through a debugger.
+### Phase 7a — C++ (planned in detail)
 
-Java uses its own debugging interface. Each language is planned and approved separately.
+**Change of approach.** The outline planned coverage counters plus a debugger. Checked
+on real machines, the debugger half does not travel: macOS has lldb but no gdb, Linux
+usually has gdb, Windows students have MinGW's gdb or none, and each needs its own
+integration. Instead, C++ works the way C# and Python already do — the engine rewrites
+the student's code to report every statement, compiles it with the student's own
+compiler, and runs it:
+- a step call is inserted before each statement; variables are captured by C++
+  templates, so any type the code uses — `vector<vector<int>>`, `unordered_map`,
+  `ListNode*` — is read without the engine knowing it in advance
+- memory is counted by replacing `operator new` and `operator delete` in the program
+- the code is read by a parser for the C++ that LeetCode solutions use, written into the
+  engine, so nothing extra has to be installed or shipped per platform
+- `#line` directives keep every compiler error on the student's own line
+
+46. **A compiler is found.** `clang++` or `g++` with C++17, from the setting
+    `dsaPlayback.cppCompiler`, else the path. Without one, a message says how to get
+    one for the student's system: `xcode-select --install` on macOS, `sudo apt install
+    g++` on Ubuntu, MSYS2's MinGW-w64 on Windows, each a link or a copyable command.
+47. **LeetCode's C++ as written.** `class Solution { public: … }` with no `#include`
+    and no `using namespace std` compiles, as on LeetCode. `TreeNode` and `ListNode` are
+    supplied when the file leaves them commented out. ▶ Visualize and Complexity appear
+    above every public method of `Solution` and every free function.
+48. **Inputs** for the types LeetCode's C++ uses: `int`, `long long`, `double`, `bool`,
+    `char`, `string`, `vector` of any of these nested, `TreeNode*` and `ListNode*`, by
+    value, reference or const reference. Values from example comments, typed, or
+    generated as in C#; the result checked against Output; Run all examples works.
+    One compile per build: every input is read at run time, never compiled in.
+49. **The run view** as in C# and Python: arrays and vectors with index pointers,
+    `unordered_map`, `map`, `set`, `unordered_set`, `stack`, `queue`, `deque`,
+    `priority_queue`, linked lists and trees drawn by pointer identity, the call stack, the
+    recursion tree with return values, and memory allocated at each step.
+50. **Complexity** as in C# and Python: counts per line, the derivation and plain words,
+    memory allocated and peak held, recursion depth. Work hidden in the standard library
+    is charged for `find`, `count`, `accumulate`, `min_element`, `max_element`,
+    `reverse`, `copy` and `sort` over a range, `string::find` and `substr`, `string +`,
+    and `vector::insert` and `erase` before the end.
+51. **Failures said plainly.** Compile errors on the student's own lines; an endless loop
+    stopped by the statement budget and the time limit; runaway recursion stopped at a
+    depth limit; a crash — segmentation fault, abort, out-of-range — reported as *"Your
+    code crashed at line 12: reading through a null pointer or past the end of an array
+    usually causes this"*, with the line when it is known.
+52. **Speed.** A build is reused while the file is unchanged. On a typical laptop the
+    first ▶ Visualize of a LeetCode solution shows its run within 10 seconds, and a
+    re-run with new values within 2.
+53. **Checked on all three systems** in CI: macOS with clang, Linux with g++, Windows with
+    MinGW-w64 g++, using the LeetCode samples in C++.
+
+Not in 7a: Microsoft's compiler (MSVC), which needs Visual Studio's own environment;
+C++20 modules; code split across several files; templates written by the student are
+read, but their steps show as one function.
+
+Released as 1.3.0.
+
+Changed while building: `string +` is not charged as hidden work. Without types, the
+reader cannot tell a string's `+` from a number's; the copying still shows in memory.
+Library calls are charged by helpers that evaluate each argument exactly once — a first
+version copied the argument text, and `erase(s[left++])` moved `left` twice.
+
+#### Phase 7a status
+
+| # | Status | Checked by |
+|---|---|---|
+| 46 | Met: setting, `DSAVIZ_CXX`, then clang++ or g++. Missing: the message names the install command for the system, with Copy Install Command, How to Install and Set Compiler Path buttons. macOS Command Line Tools with their C++ headers half-removed are worked around and the fix remembered. | Engine run with an empty PATH: `cpp-missing` and the sentence; `CppHost` fix exercised on this Mac |
+| 47 | Met: no includes or `using`; `TreeNode`/`ListNode` supplied; lenses on public methods and free functions; a file's own `main` is renamed so the driver's runs. | `CppTests.LeetCodes_template_is_read…`, `A_file_in_the_LeetCode_extensions_layout…`; integration: *a C++ file gets its buttons…* |
+| 48 | Met: the listed types, by value or reference; examples from comments, typed, generated; Run all examples. One compile per build, cached by content. | `CppTests.Every_sample_runs_its_example_and_matches` (12 samples) |
+| 49 | Met: every listed structure, the call stack, the recursion tree, memory per step. | Panel tests: *every step of every C++ sample draws*, *C++ structures are drawn as what they are* |
+| 50 | Met, without `string +` (above). Measured classes for linear, hidden-quadratic, memoised, exponential, n log n and 2-D samples; peak memory measured directly; a reading of the code beside it. | `CppTests.Growth_is_measured…` (6), `A_scan_hidden_in_the_library_is_named`, `Memory_is_measured_exactly…`, `The_code_is_read…` (5) |
+| 51 | Met: compile errors on the student's line with nothing of the visualizer's; budget; depth limit; crashes and exceptions with their line. | `CppTests` (5 failure cases) |
+| 52 | Met on this Mac: first ▶ Visualize of Two Sum about 2.3 s including the compile; a re-run with new values reuses the build. | By hand |
+| 53 | Pending: CI on macOS, Linux and Windows (MinGW-w64), and the release dry run on all six platforms. | CI |
+ — Rust, and 7c — Java (outline)
+
+Rust's borrow checker would reject code that reads variables while they are borrowed, so
+the C++ approach may not carry over; its plan starts by testing that. Java uses its own
+debugging interface or bytecode instrumentation, decided when it is planned.

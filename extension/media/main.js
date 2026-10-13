@@ -112,7 +112,8 @@
     return banner(title, escapeHtml(error.message), true) +
       (error.internal ? '<button class="ghost" id="show-log">Show details</button>' +
         '<button class="ghost" id="report-problem">Report a problem</button>' : "") +
-      (error.code ? '<button id="install-python">Install Python</button>' : "");
+      (error.code ? `<button id="install-python" data-code="${escapeHtml(error.code)}">${
+        error.code === "cpp-missing" ? "How to install a C++ compiler" : "Install Python"}</button>` : "");
   }
 
   /** A "Show line" button for the first message that names a line of the student's code. */
@@ -655,12 +656,13 @@
     const selected = trace ? trace.selectedExample : st.choice && st.choice.example;
     const draft = st.draft || {};
 
-    const python = /\.py$/i.test((state.request && state.request.file) || "");
-    const callFrom = python ? '<code>if __name__ == "__main__":</code>' : "<code>Main</code>";
+    const language = languageOf((state.request && state.request.file) || "");
+    // C++ examples are read from comments only; a call in main is not read.
+    const orCall = language === "python" ? ', or call the method from <code>if __name__ == "__main__":</code>'
+      : language === "csharp" ? ", or call the method from <code>Main</code>" : "";
     const picker = examples.length === 0
       ? `<div class="footnote">No example found in your code, so values are generated. Paste LeetCode's
-           <code>Input: nums = [2,7,11,15], target = 9</code> as a comment, or call the method from
-           ${callFrom}, and it is used automatically.</div>`
+           <code>Input: nums = [2,7,11,15], target = 9</code> as a comment${orCall}, and it is used automatically.</div>`
       : `<div class="control"><label for="example">Example</label>
            <select id="example">
              ${examples.map((e, i) => `<option value="${i}" ${selected === i ? "selected" : ""}>${escapeHtml(e.label)}</option>`).join("")}
@@ -744,6 +746,13 @@
       <div class="summary">${escapeHtml(summary)}</div>
       <table><thead><tr><th></th><th>Example</th><th>Expected</th><th>Got</th></tr></thead><tbody>${rows}</tbody></table>
     </div>`;
+  }
+
+  /** "python", "cpp" or "csharp", from a file's name. */
+  function languageOf(file) {
+    if (/\.py$/i.test(file)) return "python";
+    if (/\.(cpp|cc|cxx|c\+\+)$/i.test(file)) return "cpp";
+    return "csharp";
   }
 
   /** The result against the example's expected output. */
@@ -884,8 +893,9 @@
   function stepArea(st, index, previous) {
     if (!window.DsaRun) return '<p class="placeholder">The run view could not load.</p>';
     if (!st.model || st.model.trace !== st.trace) st.model = window.DsaRun.prepare(st.trace);
-    const python = /\.py$/i.test((state.request && state.request.file) || "");
-    return window.DsaRun.render(st.model, index, previous, { animationMs: Math.min(450, stepInterval(st) * 0.7), python });
+    const language = languageOf((state.request && state.request.file) || "");
+    return window.DsaRun.render(st.model, index, previous,
+      { animationMs: Math.min(450, stepInterval(st) * 0.7), python: language === "python", language });
   }
 
   /** The arguments as they were passed in: arrays and strings as cells, grids as rows. */
@@ -1055,7 +1065,9 @@
       }));
 
     const installPython = document.getElementById("install-python");
-    if (installPython) installPython.addEventListener("click", () => { if (vscode) vscode.postMessage({ type: "installPython" }); });
+    if (installPython) installPython.addEventListener("click", () => {
+      if (vscode) vscode.postMessage({ type: "installPython", code: installPython.dataset.code });
+    });
 
     const reportButton = document.getElementById("report-problem");
     if (reportButton) reportButton.addEventListener("click", () => { if (vscode) vscode.postMessage({ type: "reportProblem" }); });

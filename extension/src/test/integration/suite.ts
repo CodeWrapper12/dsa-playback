@@ -227,6 +227,26 @@ const checks: [string, (api: TestApi) => Promise<void>][] = [
     }
   }],
 
+  ["a C++ file gets its buttons, runs its example and is measured with the compiler on this machine", async api => {
+    const document = await open("samples/cpp/two_sum.cpp");
+    assert.equal(document.languageId, "cpp");
+    assert.deepEqual((await api.lenses(document)).map(lens => lens.command?.title), ["$(play) Visualize", "$(graph) Complexity"]);
+
+    const before = api.lastSteps();
+    await vscode.commands.executeCommand("dsaPlayback.visualize", document.uri, "Solution.twoSum");
+    const steps = await waitFor(() => (api.lastSteps() !== before ? api.lastSteps() : undefined), "a recorded run");
+    assert.equal(steps.status, "Completed", steps.errors.join("; "));
+    assert.equal(steps.check?.matches, true);
+
+    const measured = await open("samples/cpp/dedupe_with_find.cpp");
+    const previous = api.lastResponse();
+    await vscode.commands.executeCommand("dsaPlayback.measure", measured.uri, "Solution.countDistinct");
+    const response = await waitFor(() => (api.lastResponse() !== previous ? api.lastResponse() : undefined), "a measurement");
+    assert.equal(response.primary?.status, "Completed", response.primary?.errors.join("; "));
+    assert.ok(["Quadratic", "Unknown"].includes(response.primary!.empirical.best), response.primary!.empirical.best);
+    assert.ok(api.linesDecoratedIn(measured.uri) > 0, "costs are written beside the C++ lines");
+  }],
+
   ["the walkthrough opens an editable copy of its sample", async () => {
     await vscode.commands.executeCommand("dsaPlayback.openSample", "LevelOrder.cs");
     const opened = vscode.window.activeTextEditor?.document.fileName ?? "";

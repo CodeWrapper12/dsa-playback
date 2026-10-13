@@ -1,7 +1,7 @@
 # DSA Playback — Algorithm Visualizer & Big-O Explainer
 
 Watch your data-structures-and-algorithms code run, one step at a time — and see why it
-has the complexity it has. For C# and Python, written the way LeetCode writes it.
+has the complexity it has. For C#, Python and C++, written the way LeetCode writes it.
 
 - **Runs on your machine.** Nothing to set up for C#: the engine is inside the
   extension. For Python, the Python you already have is used (3.9 or later).
@@ -15,7 +15,7 @@ has the complexity it has. For C# and Python, written the way LeetCode writes it
 
 ## Watch it run
 
-Open a C# or Python solution. Above every method you can run there are two buttons:
+Open a C#, Python or C++ solution. Above every method you can run there are two buttons:
 
 - **▶ Visualize** — plays your code step by step, with your data drawn and moving:
   - arrays with `i`, `j`, `left`, `right`, `mid`… as pointers that slide, and swapped
@@ -146,6 +146,19 @@ them commented out. If the problem's description is in the file, its examples ar
 Open the Command Palette and run **Welcome: Open Walkthrough…**, then **Get started with
 DSA Playback**. Three samples — two pointers, a tree BFS, and memoised dynamic
 programming — open ready to run.
+
+## C++
+
+C++ files work the same way, built with the compiler you already have: `clang++` or `g++`
+with C++17 (set `dsaPlayback.cppCompiler` to choose one). Write it as LeetCode does —
+`class Solution { public: … }` with no `#include` or `using namespace std`, and
+`TreeNode` and `ListNode` left commented out; they are supplied. Memory is exact: every
+byte your code allocates with `new`, each container's storage included. The first run
+compiles your code, which takes a second or two; later runs reuse the build until you
+change the file. No compiler? DSA Playback says how to install one for your system.
+
+Not yet for C++: design problems, examples written as calls in `main`, and Microsoft's
+compiler (MSVC).
 
 ## Python
 

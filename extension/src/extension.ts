@@ -9,7 +9,8 @@ import {
   resolveEnginePath
 } from "./engine";
 import { log, recentLog, showLog } from "./log";
-import { offerPython, pythonInterpreter } from "./python";
+import { pythonInterpreter } from "./python";
+import { offerToolchain } from "./toolchain";
 import { RatingPrompt, RatingState } from "./rating";
 import { issueUrl } from "./report";
 import { explainStep, LanguageModels, StepToExplain } from "./explain";
@@ -27,10 +28,11 @@ const EXTENSION_ID = "codewrapper12.dsa-playback";
 /** Samples offered by the walkthrough, shipped inside the extension under samples/<language>. */
 const SAMPLES = new Map([
   ["TwoSumSorted.cs", "csharp"], ["LevelOrder.cs", "csharp"], ["ClimbStairs.cs", "csharp"],
-  ["two_sum_sorted.py", "python"], ["level_order.py", "python"], ["climb_stairs.py", "python"]
+  ["two_sum_sorted.py", "python"], ["level_order.py", "python"], ["climb_stairs.py", "python"],
+  ["two_sum_sorted.cpp", "cpp"], ["level_order.cpp", "cpp"], ["climb_stairs.cpp", "cpp"]
 ]);
 
-const LANGUAGES = ["csharp", "python"];
+const LANGUAGES = ["csharp", "python", "cpp"];
 
 /**
  * What the integration tests can observe. Decorations and webviews are not readable
@@ -85,8 +87,8 @@ export function activate(context: vscode.ExtensionContext): TestApi {
     vscode.commands.registerCommand("dsaPlayback.openSample", (name: string) => openSample(context, name)),
     vscode.commands.registerCommand("dsaPlayback.showLog", () => showLog()),
     vscode.commands.registerCommand("dsaPlayback.reportProblem", () => reportProblem(context)),
-    vscode.commands.registerCommand("dsaPlayback.installPython", (message?: string) =>
-      offerPython(message ?? "DSA Playback needs Python 3.9 or later to run Python files.")));
+    vscode.commands.registerCommand("dsaPlayback.installPython", (message?: string, code?: string) =>
+      offerToolchain(code, message ?? "DSA Playback needs Python 3.9 or later to run Python files.")));
 
   return {
     lastResponse: () => observed.response,
@@ -123,7 +125,7 @@ async function start(context: vscode.ExtensionContext, tab: Tab, uri?: vscode.Ur
     : vscode.window.activeTextEditor?.document;
 
   if (!document || !LANGUAGES.includes(document.languageId)) {
-    vscode.window.showWarningMessage("Open a C# or Python file first, then press ▶ Visualize above a method.");
+    vscode.window.showWarningMessage("Open a C#, Python or C++ file first, then press ▶ Visualize above a method.");
     return;
   }
   const python = document.languageId === "python" ? await pythonInterpreter(document.uri) : undefined;
@@ -143,7 +145,7 @@ async function start(context: vscode.ExtensionContext, tab: Tab, uri?: vscode.Ur
     if (tab === "compare") {
       const picked = await vscode.window.showOpenDialog({
         canSelectMany: false,
-        filters: { "Solutions": ["cs", "py"] },
+        filters: { "Solutions": ["cs", "py", "cpp", "cc", "cxx"] },
         openLabel: "Compare against",
         title: "Pick the second solution"
       });
@@ -166,7 +168,8 @@ async function start(context: vscode.ExtensionContext, tab: Tab, uri?: vscode.Ur
       budget: vscode.workspace.getConfiguration("dsaPlayback").get<number>("budget"),
       compareFile,
       compareEntry,
-      python
+      python,
+      cppCompiler: cppCompiler()
     };
 
     ReportPanel.show(context, request, tab === "steps" ? "steps" : "cost");
@@ -263,6 +266,11 @@ async function reportProblem(context: vscode.ExtensionContext) {
   await vscode.env.openExternal(url as unknown as vscode.Uri);
 }
 
+/** The C++ compiler the student chose, if they did; otherwise the engine finds clang++ or g++. */
+function cppCompiler(): string | undefined {
+  return vscode.workspace.getConfiguration("dsaPlayback").get<string>("cppCompiler")?.trim() || undefined;
+}
+
 function explainEnabled(): boolean {
   return vscode.workspace.getConfiguration("dsaPlayback").get<boolean>("explainWithAI") === true;
 }
@@ -288,7 +296,7 @@ function reportError(error: unknown) {
   log(`Shown to the student: ${message}`);
 
   if (error instanceof EntryListError && error.code) {
-    void offerPython(message);
+    void offerToolchain(error.code, message);
     return;
   }
   if (error instanceof EngineNotFoundError || error instanceof EngineFailedError) {
@@ -308,7 +316,7 @@ interface MeasureMessage { type: "measure" }
 interface RevealMessage { type: "reveal"; line: number }
 interface StepAtMessage { type: "stepAt"; line: number }
 interface ShowLogMessage { type: "showLog" }
-interface InstallPythonMessage { type: "installPython"; message?: string }
+interface InstallPythonMessage { type: "installPython"; message?: string; code?: string }
 interface RunExamplesMessage { type: "runExamples" }
 interface ReportProblemMessage { type: "reportProblem" }
 interface ExplainMessage { type: "explain"; trace: number; index: number; callStack?: string[]; changed?: string[] }
@@ -416,7 +424,7 @@ class ReportPanel {
       case "showLog": showLog(); return;
       case "reportProblem": await vscode.commands.executeCommand("dsaPlayback.reportProblem"); return;
       case "explain": await this.explain(message); return;
-      case "installPython": await offerPython(message.message ?? "DSA Playback needs Python 3.9 or later."); return;
+      case "installPython": await offerToolchain(message.code, message.message ?? "DSA Playback needs Python 3.9 or later."); return;
       case "reveal": await this.reveal(message.line); return;
       case "rerun":
         // The panel sends back the engine's own resolved inputs with the user's edits
@@ -470,7 +478,7 @@ class ReportPanel {
       observed.response = response;
       if (response.errorCode) {
         this.panel.webview.postMessage({ type: "error", message: response.errors.join(" "), code: response.errorCode });
-        void offerPython(response.errors.join(" "));
+        void offerToolchain(response.errorCode, response.errors.join(" "));
         return;
       }
       this.panel.webview.postMessage({ type: "result", response, request });
@@ -510,13 +518,14 @@ class ReportPanel {
         stepSize: size,
         values: choice.values,
         example: choice.example,
-        python: this.request.python
+        python: this.request.python,
+        cppCompiler: this.request.cppCompiler
       }, controller.signal);
       if (controller.signal.aborted) return;
 
       if (response.errorCode) {
         this.panel.webview.postMessage({ type: "stepsError", message: response.errors.join(" "), code: response.errorCode });
-        void offerPython(response.errors.join(" "));
+        void offerToolchain(response.errorCode, response.errors.join(" "));
         return;
       }
 
@@ -560,7 +569,7 @@ class ReportPanel {
 
     const lines = shown.source.split(/\r?\n/);
     const toExplain: StepToExplain = {
-      language: path.extname(this.request.file).toLowerCase() === ".py" ? "Python" : "C#",
+      language: { ".py": "Python", ".cpp": "C++", ".cc": "C++", ".cxx": "C++" }[path.extname(this.request.file).toLowerCase()] ?? "C#",
       code: solutionCode(lines, shown.trace),
       line: step.line,
       lineText: lines[step.line - 1] ?? "",
@@ -596,14 +605,15 @@ class ReportPanel {
         entry: this.request.entry,
         allExamples: true,
         budget: this.request.budget,
-        python: this.request.python
+        python: this.request.python,
+        cppCompiler: this.request.cppCompiler
       }, controller.signal);
       if (controller.signal.aborted) return;
 
       if (response.errorCode || !response.examples) {
         const message = response.errors.join(" ") || "The engine returned no results.";
         this.panel.webview.postMessage({ type: "examplesError", message, code: response.errorCode });
-        if (response.errorCode) void offerPython(message);
+        if (response.errorCode) void offerToolchain(response.errorCode, message);
         return;
       }
       observed.examples = response.examples;

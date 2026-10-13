@@ -118,7 +118,7 @@ if (file is null)
         "                [--sizes 10,100,1000] [--strategy <" + string.Join("|", Enum.GetNames<GenerationStrategy>()) + ">]\n" +
         "                [--budget <n>]\n" +
         "  DsaViz.Engine --file <solution.cs> --entry <Method> --steps <n> [--strategy <...>]\n" +
-        "  DsaViz.Engine --file <solution.cs|solution.py|-> --list-entries [--language python] [--python <path>]\n" +
+        "  DsaViz.Engine --file <solution.cs|solution.py|solution.cpp|-> --list-entries [--language python|cpp] [--python <path>]\n" +
         "  DsaViz.Engine --job <request.json|->");
 
 // "-" reads the source from stdin, so the editor can list the methods of a file with
@@ -131,6 +131,13 @@ else source = File.ReadAllText(file);
 if (listEntries)
 {
     bool isPython = language == "python" || (language is null && JobRunner.IsPython(file));
+    bool isCpp = language == "cpp" || (language is null && DsaViz.Engine.Cpp.CppSolution.IsCpp(file));
+    if (isCpp)
+    {
+        // Read without compiling, so the buttons appear even before a compiler is installed.
+        var read = DsaViz.Engine.Cpp.CppReader.Read(source);
+        return Emit(new { Entries = DsaViz.Engine.Cpp.CppSolution.Entries(read), CompileError = read.Problem }, 0);
+    }
     if (!isPython) return Emit(new { Entries = EntryPointScanner.Scan(source) }, 0);
 
     try

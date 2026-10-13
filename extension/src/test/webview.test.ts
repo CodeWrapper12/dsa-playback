@@ -756,3 +756,55 @@ test("an answer from an earlier run is not shown on a new one", () => {
     }, 0);
   });
 });
+
+// ---- C++ -------------------------------------------------------------------------------------
+
+const cppSample = (name: string) => sample(`cpp/${name}`);
+
+test("every step of every C++ sample draws without error", () => {
+  const cases: [string, string][] = [
+    ["two_sum.cpp", "Solution.twoSum"], ["reverse_list.cpp", "Solution.reverseList"], ["max_depth.cpp", "Solution.maxDepth"],
+    ["level_order.cpp", "Solution.levelOrder"], ["climb_stairs.cpp", "Solution.climbStairs"], ["fib.cpp", "fib"],
+    ["num_islands.cpp", "Solution.numIslands"], ["kth_largest.cpp", "Solution.findKthLargest"],
+    ["valid_parentheses.cpp", "Solution.isValid"], ["binary_search.cpp", "Solution.search"],
+    ["unique_paths.cpp", "Solution.uniquePaths"], ["group_count.cpp", "Solution.byFrequency"],
+    ["longest_substring.cpp", "Solution.lengthOfLongestSubstring"]
+  ];
+  for (const [file, entry] of cases) {
+    const { go, count, dom } = run(cppSample(file), entry);
+    for (let i = 0; i < count; i++) go(i);
+    for (let i = count - 1; i >= 0; i -= 5) go(i);
+    assert.match(dom.window.document.body.textContent ?? "", /Matches the expected output/, file);
+  }
+});
+
+test("C++ structures are drawn as what they are: a linked list's arrows, a tree, a heap, a stack", () => {
+  const list = run(cppSample("reverse_list.cpp"), "Solution.reverseList");
+  list.go(12);
+  assert.equal(list.area().querySelectorAll("svg[aria-label='linked list']").length, 1, "one list, however many pointers into it");
+  const labels = Array.from(list.area().querySelectorAll(".node-label")).map(l => l.textContent);
+  assert.ok(labels.includes("head") && labels.includes("prev"), `pointers label the nodes: ${labels.join(", ")}`);
+
+  const tree = run(cppSample("max_depth.cpp"), "Solution.maxDepth");
+  tree.go(6);
+  assert.equal(tree.area().querySelectorAll("svg[aria-label='tree'] .node").length, 5, "the whole tree is drawn");
+  assert.ok(tree.dom.window.document.querySelector("svg[aria-label='recursion tree']"), "recursion gets a recursion tree");
+
+  const heap = run(cppSample("kth_largest.cpp"), "Solution.findKthLargest");
+  heap.go(heap.count - 2);
+  assert.match(heap.area().textContent ?? "", /two children/, "a priority_queue is drawn as a binary heap");
+
+  const stack = run(cppSample("valid_parentheses.cpp"), "Solution.isValid", { values: ['"(([]"'] });
+  let sawStack = false;
+  for (let i = 0; i < stack.count; i++) { stack.go(i); sawStack ||= !!stack.area().querySelector(".lane.stack .slot"); }
+  assert.ok(sawStack, "a stack<char> is drawn as a stack");
+});
+
+test("a C++ run's memory is labelled exact, and its examples hint does not mention main", () => {
+  const { area, go, count, dom } = run(cppSample("level_order.cpp"), "Solution.levelOrder");
+  go(count - 1);
+  assert.match(area().textContent ?? "", /Exact: every byte your code allocated with new/);
+  void dom;
+  const fresh = run(cppSample("dedupe_with_find.cpp"), "Solution.countDistinct");
+  assert.doesNotMatch(fresh.dom.window.document.body.textContent ?? "", /call the method from/);
+});

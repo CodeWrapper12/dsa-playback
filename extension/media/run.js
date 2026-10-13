@@ -233,7 +233,8 @@
 
     const frames = framesAt(model, index);
     const python = !!(options && options.python);
-    const context = { model, index, step, heap, before, ms, frames, python, drawn: new Set(), sizes: [] };
+    const language = (options && options.language) || (python ? "python" : "csharp");
+    const context = { model, index, step, heap, before, ms, frames, python, language, drawn: new Set(), sizes: [] };
 
     const parts = [
       `<div class="run" style="--anim:${ms}ms">`,
@@ -913,6 +914,8 @@
       ${sizeList ? `<div class="entries sizes">${sizeList}</div>` : ""}
       <div class="footnote">${context.python
         ? "Approximate, from Python's tracemalloc: what your code allocated, not the visualizer. Python allocates even for integers above 256. Sizes are each structure itself (sys.getsizeof), not what its elements point to."
+        : context.language === "cpp"
+        ? "Exact: every byte your code allocated with new — each container's storage — not the visualizer's. Variables on the stack are not counted. Sizes are approximate: each structure itself, not what its elements point to."
         : "Bytes allocated by your code, not by the visualizer. Sizes are approximate: each structure itself, not what its elements point to."}</div>
     </div>`;
   }

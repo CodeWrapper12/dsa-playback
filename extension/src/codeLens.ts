@@ -33,9 +33,9 @@ export class EntryPointLenses implements vscode.CodeLensProvider {
     // buttons that would only fail when pressed.
     if (entries instanceof EntryListError) {
       return [new vscode.CodeLens(new vscode.Range(0, 0, 0, 0), {
-        title: `$(warning) ${entries.message} Click to install Python.`,
+        title: `$(warning) ${entries.message}`,
         command: "dsaPlayback.installPython",
-        arguments: [entries.message]
+        arguments: [entries.message, entries.code]
       })];
     }
 
@@ -80,7 +80,7 @@ export class EntryPointLenses implements vscode.CodeLensProvider {
     const abort = new AbortController();
     const subscription = token.onCancellationRequested(() => abort.abort());
     try {
-      const language = document.languageId === "python" ? "python" : "csharp";
+      const language = document.languageId === "python" ? "python" : document.languageId === "cpp" ? "cpp" : "csharp";
       const python = language === "python" ? await pythonInterpreter(document.uri) : undefined;
       const entries = await listEntryPoints(document.fileName,
         { source: document.getText(), language, python, signal: abort.signal });

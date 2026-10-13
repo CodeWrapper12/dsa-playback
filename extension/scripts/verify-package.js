@@ -44,10 +44,12 @@ try {
   check("no TypeScript sources, tests or dev files are shipped",
     !files.some(f => f.startsWith("src/") || f.startsWith("out/test/") || f.startsWith(".devharness/") || f.endsWith(".map")));
   for (const sample of ["csharp/TwoSumSorted.cs", "csharp/LevelOrder.cs", "csharp/ClimbStairs.cs",
-                        "python/two_sum_sorted.py", "python/level_order.py", "python/climb_stairs.py"]) {
+                        "python/two_sum_sorted.py", "python/level_order.py", "python/climb_stairs.py",
+                        "cpp/two_sum_sorted.cpp", "cpp/level_order.cpp", "cpp/climb_stairs.cpp"]) {
     check(`walkthrough sample ${sample} is shipped`, files.includes(`samples/${sample}`));
   }
   check("the Python runner is shipped beside the engine", files.includes("engine/python/dsaviz_py.py"));
+  check("the C++ runtime header is shipped beside the engine", files.includes("engine/cpp/dsaviz.hpp"));
   check("the icon, licence and changelog are shipped",
     files.includes("images/icon.png") && files.includes("LICENSE.txt") && files.includes("changelog.md"));
 
@@ -110,6 +112,20 @@ try {
   const pythonSteps = pythonRun.stdout ? JSON.parse(pythonRun.stdout).steps : null;
   check("records a Python run with the bundled engine", pythonSteps?.status === "Completed" && pythonSteps.check?.matches === true,
     pythonSteps ? `${pythonSteps.steps.length} steps` : pythonRun.stderr.slice(0, 300));
+
+  // The C++ compiler is the student's own, as Python is.
+  const onPath = name => {
+    const found = spawnSync(process.platform === "win32" ? "where" : "which", [name], { encoding: "utf8" });
+    return found.status === 0 ? found.stdout.split(/\r?\n/)[0].trim() : "";
+  };
+  const cppCompiler = process.env.DSAVIZ_CXX || onPath("clang++") || onPath("g++");
+  check("a C++ compiler is available to check with", cppCompiler.length > 0, cppCompiler || "set DSAVIZ_CXX");
+  const cppSample = path.join(root, "samples", "cpp", "two_sum_sorted.cpp");
+  const cppRun = job({ file: cppSample, entry: "Solution.twoSum", stepSize: 8, cppCompiler });
+  const cppSteps = cppRun.stdout ? JSON.parse(cppRun.stdout).steps : null;
+  check("records a C++ run with the bundled engine", cppSteps?.status === "Completed" && cppSteps.check?.matches === true,
+    cppSteps ? `${cppSteps.steps.length} steps${cppSteps.errors.length ? ": " + cppSteps.errors.join("; ") : ""}`
+             : (cppRun.stdout || cppRun.stderr).slice(0, 300));
 
   const measured = job({ file: sample, entry: "Solution.TwoSum" });
   const primary = measured.stdout ? JSON.parse(measured.stdout).primary : null;

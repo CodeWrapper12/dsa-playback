@@ -30,6 +30,15 @@ public static class JobRunner
         {
             return new JobResponse { Errors = new[] { ex.Message } };
         }
+        catch (Cpp.CppUnavailableException ex)
+        {
+            // Nothing runs without a compiler, and the editor can say how to get one.
+            return new JobResponse { Errors = new[] { ex.Message }, ErrorCode = ex.Code };
+        }
+        catch (Cpp.CppRunFailedException ex)
+        {
+            return new JobResponse { Errors = new[] { ex.Message } };
+        }
     }
 
     public static bool IsPython(string file) => file.EndsWith(".py", StringComparison.OrdinalIgnoreCase);
@@ -41,11 +50,16 @@ public static class JobRunner
         string primarySource = read(request.File);
         Python.PythonHost? python = null;
         Python.PythonHost PythonHost() => python ??= Python.PythonHost.Locate(request.Python);
+        Cpp.CppHost? cpp = null;
+        Cpp.CppHost CppHost() => cpp ??= Cpp.CppHost.Locate(request.CppCompiler);
+        bool isCpp = Cpp.CppSolution.IsCpp(request.File);
 
         if (request.AllExamples)
         {
             var report = IsPython(request.File)
                 ? Stepper.RunExamplesPython(PythonHost(), primarySource, request.Entry, request.Budget)
+                : isCpp
+                ? Stepper.RunExamplesCpp(CppHost(), primarySource, request.Entry, request.Budget)
                 : Stepper.RunExamples(DsaViz.Engine.Analysis.SourceAnalysis.Create(primarySource), request.Entry, request.Budget);
             return new JobResponse
             {
@@ -59,6 +73,9 @@ public static class JobRunner
         {
             var steps = IsPython(request.File)
                 ? Stepper.RecordPython(PythonHost(), primarySource, request.Entry, request.Inputs,
+                    stepSize, request.MaxSteps, request.Strategy, request.Budget, request.Values, request.Example)
+                : isCpp
+                ? Stepper.RecordCpp(CppHost(), primarySource, request.Entry, request.Inputs,
                     stepSize, request.MaxSteps, request.Strategy, request.Budget, request.Values, request.Example)
                 : Stepper.Record(
                     DsaViz.Engine.Analysis.SourceAnalysis.Create(primarySource), request.Entry, request.Inputs,
@@ -75,6 +92,8 @@ public static class JobRunner
             IReadOnlyList<int>? sizes, GenerationStrategy? strategy)
             => IsPython(file)
                 ? Measurer.MeasurePython(PythonHost(), source, entry, inputs, sizes, request.Budget, strategy)
+                : Cpp.CppSolution.IsCpp(file)
+                ? Measurer.MeasureCpp(CppHost(), source, entry, inputs, sizes, request.Budget, strategy)
                 : Measurer.Measure(source, entry, inputs, sizes, request.Budget, strategy);
 
         var primary = Measure(request.File, primarySource, request.Entry, request.Inputs, request.Sizes, request.Strategy);

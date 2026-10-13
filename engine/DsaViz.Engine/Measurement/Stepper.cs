@@ -257,6 +257,63 @@ public static class Stepper
 
     private static string NoFunction(string entry) => $"No function named '{entry}' was found.";
 
+    /// <summary>A C++ function's recorded run, built with the student's own compiler.</summary>
+    public static StepTrace RecordCpp(
+        Cpp.CppHost host,
+        string source,
+        string entry,
+        IReadOnlyList<InputSpec>? inputs = null,
+        int size = DefaultSize,
+        int maxSteps = DefaultMaxSteps,
+        GenerationStrategy? strategy = null,
+        long budget = Runner.DefaultBudget,
+        IReadOnlyList<string?>? values = null,
+        int? example = null)
+    {
+        var solution = Cpp.CppSolution.Read(source, entry);
+        var built = solution.Build(host, stepping: true);
+        if (built.Executable is null) return Failed(built.Status, built.Errors, size);
+
+        var plan = new Plan(Cpp.CppSolution.Parameters(solution.Function!), Cpp.CppSolution.Examples(solution.File, solution.Function!));
+        return RecordWith(plan, inputs, size, maxSteps, strategy, values, example, solution.Methods,
+            CppRun(built.Executable, built.Program!, budget, maxSteps));
+    }
+
+    /// <summary>Runs every example in a C++ file against one build, each recording a single step.</summary>
+    public static ExampleReport RunExamplesCpp(Cpp.CppHost host, string source, string entry, long budget = Runner.DefaultBudget)
+    {
+        var solution = Cpp.CppSolution.Read(source, entry);
+        var built = solution.Build(host, stepping: true);
+        if (built.Executable is null) return new ExampleReport(built.Status, Array.Empty<ExampleRun>()) { Errors = built.Errors };
+
+        var plan = new Plan(Cpp.CppSolution.Parameters(solution.Function!), Cpp.CppSolution.Examples(solution.File, solution.Function!));
+        var run = CppRun(built.Executable, built.Program!, budget, ResultOnlySteps);
+        return RunEach(plan.Search, index => RecordWith(plan, null, DefaultSize, ResultOnlySteps, null, null, index, solution.Methods, run));
+    }
+
+    private static Func<object?[], RecordedRun> CppRun(string executable, Cpp.CppProgram program, long budget, int maxSteps)
+        => arguments =>
+        {
+            IReadOnlyList<string> lines;
+            int exit;
+            try
+            {
+                lines = Cpp.CppHost.Run(executable, stepping: true, Cpp.CppSolution.Inputs(arguments), budget,
+                    Cpp.CppSolution.DepthLimit, maxSteps, Cpp.CppSolution.RunTimeout, out exit);
+            }
+            catch (Cpp.CppRunFailedException ex) when (ex.TimedOut)
+            {
+                return new RecordedRun(RunStatus.TimedOut, new List<ExecutionStep>(), new List<ReturnEvent>(),
+                    program.Statements, false, 0, new[] { ex.Message }, null, null);
+            }
+
+            var recording = new Cpp.CppSolution.Recording(program.Statements);
+            recording.Read(lines);
+            var end = Cpp.CppSolution.ReadEnding(lines, exit, program.Statements);
+            return new RecordedRun(end.Status, recording.Steps, recording.Returns, program.Statements, end.Truncated,
+                end.Allocated, end.Errors, end.ErrorLine, end.Result);
+        };
+
     private static Plan PythonPlan(Python.PythonSolution solution)
     {
         if (solution.DesignClass is not null)
