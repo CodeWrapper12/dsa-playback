@@ -109,7 +109,7 @@ public static class JavaInstrumenter
     /// </summary>
     public static bool HasStaticState(JvFile file)
         => System.Text.RegularExpressions.Regex.IsMatch(System.Text.RegularExpressions.Regex.Replace(file.Text, @"//.*|/\*[\s\S]*?\*/", ""),
-            @"\bstatic\s+(?!final\b|class\b|interface\b|enum\b|record\b|void\b)(?:[\w$<>\[\],.?]+\s+)+\w+\s*(=|;)(?![^\n]*\))");
+            @"\bstatic\s+(?!final\b|class\b|interface\b|enum\b|record\b|void\b)(?:[\w$<>\[\],.?]+\s+)+\w+\s*(=|;)");
 
     /// <summary>The file the program is compiled as: its public class's name, else Solution.java.</summary>
     public static string FileNameOf(JvFile file)

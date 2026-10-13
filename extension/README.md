@@ -1,7 +1,7 @@
 # DSA Playback — Algorithm Visualizer & Big-O Explainer
 
 Watch your data-structures-and-algorithms code run, one step at a time — and see why it
-has the complexity it has. For C#, Python, C++ and Rust, written the way LeetCode writes it.
+has the complexity it has. For C#, Python, C++, Rust and Java, written the way LeetCode writes it.
 
 - **Runs on your machine.** Nothing to set up for C#: the engine is inside the
   extension. For Python, the Python you already have is used (3.9 or later).
@@ -15,7 +15,7 @@ has the complexity it has. For C#, Python, C++ and Rust, written the way LeetCod
 
 ## Watch it run
 
-Open a C#, Python, C++ or Rust solution. Above every method you can run there are two buttons:
+Open a C#, Python, C++, Rust or Java solution. Above every method you can run there are two buttons:
 
 - **▶ Visualize** — plays your code step by step, with your data drawn and moving:
   - arrays with `i`, `j`, `left`, `right`, `mid`… as pointers that slide, and swapped
@@ -159,6 +159,22 @@ change the file. No compiler? DSA Playback says how to install one for your syst
 
 Not yet for C++: design problems, examples written as calls in `main`, and Microsoft's
 compiler (MSVC).
+
+## Java
+
+Java files work the same way, built with your own JDK (17 or later; set
+`dsaPlayback.javaHome` to choose one). Write it as LeetCode does — `class Solution { … }`
+with no imports, and `TreeNode` and `ListNode` left commented out; LeetCode's imports and
+those classes are supplied. Design problems — LRU Cache, Min Stack — work as in C# and
+Python: one ▶ Visualize on the class, and LeetCode's example of the calls.
+
+Memory is exact: every byte your code allocates, from the JVM's own count. When measuring,
+your code runs once to warm up before the run that is counted, so the JVM loading its own
+classes is never mistaken for your allocations — unless your code keeps state in `static`
+fields, which a second run would change.
+
+Not yet for Java: examples written as calls in `main`, code split across several files,
+and libraries outside the JDK.
 
 ## Rust
 

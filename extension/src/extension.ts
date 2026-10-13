@@ -30,10 +30,11 @@ const SAMPLES = new Map([
   ["TwoSumSorted.cs", "csharp"], ["LevelOrder.cs", "csharp"], ["ClimbStairs.cs", "csharp"],
   ["two_sum_sorted.py", "python"], ["level_order.py", "python"], ["climb_stairs.py", "python"],
   ["two_sum_sorted.cpp", "cpp"], ["level_order.cpp", "cpp"], ["climb_stairs.cpp", "cpp"],
-  ["two_sum_sorted.rs", "rust"], ["level_order.rs", "rust"], ["climb_stairs.rs", "rust"]
+  ["two_sum_sorted.rs", "rust"], ["level_order.rs", "rust"], ["climb_stairs.rs", "rust"],
+  ["TwoSumSorted.java", "java"], ["LevelOrder.java", "java"], ["ClimbStairs.java", "java"]
 ]);
 
-const LANGUAGES = ["csharp", "python", "cpp", "rust"];
+const LANGUAGES = ["csharp", "python", "cpp", "rust", "java"];
 
 /**
  * What the integration tests can observe. Decorations and webviews are not readable
@@ -126,7 +127,7 @@ async function start(context: vscode.ExtensionContext, tab: Tab, uri?: vscode.Ur
     : vscode.window.activeTextEditor?.document;
 
   if (!document || !LANGUAGES.includes(document.languageId)) {
-    vscode.window.showWarningMessage("Open a C#, Python, C++ or Rust file first, then press ▶ Visualize above a method.");
+    vscode.window.showWarningMessage("Open a C#, Python, C++, Rust or Java file first, then press ▶ Visualize above a method.");
     return;
   }
   const python = document.languageId === "python" ? await pythonInterpreter(document.uri) : undefined;
@@ -146,7 +147,7 @@ async function start(context: vscode.ExtensionContext, tab: Tab, uri?: vscode.Ur
     if (tab === "compare") {
       const picked = await vscode.window.showOpenDialog({
         canSelectMany: false,
-        filters: { "Solutions": ["cs", "py", "cpp", "cc", "cxx", "rs"] },
+        filters: { "Solutions": ["cs", "py", "cpp", "cc", "cxx", "rs", "java"] },
         openLabel: "Compare against",
         title: "Pick the second solution"
       });
@@ -171,7 +172,8 @@ async function start(context: vscode.ExtensionContext, tab: Tab, uri?: vscode.Ur
       compareEntry,
       python,
       cppCompiler: cppCompiler(),
-      rustc: rustc()
+      rustc: rustc(),
+      javaHome: javaHome()
     };
 
     ReportPanel.show(context, request, tab === "steps" ? "steps" : "cost");
@@ -266,6 +268,11 @@ async function reportProblem(context: vscode.ExtensionContext) {
   // extension host also takes the address as a string and hands that on untouched
   // (openUri in VS Code's extHostWindow), so the string is what is passed.
   await vscode.env.openExternal(url as unknown as vscode.Uri);
+}
+
+/** The JDK the student chose, if they did; otherwise the engine uses JAVA_HOME or javac on the path. */
+function javaHome(): string | undefined {
+  return vscode.workspace.getConfiguration("dsaPlayback").get<string>("javaHome")?.trim() || undefined;
 }
 
 /** The rustc the student chose, if they did; otherwise the engine finds it on the path or in ~/.cargo/bin. */
@@ -527,7 +534,8 @@ class ReportPanel {
         example: choice.example,
         python: this.request.python,
         cppCompiler: this.request.cppCompiler,
-        rustc: this.request.rustc
+        rustc: this.request.rustc,
+        javaHome: this.request.javaHome
       }, controller.signal);
       if (controller.signal.aborted) return;
 
@@ -577,7 +585,7 @@ class ReportPanel {
 
     const lines = shown.source.split(/\r?\n/);
     const toExplain: StepToExplain = {
-      language: { ".py": "Python", ".cpp": "C++", ".cc": "C++", ".cxx": "C++", ".rs": "Rust" }[path.extname(this.request.file).toLowerCase()] ?? "C#",
+      language: { ".py": "Python", ".cpp": "C++", ".cc": "C++", ".cxx": "C++", ".rs": "Rust", ".java": "Java" }[path.extname(this.request.file).toLowerCase()] ?? "C#",
       code: solutionCode(lines, shown.trace),
       line: step.line,
       lineText: lines[step.line - 1] ?? "",
@@ -615,7 +623,8 @@ class ReportPanel {
         budget: this.request.budget,
         python: this.request.python,
         cppCompiler: this.request.cppCompiler,
-        rustc: this.request.rustc
+        rustc: this.request.rustc,
+        javaHome: this.request.javaHome
       }, controller.signal);
       if (controller.signal.aborted) return;
 

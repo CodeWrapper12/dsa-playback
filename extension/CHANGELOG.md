@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.5.0
+
+- **Java.** ▶ Visualize and Complexity for Java solutions, built with your own JDK (17 or
+  later). LeetCode's Java as written: no imports, `TreeNode` and `ListNode` supplied.
+  Design problems too. The run view draws arrays, lists, maps, sets, a `Deque` used as a
+  stack or a queue, `PriorityQueue` as a heap, linked lists and trees, and a design
+  problem's object with its fields.
+- Complexity charges the work hidden in `contains` on a list (never a set), `add` and
+  `remove` at an index, sorting, copying, `substring` and `String +=`, and measures memory
+  exactly. Exceptions name their type and line.
+- The Get Started walkthrough has its three samples in Java too.
+
 ## 1.4.0
 
 - **Rust.** ▶ Visualize and Complexity for Rust solutions, built with your own `rustc`.

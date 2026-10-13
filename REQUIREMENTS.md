@@ -598,7 +598,8 @@ nothing, so nothing of the visualizer's is counted. The peak held is inferred fr
 allocation, the largest single allocation and call depth, as for C#.
 
 62. **A JDK is found.** `javac` and `java` from the setting `dsaPlayback.javaHome`, else
-    `JAVA_HOME`, else the path. JDK 11 or later. Without one, a message says how to get one
+    `JAVA_HOME`, else the path. JDK 17 or later (the JVM's allocation count that needs
+    nothing allocated to read it arrived in JDK 14; 17 is the long-term release before it). Without one, a message says how to get one
     for the system, with a link.
 63. **LeetCode's Java as written.** `class Solution { public … }` with no imports — the
     imports LeetCode adds itself (`java.util.*` and the rest) are supplied on the file's
@@ -629,3 +630,25 @@ Not in 7c: examples written as calls in `main`, code split across several files,
 libraries outside the JDK.
 
 Released as 1.5.0.
+
+Learned while building: on its first use, a JVM loads classes and links lambdas and string
+concatenation, and what that allocates landed on the solution's lines — 150 KB on the first
+`+` of a loop. String `+` is compiled as StringBuilder calls, the collections are loaded
+before counting starts, and when measuring, the solution runs once to warm up before the
+run that is counted, on a fresh copy of the same input. A class with `static` state is not
+warmed up, since a second run would see the first one's state. Measuring stops the moment
+the solution returns, before its result is boxed for writing out. A char passed through a
+charged call keeps its type: widened to an int, `set.remove(c)` looked for an Integer.
+
+#### Phase 7c status
+
+| # | Status | Checked by |
+|---|---|---|
+| 62 | Met: setting, `DSAVIZ_JAVA_HOME`, `JAVA_HOME`, then javac on the path; JDK 17 or later; missing or too old says so, with a download link and a Set JDK Path button. | `JavaHost`; `toolchain.ts`; verify-package |
+| 63 | Met: no imports needed (added on line 1, nothing moves); package lines blanked; `TreeNode`/`ListNode` supplied; public methods of the file's classes offered, private helpers not. | `JavaTests.LeetCodes_template…`, `Private_helpers…`; integration: *a Java file gets its buttons…* |
+| 64 | Met: one ▶ Visualize on the class; calls made by reflection, checked, and named in the run view; calls that do not fit explained. | `JavaTests.A_design_problem…`, `Calls_that_do_not_fit…`; panel: *a Java design problem names the call running…* |
+| 65 | Met for every listed type. | `JavaTests.Every_sample_runs_its_example_and_matches` (16) |
+| 66 | Met: every listed structure; a variable not yet set says so. | `JavaTests.A_variable_not_yet_set…`, `A_Deque_used_with_push_and_pop…`; panel: *every step of every Java sample*, *Java structures…* |
+| 67 | Met. | `JavaTests.Growth_is_measured…` (8), `Hidden_work_is_named…`, `Memory_counts_only_the_solution`, `The_code_is_read…` (6) |
+| 68 | Met. | `JavaTests` (compile error, exception, budget, depth) |
+| 69 | Met on this Mac: first ▶ Visualize of Two Sum 1.5 s including compiling the runtime. All six platforms: pending the release dry run. | By hand; CI |

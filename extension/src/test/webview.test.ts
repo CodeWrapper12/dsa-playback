@@ -860,3 +860,57 @@ test("a Rust variable the compiler will not let be read says why, and the memory
   assert.deepEqual([...seen].sort(), ["(borrowed)", "(moved)", "(no longer used)", "(not set yet)"]);
   assert.match(area().textContent ?? "", /moved, borrowed, not set yet, or no longer used/);
 });
+
+// ---- Java ------------------------------------------------------------------------------------
+
+const javaSample = (name: string) => sample(`java/${name}`);
+
+test("every step of every Java sample draws without error", () => {
+  const cases: [string, string][] = [
+    ["TwoSum.java", "Solution.twoSum"], ["ReverseList.java", "Solution.reverseList"], ["MaxDepth.java", "Solution.maxDepth"],
+    ["LevelOrder.java", "Solution.levelOrder"], ["ClimbStairs.java", "Solution.climbStairs"], ["Fib.java", "Solution.fib"],
+    ["NumIslands.java", "Solution.numIslands"], ["KthLargest.java", "Solution.findKthLargest"],
+    ["ValidParentheses.java", "Solution.isValid"], ["BinarySearch.java", "Solution.search"],
+    ["UniquePaths.java", "Solution.uniquePaths"], ["GroupCount.java", "Solution.byFrequency"],
+    ["LongestSubstring.java", "Solution.lengthOfLongestSubstring"], ["NotYetSet.java", "Solution.parity"],
+    ["LRUCache.java", "LRUCache"], ["MinStack.java", "MinStack"]
+  ];
+  for (const [file, entry] of cases) {
+    const { go, count, dom } = run(javaSample(file), entry);
+    for (let i = 0; i < count; i++) go(i);
+    for (let i = count - 1; i >= 0; i -= 5) go(i);
+    assert.match(dom.window.document.body.textContent ?? "", /Matches the expected output/, file);
+  }
+});
+
+test("Java structures are drawn as what they are: a linked list, a tree, a heap, a stack, a queue", () => {
+  const list = run(javaSample("ReverseList.java"), "Solution.reverseList");
+  list.go(12);
+  assert.equal(list.area().querySelectorAll("svg[aria-label='linked list']").length, 1, "one list");
+
+  const tree = run(javaSample("MaxDepth.java"), "Solution.maxDepth");
+  tree.go(6);
+  assert.equal(tree.area().querySelectorAll("svg[aria-label='tree'] .node").length, 5, "the whole tree is drawn");
+  assert.ok(tree.dom.window.document.querySelector("svg[aria-label='recursion tree']"), "recursion gets a recursion tree");
+
+  const heap = run(javaSample("KthLargest.java"), "Solution.findKthLargest");
+  heap.go(heap.count - 2);
+  assert.match(heap.area().textContent ?? "", /two children/, "a PriorityQueue is drawn as a binary heap");
+
+  const stack = run(javaSample("ValidParentheses.java"), "Solution.isValid", { values: ['"(([]"'] });
+  let sawStack = false;
+  for (let i = 0; i < stack.count; i++) { stack.go(i); sawStack ||= !!stack.area().querySelector(".lane.stack .slot"); }
+  assert.ok(sawStack, "a Deque used with push and pop is drawn as a stack");
+});
+
+test("a Java design problem names the call running, and a variable not yet set says so", () => {
+  const { dom, go, count, area, trace } = run(javaSample("LRUCache.java"), "LRUCache");
+  const fourth = (trace as unknown as { calls: { step: number }[] }).calls[3];
+  go(fourth.step);
+  assert.match(area().textContent ?? "", /Call 4 of 10: get/);
+  void dom; void count;
+
+  const unset = run(javaSample("NotYetSet.java"), "Solution.parity");
+  unset.go(1);
+  assert.match(unset.area().textContent ?? "", /\(not set yet\)/);
+});

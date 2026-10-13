@@ -46,12 +46,14 @@ try {
   for (const sample of ["csharp/TwoSumSorted.cs", "csharp/LevelOrder.cs", "csharp/ClimbStairs.cs",
                         "python/two_sum_sorted.py", "python/level_order.py", "python/climb_stairs.py",
                         "cpp/two_sum_sorted.cpp", "cpp/level_order.cpp", "cpp/climb_stairs.cpp",
-                        "rust/two_sum_sorted.rs", "rust/level_order.rs", "rust/climb_stairs.rs"]) {
+                        "rust/two_sum_sorted.rs", "rust/level_order.rs", "rust/climb_stairs.rs",
+                        "java/TwoSumSorted.java", "java/LevelOrder.java", "java/ClimbStairs.java"]) {
     check(`walkthrough sample ${sample} is shipped`, files.includes(`samples/${sample}`));
   }
   check("the Python runner is shipped beside the engine", files.includes("engine/python/dsaviz_py.py"));
   check("the C++ runtime header is shipped beside the engine", files.includes("engine/cpp/dsaviz.hpp"));
   check("the Rust runtime is shipped beside the engine", files.includes("engine/rust/dsaviz.rs"));
+  check("the Java runtime is shipped beside the engine", files.includes("engine/java/Dsaviz.java"));
   check("the icon, licence and changelog are shipped",
     files.includes("images/icon.png") && files.includes("LICENSE.txt") && files.includes("changelog.md"));
 
@@ -145,6 +147,19 @@ try {
   check("records a Rust run with the bundled engine", rustSteps?.status === "Completed" && rustSteps.check?.matches === true,
     rustSteps ? `${rustSteps.steps.length} steps${rustSteps.errors.length ? ": " + rustSteps.errors.join("; ") : ""}`
               : (rustRun.stdout || rustRun.stderr).slice(0, 300));
+
+  // The JDK is the student's own: JAVA_HOME, or javac on the path.
+  const javaHome = process.env.DSAVIZ_JAVA_HOME || process.env.JAVA_HOME || "";
+  check("a JDK is available to check with", javaHome.length > 0 || onPath("javac").length > 0, javaHome || "set JAVA_HOME");
+  const javaSample = path.join(root, "samples", "java", "TwoSumSorted.java");
+  const javaRun = spawnSync(engine, ["--job", "-"], {
+    input: JSON.stringify({ file: javaSample, entry: "Solution.twoSum", stepSize: 8, javaHome: javaHome || undefined }),
+    env: { ...process.env, DOTNET_ROOT: bare.DOTNET_ROOT }, encoding: "utf8", timeout: 300_000
+  });
+  const javaSteps = javaRun.stdout ? JSON.parse(javaRun.stdout).steps : null;
+  check("records a Java run with the bundled engine", javaSteps?.status === "Completed" && javaSteps.check?.matches === true,
+    javaSteps ? `${javaSteps.steps.length} steps${javaSteps.errors.length ? ": " + javaSteps.errors.join("; ") : ""}`
+              : (javaRun.stdout || javaRun.stderr).slice(0, 300));
 
   const measured = job({ file: sample, entry: "Solution.TwoSum" });
   const primary = measured.stdout ? JSON.parse(measured.stdout).primary : null;

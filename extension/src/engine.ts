@@ -141,16 +141,17 @@ export class EntryListError extends Error {
 export interface ListOptions {
   /** The file's text, when it has unsaved changes; read from disk otherwise. */
   source?: string;
-  language?: "csharp" | "python" | "cpp" | "rust";
+  language?: "csharp" | "python" | "cpp" | "rust" | "java";
   python?: string;
   signal?: AbortSignal;
 }
 
-export function languageOfFile(file: string): "csharp" | "python" | "cpp" | "rust" {
+export function languageOfFile(file: string): "csharp" | "python" | "cpp" | "rust" | "java" {
   const lower = file.toLowerCase();
   if (lower.endsWith(".py")) return "python";
   if ([".cpp", ".cc", ".cxx", ".c++"].some(extension => lower.endsWith(extension))) return "cpp";
   if (lower.endsWith(".rs")) return "rust";
+  if (lower.endsWith(".java")) return "java";
   return "csharp";
 }
 

@@ -115,7 +115,8 @@
       (error.code ? `<button id="install-python" data-code="${escapeHtml(error.code)}">${
         error.code === "cpp-missing" ? "How to install a C++ compiler"
           : error.code === "rust-missing" ? "How to install Rust"
-          : error.code === "rust-linker" ? "How to install the linker Rust needs" : "Install Python"}</button>` : "");
+          : error.code === "rust-linker" ? "How to install the linker Rust needs"
+          : error.code === "java-missing" || error.code === "java-version" ? "How to install a JDK" : "Install Python"}</button>` : "");
   }
 
   /** A "Show line" button for the first message that names a line of the student's code. */
@@ -659,7 +660,7 @@
     const draft = st.draft || {};
 
     const language = languageOf((state.request && state.request.file) || "");
-    // C++ and Rust examples are read from comments only; a call in main is not read.
+    // C++, Rust and Java examples are read from comments only; a call in main is not read.
     const orCall = language === "python" ? ', or call the method from <code>if __name__ == "__main__":</code>'
       : language === "csharp" ? ", or call the method from <code>Main</code>" : "";
     const picker = examples.length === 0
@@ -750,11 +751,12 @@
     </div>`;
   }
 
-  /** "python", "cpp", "rust" or "csharp", from a file's name. */
+  /** "python", "cpp", "rust", "java" or "csharp", from a file's name. */
   function languageOf(file) {
     if (/\.py$/i.test(file)) return "python";
     if (/\.(cpp|cc|cxx|c\+\+)$/i.test(file)) return "cpp";
     if (/\.rs$/i.test(file)) return "rust";
+    if (/\.java$/i.test(file)) return "java";
     return "csharp";
   }
 

@@ -266,6 +266,26 @@ const checks: [string, (api: TestApi) => Promise<void>][] = [
     assert.ok(api.linesDecoratedIn(measured.uri) > 0, "costs are written beside the Rust lines");
   }],
 
+  ["a Java file gets its buttons, runs its example and is measured with the JDK on this machine", async api => {
+    const document = await open("samples/java/TwoSum.java");
+    assert.equal(document.languageId, "java");
+    assert.deepEqual((await api.lenses(document)).map(lens => lens.command?.title), ["$(play) Visualize", "$(graph) Complexity"]);
+
+    const before = api.lastSteps();
+    await vscode.commands.executeCommand("dsaPlayback.visualize", document.uri, "Solution.twoSum");
+    const steps = await waitFor(() => (api.lastSteps() !== before ? api.lastSteps() : undefined), "a recorded run", 120_000);
+    assert.equal(steps.status, "Completed", steps.errors.join("; "));
+    assert.equal(steps.check?.matches, true);
+
+    const measured = await open("samples/java/DedupeWithContains.java");
+    const previous = api.lastResponse();
+    await vscode.commands.executeCommand("dsaPlayback.measure", measured.uri, "Solution.countDistinct");
+    const response = await waitFor(() => (api.lastResponse() !== previous ? api.lastResponse() : undefined), "a measurement", 120_000);
+    assert.equal(response.primary?.status, "Completed", response.primary?.errors.join("; "));
+    // The result is noted before the editor is decorated: the costs follow a moment later.
+    await waitFor(() => api.linesDecoratedIn(measured.uri) || undefined, "costs beside the Java lines", 10_000);
+  }],
+
   ["the walkthrough opens an editable copy of its sample", async () => {
     await vscode.commands.executeCommand("dsaPlayback.openSample", "LevelOrder.cs");
     const opened = vscode.window.activeTextEditor?.document.fileName ?? "";

@@ -219,6 +219,8 @@ export interface JobRequest {
   cppCompiler?: string;
   /** The rustc for a Rust file, when the student set one. */
   rustc?: string;
+  /** The JDK for a Java file, when the student set one. */
+  javaHome?: string;
   compareFile?: string;
   compareEntry?: string;
 }

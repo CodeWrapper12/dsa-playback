@@ -39,7 +39,20 @@ export async function offerToolchain(code: string | undefined, message: string) 
     await offerRust(code, message);
     return;
   }
+  if (code === "java-missing" || code === "java-version") {
+    await offerJava(message);
+    return;
+  }
   await offerPython(message);
+}
+
+/** A free, widely used JDK build, for every system. */
+const JDK_DOWNLOAD = "https://adoptium.net/temurin/releases/?version=21";
+
+async function offerJava(message: string) {
+  const choice = await vscode.window.showErrorMessage(message, "Download a JDK", "Set JDK Path");
+  if (choice === "Download a JDK") await vscode.env.openExternal(vscode.Uri.parse(JDK_DOWNLOAD));
+  if (choice === "Set JDK Path") await vscode.commands.executeCommand("workbench.action.openSettings", "dsaPlayback.javaHome");
 }
 
 async function offerRust(code: string, message: string) {
