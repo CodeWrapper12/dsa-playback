@@ -134,10 +134,12 @@ try {
     [path.join(os.homedir(), ".cargo", "bin", process.platform === "win32" ? "rustc.exe" : "rustc")].find(fs.existsSync) || "";
   check("Rust is available to check with", rustc.length > 0, rustc || "set DSAVIZ_RUSTC");
   const rustSample = path.join(root, "samples", "rust", "two_sum_sorted.rs");
-  // rustc needs the system's linker, found through the real PATH; .NET is still kept out.
+  // rustup's rustc finds its toolchain through the home folder, and rustc finds the system's
+  // linker through PATH: both are the student's own, so the real environment is used. .NET is
+  // still kept out.
   const rustRun = spawnSync(engine, ["--job", "-"], {
     input: JSON.stringify({ file: rustSample, entry: "Solution.two_sum", stepSize: 8, rustc }),
-    env: { ...bare, PATH: process.env.PATH }, encoding: "utf8", timeout: 300_000
+    env: { ...process.env, DOTNET_ROOT: bare.DOTNET_ROOT }, encoding: "utf8", timeout: 300_000
   });
   const rustSteps = rustRun.stdout ? JSON.parse(rustRun.stdout).steps : null;
   check("records a Rust run with the bundled engine", rustSteps?.status === "Completed" && rustSteps.check?.matches === true,
