@@ -1050,3 +1050,48 @@ test("a C++ or Rust design problem's calls that do not fit are explained above t
     assert.match(text(), /Operation 3 is "gett", but LRUCache has no/, file);
   }
 });
+
+// ---- JavaScript and TypeScript ---------------------------------------------------------------
+
+const scriptSample = (name: string) => sample(`${name.endsWith(".ts") ? "typescript" : "javascript"}/${name}`);
+
+test("every step of every JavaScript and TypeScript sample draws without error", () => {
+  const cases: [string, string][] = [
+    ["two_sum_sorted.js", "twoSum"], ["reverse_list.js", "reverseList"], ["level_order.js", "levelOrder"],
+    ["climb_stairs.js", "climbStairs"], ["dedupe_with_includes.js", "dedupe"], ["num_islands.js", "numIslands"],
+    ["kth_largest.js", "findKthLargest"], ["lru_cache.js", "LRUCache"], ["constructs.js", "constructs"],
+    ["two_sum_sorted.ts", "twoSum"], ["max_depth.ts", "maxDepth"], ["min_stack.ts", "MinStack"], ["lru_cache_slow.ts", "LRUCache"]
+  ];
+  for (const [file, entry] of cases) {
+    const { go, count, dom } = run(scriptSample(file), entry);
+    for (let i = 0; i < count; i++) go(i);
+    for (let i = count - 1; i >= 0; i -= 5) go(i);
+    assert.match(dom.window.document.body.textContent ?? "", /Matches the expected output/, file);
+  }
+});
+
+test("JavaScript structures are drawn as what they are, and its memory is labelled estimated", () => {
+  const list = run(scriptSample("reverse_list.js"), "reverseList");
+  list.go(list.count - 2);
+  assert.equal(list.area().querySelectorAll("svg[aria-label='linked list']").length, 1, "one list");
+
+  const tree = run(scriptSample("max_depth.ts"), "maxDepth");
+  tree.go(6);
+  assert.equal(tree.area().querySelectorAll("svg[aria-label='tree'] .node").length, 5, "the whole tree is drawn");
+  assert.ok(tree.dom.window.document.querySelector("svg[aria-label='recursion tree']"), "recursion gets a recursion tree");
+
+  const heap = run(scriptSample("kth_largest.js"), "findKthLargest");
+  heap.go(heap.count - 2);
+  assert.match(heap.area().textContent ?? "", /two children/, "LeetCode's MinPriorityQueue is drawn as a binary heap");
+
+  const queue = run(scriptSample("level_order.js"), "levelOrder");
+  let sawQueue = false;
+  for (let i = 0; i < queue.count; i++) { queue.go(i); sawQueue ||= !!queue.area().querySelector(".lane.queue .slot"); }
+  assert.ok(sawQueue, "an array used with shift is drawn as a queue");
+  assert.match(queue.dom.window.document.querySelector(".memory-note")!.textContent ?? "", /Estimated where it is created/);
+});
+
+test("a JavaScript file's hint does not mention calling the function from main", () => {
+  const { dom } = run(scriptSample("two_sum_sorted.js"), "twoSum");
+  assert.doesNotMatch(dom.window.document.body.textContent ?? "", /call the method from/);
+});

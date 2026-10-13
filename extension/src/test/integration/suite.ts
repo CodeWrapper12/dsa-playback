@@ -303,6 +303,29 @@ const checks: [string, (api: TestApi) => Promise<void>][] = [
     await waitFor(() => api.linesDecoratedIn(measured.uri) || undefined, "costs beside the Java lines", 10_000);
   }],
 
+  ["a JavaScript and a TypeScript file get their buttons, run their examples and are measured with the Node on this machine", async api => {
+    for (const [file, entry] of [["samples/javascript/two_sum_sorted.js", "twoSum"], ["samples/typescript/max_depth.ts", "maxDepth"]]) {
+      const document = await open(file);
+      assert.deepEqual((await api.lenses(document)).map(lens => lens.command?.title), ["$(play) Visualize", "$(graph) Complexity"], file);
+      const before = api.lastSteps();
+      await vscode.commands.executeCommand("dsaPlayback.visualize", document.uri, entry);
+      const steps = await waitFor(() => (api.lastSteps() !== before && api.lastStepsFile() === document.uri.fsPath ? api.lastSteps() : undefined),
+        `a recorded run of ${file}`, 120_000);
+      assert.equal(steps.status, "Completed", steps.errors.join("; "));
+      assert.equal(steps.check?.matches, true, file);
+    }
+
+    const measured = await open("samples/javascript/dedupe_with_includes.js");
+    const previous = api.lastResponse();
+    await vscode.commands.executeCommand("dsaPlayback.measure", measured.uri, "dedupe");
+    const response = await waitFor(() => (api.lastResponse() !== previous ? api.lastResponse() : undefined), "a measurement", 120_000);
+    assert.equal(response.primary?.empirical.best, "Quadratic", response.primary?.errors.join("; "));
+    await waitFor(() => api.linesDecoratedIn(measured.uri) || undefined, "costs beside the JavaScript lines", 10_000);
+
+    const design = await open("samples/javascript/lru_cache.js");
+    assert.deepEqual((await api.lenses(design)).map(lens => lens.command?.title), ["$(play) Visualize", "$(graph) Complexity"]);
+  }],
+
   ["a C++ and a Rust design problem each get ▶ Visualize and Complexity, and their calls run and are checked", async api => {
     for (const file of ["samples/design/lru_cache.cpp", "samples/design/lru_cache.rs"]) {
       const document = await open(file);

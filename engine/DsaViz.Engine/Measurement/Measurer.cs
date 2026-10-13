@@ -258,6 +258,33 @@ public static class Measurer
             () => Java.JavaEstimator.Space);
     }
 
+    /// <summary>A JavaScript or TypeScript function, measured as the others are, run with the student's own Node.</summary>
+    public static MeasurementResult MeasureJs(
+        Js.JsHost host,
+        string source,
+        string entry,
+        bool typescript,
+        IReadOnlyList<InputSpec>? inputs = null,
+        IReadOnlyList<int>? sizes = null,
+        long budget = Runner.DefaultBudget,
+        GenerationStrategy? strategy = null)
+    {
+        var solution = Js.JsSolution.Read(host, source, entry, typescript);
+        var built = solution.Build(stepping: false);
+        if (built.Program is null) return Failed(built.Status, built.Errors, inputs ?? Array.Empty<InputSpec>());
+        if (solution.DesignClass is { } design)
+        {
+            return NativeDesign(design.Name, solution.DesignExamplesFound(), solution.DesignSignature,
+                () => solution.DesignTarget(built.Program), built.Program.Statements, sizes, budget);
+        }
+
+        using var target = solution.Target(built.Program, Js.JsSolution.Parameters(solution.Function!, solution.Examples()));
+        var unknown = new StaticEstimate(ComplexityClass.Unknown, "The code could not be read.", 0, 0, 0);
+        return MeasureTarget(target, inputs, sizes, budget, strategy,
+            () => solution.Description.Time ?? unknown,
+            () => Js.JsSolution.Space);
+    }
+
     /// <summary>A Rust function, measured as the others are, built once with the student's own rustc.</summary>
     public static MeasurementResult MeasureRust(
         Rust.RustHost host,

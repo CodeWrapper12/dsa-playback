@@ -31,10 +31,12 @@ const SAMPLES = new Map([
   ["two_sum_sorted.py", "python"], ["level_order.py", "python"], ["climb_stairs.py", "python"],
   ["two_sum_sorted.cpp", "cpp"], ["level_order.cpp", "cpp"], ["climb_stairs.cpp", "cpp"],
   ["two_sum_sorted.rs", "rust"], ["level_order.rs", "rust"], ["climb_stairs.rs", "rust"],
-  ["TwoSumSorted.java", "java"], ["LevelOrder.java", "java"], ["ClimbStairs.java", "java"]
+  ["TwoSumSorted.java", "java"], ["LevelOrder.java", "java"], ["ClimbStairs.java", "java"],
+  ["two_sum_sorted.js", "javascript"], ["level_order.js", "javascript"], ["climb_stairs.js", "javascript"],
+  ["two_sum_sorted.ts", "typescript"], ["level_order.ts", "typescript"], ["climb_stairs.ts", "typescript"]
 ]);
 
-const LANGUAGES = ["csharp", "python", "cpp", "rust", "java"];
+const LANGUAGES = ["csharp", "python", "cpp", "rust", "java", "javascript", "typescript"];
 
 /**
  * What the integration tests can observe. Decorations and webviews are not readable
@@ -130,7 +132,7 @@ async function start(context: vscode.ExtensionContext, tab: Tab, uri?: vscode.Ur
     : vscode.window.activeTextEditor?.document;
 
   if (!document || !LANGUAGES.includes(document.languageId)) {
-    vscode.window.showWarningMessage("Open a C#, Python, C++, Rust or Java file first, then press ▶ Visualize above a method.");
+    vscode.window.showWarningMessage("Open a C#, Python, C++, Rust, Java, JavaScript or TypeScript file first, then press ▶ Visualize above a method.");
     return;
   }
   const python = document.languageId === "python" ? await pythonInterpreter(document.uri) : undefined;
@@ -150,7 +152,7 @@ async function start(context: vscode.ExtensionContext, tab: Tab, uri?: vscode.Ur
     if (tab === "compare") {
       const picked = await vscode.window.showOpenDialog({
         canSelectMany: false,
-        filters: { "Solutions": ["cs", "py", "cpp", "cc", "cxx", "rs", "java"] },
+        filters: { "Solutions": ["cs", "py", "cpp", "cc", "cxx", "rs", "java", "js", "ts"] },
         openLabel: "Compare against",
         title: "Pick the second solution"
       });
@@ -176,7 +178,8 @@ async function start(context: vscode.ExtensionContext, tab: Tab, uri?: vscode.Ur
       python,
       cppCompiler: cppCompiler(),
       rustc: rustc(),
-      javaHome: javaHome()
+      javaHome: javaHome(),
+      node: nodePath()
     };
 
     ReportPanel.show(context, request, tab === "steps" ? "steps" : "cost");
@@ -186,7 +189,7 @@ async function start(context: vscode.ExtensionContext, tab: Tab, uri?: vscode.Ur
 }
 
 async function pickEntryPoint(file: string, title: string, python?: string): Promise<EntryPoint | undefined> {
-  const entries = await listEntryPoints(file, { python });
+  const entries = await listEntryPoints(file, { python, node: nodePath() });
 
   if (entries.length === 0) {
     vscode.window.showWarningMessage(`${path.basename(file)} has no public methods to visualize.`);
@@ -281,6 +284,11 @@ function javaHome(): string | undefined {
 /** The rustc the student chose, if they did; otherwise the engine finds it on the path or in ~/.cargo/bin. */
 function rustc(): string | undefined {
   return vscode.workspace.getConfiguration("dsaPlayback").get<string>("rustc")?.trim() || undefined;
+}
+
+/** The Node.js the student chose, if they did; otherwise the engine uses node on the path. */
+export function nodePath(): string | undefined {
+  return vscode.workspace.getConfiguration("dsaPlayback").get<string>("node")?.trim() || undefined;
 }
 
 /** The C++ compiler the student chose, if they did; otherwise the engine finds clang++ or g++. */
@@ -545,7 +553,8 @@ class ReportPanel {
         python: this.request.python,
         cppCompiler: this.request.cppCompiler,
         rustc: this.request.rustc,
-        javaHome: this.request.javaHome
+        javaHome: this.request.javaHome,
+        node: this.request.node
       }, controller.signal);
       // A run for a method the panel has since moved on from is not shown.
       if (controller.signal.aborted || this.request.file !== request.file || this.request.entry !== request.entry) return;
@@ -597,7 +606,7 @@ class ReportPanel {
 
     const lines = shown.source.split(/\r?\n/);
     const toExplain: StepToExplain = {
-      language: { ".py": "Python", ".cpp": "C++", ".cc": "C++", ".cxx": "C++", ".rs": "Rust", ".java": "Java" }[path.extname(this.request.file).toLowerCase()] ?? "C#",
+      language: { ".py": "Python", ".cpp": "C++", ".cc": "C++", ".cxx": "C++", ".rs": "Rust", ".java": "Java", ".js": "JavaScript", ".ts": "TypeScript" }[path.extname(this.request.file).toLowerCase()] ?? "C#",
       code: solutionCode(lines, shown.trace),
       line: step.line,
       lineText: lines[step.line - 1] ?? "",
@@ -636,7 +645,8 @@ class ReportPanel {
         python: this.request.python,
         cppCompiler: this.request.cppCompiler,
         rustc: this.request.rustc,
-        javaHome: this.request.javaHome
+        javaHome: this.request.javaHome,
+        node: this.request.node
       }, controller.signal);
       if (controller.signal.aborted) return;
 

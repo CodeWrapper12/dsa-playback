@@ -38,6 +38,7 @@ var json = new JsonSerializerOptions
 string? file = null;
 string? language = null;
 string? python = null;
+string? node = null;
 string entry = "Solve";
 long budget = Runner.DefaultBudget;
 bool measure = false;
@@ -58,6 +59,7 @@ for (int i = 0; i < args.Length; i++)
         case "--list-entries": listEntries = true; break;
         case "--language" when i + 1 < args.Length: language = args[++i]; break;
         case "--python" when i + 1 < args.Length: python = args[++i]; break;
+        case "--node" when i + 1 < args.Length: node = args[++i]; break;
 
         case "--steps" when i + 1 < args.Length:
             if (!int.TryParse(args[++i], NumberStyles.Integer, CultureInfo.InvariantCulture, out int n) || n < 0)
@@ -118,7 +120,7 @@ if (file is null)
         "                [--sizes 10,100,1000] [--strategy <" + string.Join("|", Enum.GetNames<GenerationStrategy>()) + ">]\n" +
         "                [--budget <n>]\n" +
         "  DsaViz.Engine --file <solution.cs> --entry <Method> --steps <n> [--strategy <...>]\n" +
-        "  DsaViz.Engine --file <solution.cs|solution.py|solution.cpp|solution.rs|Solution.java|-> --list-entries [--language python|cpp|rust|java] [--python <path>]\n" +
+        "  DsaViz.Engine --file <solution.cs|solution.py|solution.cpp|solution.rs|Solution.java|solution.js|solution.ts|-> --list-entries [--language python|cpp|rust|java|javascript|typescript] [--python <path>] [--node <path>]\n" +
         "  DsaViz.Engine --job <request.json|->");
 
 // "-" reads the source from stdin, so the editor can list the methods of a file with
@@ -145,6 +147,21 @@ if (listEntries)
         // Read without compiling, so the buttons appear even before Rust is installed.
         var read = DsaViz.Engine.Rust.RustReader.Read(source);
         return Emit(new { Entries = DsaViz.Engine.Rust.RustSolution.Entries(read), CompileError = read.Problem }, 0);
+    }
+    bool isJs = language is "javascript" or "typescript" || (language is null && DsaViz.Engine.Js.JsSolution.IsJs(file));
+    if (isJs)
+    {
+        // Read by Node with the bundled TypeScript compiler, so this one needs Node, as Python's needs Python.
+        try
+        {
+            bool typescript = language == "typescript" || (language is null && DsaViz.Engine.Js.JsSolution.IsTypeScript(file));
+            var description = DsaViz.Engine.Js.JsSolution.Describe(DsaViz.Engine.Js.JsHost.Locate(node), source, "", typescript);
+            return Emit(new { Entries = DsaViz.Engine.Js.JsSolution.Entries(description), CompileError = description.Problem }, 0);
+        }
+        catch (DsaViz.Engine.Js.JsUnavailableException ex)
+        {
+            return Emit(new { Entries = Array.Empty<EntryPoint>(), Error = ex.Message, ErrorCode = ex.Code }, 0);
+        }
     }
     if (isCpp)
     {

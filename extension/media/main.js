@@ -117,7 +117,8 @@
         error.code === "cpp-missing" ? "How to install a C++ compiler"
           : error.code === "rust-missing" ? "How to install Rust"
           : error.code === "rust-linker" ? "How to install the linker Rust needs"
-          : error.code === "java-missing" || error.code === "java-version" ? "How to install a JDK" : "Install Python"}</button>` : "");
+          : error.code === "java-missing" || error.code === "java-version" ? "How to install a JDK"
+          : error.code === "node-missing" || error.code === "node-version" ? "How to install Node.js" : "Install Python"}</button>` : "");
   }
 
   /** A "Show line" button for the first message that names a line of the student's code. */
@@ -825,9 +826,10 @@
     </div>`;
   }
 
-  /** "python", "cpp", "rust", "java" or "csharp", from a file's name. */
+  /** "python", "cpp", "rust", "java", "javascript" or "csharp", from a file's name. */
   function languageOf(file) {
     if (/\.py$/i.test(file)) return "python";
+    if (/\.(m?js|ts)$/i.test(file) && !/\.d\.ts$/i.test(file)) return "javascript";
     if (/\.(cpp|cc|cxx|c\+\+)$/i.test(file)) return "cpp";
     if (/\.rs$/i.test(file)) return "rust";
     if (/\.java$/i.test(file)) return "java";

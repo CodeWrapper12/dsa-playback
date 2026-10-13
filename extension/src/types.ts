@@ -239,6 +239,8 @@ export interface JobRequest {
   rustc?: string;
   /** The JDK for a Java file, when the student set one. */
   javaHome?: string;
+  /** The Node.js for a JavaScript or TypeScript file, when the student set one. */
+  node?: string;
   compareFile?: string;
   compareEntry?: string;
 }

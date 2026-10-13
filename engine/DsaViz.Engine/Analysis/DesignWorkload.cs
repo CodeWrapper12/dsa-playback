@@ -24,13 +24,13 @@ public sealed record DesignArg(string Name, DesignArgKind Kind, string Written)
 
     private static DesignArgKind KindOf(string type)
     {
-        if (Regex.IsMatch(type, @"^(int|long|longlong|short|unsignedint|unsigned|size_t|Integer|Long|Int32|Int64|i8|i16|i32|i64|isize|u8|u16|u32|u64|usize)$"))
+        if (Regex.IsMatch(type, @"^(int|long|longlong|short|unsignedint|unsigned|size_t|Integer|Long|Int32|Int64|i8|i16|i32|i64|isize|u8|u16|u32|u64|usize|number)$"))
             return DesignArgKind.Int;
         if (Regex.IsMatch(type, @"^(double|float|Double|Float|f32|f64)$")) return DesignArgKind.Double;
         if (Regex.IsMatch(type, @"^(bool|boolean|Boolean)$")) return DesignArgKind.Bool;
-        if (Regex.IsMatch(type, @"^(char|Character)$")) return DesignArgKind.Char;
+        if (Regex.IsMatch(type, @"^(char|Character|character)$")) return DesignArgKind.Char;
         if (Regex.IsMatch(type, @"^(string|String|str|Str)$")) return DesignArgKind.String;
-        if (Regex.IsMatch(type, @"^(int\[\]|long\[\]|vector<(int|long|longlong)>|Vec<(i32|i64|usize)>|List\[int\]|list\[int\]|(I)?List<(int|Integer|long|Long)>)$"))
+        if (Regex.IsMatch(type, @"^(int\[\]|long\[\]|number\[\]|Array<number>|vector<(int|long|longlong)>|Vec<(i32|i64|usize)>|List\[int\]|list\[int\]|(I)?List<(int|Integer|long|Long)>)$"))
             return DesignArgKind.IntArray;
         if (Regex.IsMatch(type, @"^(string\[\]|String\[\]|vector<string>|Vec<String>|List\[str\]|list\[str\]|(I)?List<(string|String)>)$"))
             return DesignArgKind.StringArray;

@@ -47,13 +47,17 @@ try {
                         "python/two_sum_sorted.py", "python/level_order.py", "python/climb_stairs.py",
                         "cpp/two_sum_sorted.cpp", "cpp/level_order.cpp", "cpp/climb_stairs.cpp",
                         "rust/two_sum_sorted.rs", "rust/level_order.rs", "rust/climb_stairs.rs",
-                        "java/TwoSumSorted.java", "java/LevelOrder.java", "java/ClimbStairs.java"]) {
+                        "java/TwoSumSorted.java", "java/LevelOrder.java", "java/ClimbStairs.java",
+                        "javascript/two_sum_sorted.js", "javascript/level_order.js", "javascript/climb_stairs.js",
+                        "typescript/two_sum_sorted.ts", "typescript/level_order.ts", "typescript/climb_stairs.ts"]) {
     check(`walkthrough sample ${sample} is shipped`, files.includes(`samples/${sample}`));
   }
   check("the Python runner is shipped beside the engine", files.includes("engine/python/dsaviz_py.py"));
   check("the C++ runtime header is shipped beside the engine", files.includes("engine/cpp/dsaviz.hpp"));
   check("the Rust runtime is shipped beside the engine", files.includes("engine/rust/dsaviz.rs"));
   check("the Java runtime is shipped beside the engine", files.includes("engine/java/Dsaviz.java"));
+  check("the JavaScript reader, runtime and TypeScript compiler are shipped beside the engine",
+    ["engine/js/dsaviz_js.js", "engine/js/dsaviz_rt.js", "engine/js/typescript.js"].every(f => files.includes(f)));
   check("the icon, licence and changelog are shipped",
     files.includes("images/icon.png") && files.includes("LICENSE.txt") && files.includes("changelog.md"));
 
@@ -160,6 +164,19 @@ try {
   check("records a Java run with the bundled engine", javaSteps?.status === "Completed" && javaSteps.check?.matches === true,
     javaSteps ? `${javaSteps.steps.length} steps${javaSteps.errors.length ? ": " + javaSteps.errors.join("; ") : ""}`
               : (javaRun.stdout || javaRun.stderr).slice(0, 300));
+
+  // Node is the student's own; TypeScript's compiler comes with the extension.
+  check("Node.js is available to check with", onPath("node").length > 0, onPath("node") || "node not on the path");
+  for (const [language, file] of [["JavaScript", "javascript/two_sum_sorted.js"], ["TypeScript", "typescript/two_sum_sorted.ts"]]) {
+    const scriptRun = spawnSync(engine, ["--job", "-"], {
+      input: JSON.stringify({ file: path.join(root, "samples", file), entry: "twoSum", stepSize: 8 }),
+      env: { ...process.env, DOTNET_ROOT: bare.DOTNET_ROOT }, encoding: "utf8", timeout: 300_000
+    });
+    const scriptSteps = scriptRun.stdout ? JSON.parse(scriptRun.stdout).steps : null;
+    check(`records a ${language} run with the bundled engine`, scriptSteps?.status === "Completed" && scriptSteps.check?.matches === true,
+      scriptSteps ? `${scriptSteps.steps.length} steps${scriptSteps.errors.length ? ": " + scriptSteps.errors.join("; ") : ""}`
+                  : (scriptRun.stdout || scriptRun.stderr).slice(0, 300));
+  }
 
   const measured = job({ file: sample, entry: "Solution.TwoSum" });
   const primary = measured.stdout ? JSON.parse(measured.stdout).primary : null;

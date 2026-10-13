@@ -381,6 +381,49 @@ public static class Stepper
         => NativeRecordedRun(host.Java, plan.Statements, sourceLines, Java.JavaSolution.DepthLimit, Java.JavaSolution.RunTimeout,
             budget, maxSteps, host.Launcher(classes));
 
+    /// <summary>A JavaScript or TypeScript function's, or design problem's, recorded run, with the student's own Node.</summary>
+    public static StepTrace RecordJs(
+        Js.JsHost host,
+        string source,
+        string entry,
+        bool typescript,
+        IReadOnlyList<InputSpec>? inputs = null,
+        int size = DefaultSize,
+        int maxSteps = DefaultMaxSteps,
+        GenerationStrategy? strategy = null,
+        long budget = Runner.DefaultBudget,
+        IReadOnlyList<string?>? values = null,
+        int? example = null)
+    {
+        var solution = Js.JsSolution.Read(host, source, entry, typescript);
+        var built = solution.Build(stepping: true);
+        if (built.Program is null) return Failed(built.Status, built.Errors, size);
+        return RecordWith(JsPlanFor(solution), inputs, size, maxSteps, strategy, values, example, solution.Methods,
+            JsRun(host, built.Program, budget, maxSteps));
+    }
+
+    /// <summary>Runs every example in a JavaScript or TypeScript file against one build, each recording a single step.</summary>
+    public static ExampleReport RunExamplesJs(Js.JsHost host, string source, string entry, bool typescript, long budget = Runner.DefaultBudget)
+    {
+        var solution = Js.JsSolution.Read(host, source, entry, typescript);
+        var built = solution.Build(stepping: true);
+        if (built.Program is null) return new ExampleReport(built.Status, Array.Empty<ExampleRun>()) { Errors = built.Errors };
+        var plan = JsPlanFor(solution);
+        var run = JsRun(host, built.Program, budget, ResultOnlySteps);
+        return RunEach(plan.Search, index => RecordWith(plan, null, DefaultSize, ResultOnlySteps, null, null, index, solution.Methods, run));
+    }
+
+    private static Plan JsPlanFor(Js.JsSolution solution)
+    {
+        if (solution.DesignClass is not null) return DesignPlan(solution.DesignExamplesFound());
+        var search = solution.Examples();
+        return new Plan(Js.JsSolution.Parameters(solution.Function!, search), search);
+    }
+
+    private static Func<object?[], RecordedRun> JsRun(Js.JsHost host, Js.JsProgram program, long budget, int maxSteps)
+        => NativeRecordedRun(host.Node, program.Statements, int.MaxValue, Js.JsSolution.DepthLimit, Js.JsSolution.RunTimeout,
+            budget, maxSteps, Js.JsHost.Launcher(program.Launcher));
+
     private static Plan CppPlanFor(Cpp.CppSolution solution)
         => solution.DesignClass is not null
             ? DesignPlan(solution.DesignExamplesFound())

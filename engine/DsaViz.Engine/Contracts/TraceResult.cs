@@ -155,6 +155,11 @@ public sealed record TraceResult
         ? "Exact: every byte allocated with new — every container's storage — counted per statement by replacing " +
           "the program's operator new and delete, and the peak held at once measured directly. Variables on the stack, " +
           "and the visualizer's own bookkeeping, are not counted."
+        : Language == "javascript"
+        ? "Estimated where it is created: every array, object, map, set and string your code makes — a literal, new, " +
+          "slice or map, a push, set or add — is counted on the line that makes it, at a fixed size per element. Node " +
+          "cannot say what one line allocated, so this is an estimate, the same on every run. What is held at once is " +
+          "inferred from what was allocated, as for C#."
         : Language == "python"
         ? "Approximate, from Python's tracemalloc: for each statement, how far traced memory rose above where it " +
           "stood when the statement began — a temporary freed before the statement ends still counts. Python " +

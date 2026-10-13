@@ -29,11 +29,11 @@
     "big o",
     "time complexity",
     "space complexity",
-    "complexity",
+    "javascript",
     "algorithm visualizer",
     "rust",
     "visualization",
-    "step through",
+    "typescript",
     "step by step",
     "recursion tree",
     "recursion",
@@ -66,7 +66,9 @@
     "onLanguage:python",
     "onLanguage:cpp",
     "onLanguage:rust",
-    "onLanguage:java"
+    "onLanguage:java",
+    "onLanguage:javascript",
+    "onLanguage:typescript"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -118,7 +120,7 @@
       "editor/title": [
         {
           "command": "dsaPlayback.visualize",
-          "when": "resourceLangId == csharp || resourceLangId == python || resourceLangId == cpp || resourceLangId == rust || resourceLangId == java",
+          "when": "resourceLangId == csharp || resourceLangId == python || resourceLangId == cpp || resourceLangId == rust || resourceLangId == java || resourceLangId == javascript || resourceLangId == typescript",
           "group": "navigation"
         }
       ],
@@ -129,11 +131,11 @@
         },
         {
           "command": "dsaPlayback.visualize",
-          "when": "editorLangId == csharp || editorLangId == python || editorLangId == cpp || editorLangId == rust || editorLangId == java"
+          "when": "editorLangId == csharp || editorLangId == python || editorLangId == cpp || editorLangId == rust || editorLangId == java || editorLangId == javascript || editorLangId == typescript"
         },
         {
           "command": "dsaPlayback.measure",
-          "when": "editorLangId == csharp || editorLangId == python || editorLangId == cpp || editorLangId == rust || editorLangId == java"
+          "when": "editorLangId == csharp || editorLangId == python || editorLangId == cpp || editorLangId == rust || editorLangId == java || editorLangId == javascript || editorLangId == typescript"
         }
       ]
     },
@@ -184,6 +186,11 @@
           "default": "",
           "markdownDescription": "The JDK for Java files: its folder (the one with `bin/javac`). Leave empty to use `JAVA_HOME`, or else `javac` on your path. Needs JDK 17 or later."
         },
+        "dsaPlayback.node": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Node.js for JavaScript and TypeScript files: a path to `node`. Leave empty to use `node` on your path. Needs Node.js 18 or later; TypeScript needs nothing more — its compiler ships with the extension."
+        },
         "dsaPlayback.explainWithAI": {
           "type": "boolean",
           "default": false,
@@ -200,7 +207,7 @@
           {
             "id": "twoPointers",
             "title": "Watch two pointers move",
-            "description": "Open a two-pointer solution, then press **\u25b6 Visualize** above `TwoSum`.\n[Open Two Sum II in C#](command:dsaPlayback.openSample?%5B%22TwoSumSorted.cs%22%5D) \u00b7 [in Python](command:dsaPlayback.openSample?%5B%22two_sum_sorted.py%22%5D) \u00b7 [in C++](command:dsaPlayback.openSample?%5B%22two_sum_sorted.cpp%22%5D) \u00b7 [in Rust](command:dsaPlayback.openSample?%5B%22two_sum_sorted.rs%22%5D) \u00b7 [in Java](command:dsaPlayback.openSample?%5B%22TwoSumSorted.java%22%5D)",
+            "description": "Open a two-pointer solution, then press **\u25b6 Visualize** above `TwoSum`.\n[Open Two Sum II in C#](command:dsaPlayback.openSample?%5B%22TwoSumSorted.cs%22%5D) \u00b7 [in Python](command:dsaPlayback.openSample?%5B%22two_sum_sorted.py%22%5D) \u00b7 [in C++](command:dsaPlayback.openSample?%5B%22two_sum_sorted.cpp%22%5D) \u00b7 [in Rust](command:dsaPlayback.openSample?%5B%22two_sum_sorted.rs%22%5D) \u00b7 [in Java](command:dsaPlayback.openSample?%5B%22TwoSumSorted.java%22%5D) \u00b7 [in JavaScript](command:dsaPlayback.openSample?%5B%22two_sum_sorted.js%22%5D) \u00b7 [in TypeScript](command:dsaPlayback.openSample?%5B%22two_sum_sorted.ts%22%5D)",
             "media": {
               "markdown": "walkthrough/visualize.md"
             },
@@ -211,7 +218,7 @@
           {
             "id": "bfs",
             "title": "Try your own input on a tree",
-            "description": "Open a breadth-first search, press **\u25b6 Visualize**, then type a different tree in the box.\n[Open Level Order Traversal in C#](command:dsaPlayback.openSample?%5B%22LevelOrder.cs%22%5D) \u00b7 [in Python](command:dsaPlayback.openSample?%5B%22level_order.py%22%5D) \u00b7 [in C++](command:dsaPlayback.openSample?%5B%22level_order.cpp%22%5D) \u00b7 [in Rust](command:dsaPlayback.openSample?%5B%22level_order.rs%22%5D) \u00b7 [in Java](command:dsaPlayback.openSample?%5B%22LevelOrder.java%22%5D)",
+            "description": "Open a breadth-first search, press **\u25b6 Visualize**, then type a different tree in the box.\n[Open Level Order Traversal in C#](command:dsaPlayback.openSample?%5B%22LevelOrder.cs%22%5D) \u00b7 [in Python](command:dsaPlayback.openSample?%5B%22level_order.py%22%5D) \u00b7 [in C++](command:dsaPlayback.openSample?%5B%22level_order.cpp%22%5D) \u00b7 [in Rust](command:dsaPlayback.openSample?%5B%22level_order.rs%22%5D) \u00b7 [in Java](command:dsaPlayback.openSample?%5B%22LevelOrder.java%22%5D) \u00b7 [in JavaScript](command:dsaPlayback.openSample?%5B%22level_order.js%22%5D) \u00b7 [in TypeScript](command:dsaPlayback.openSample?%5B%22level_order.ts%22%5D)",
             "media": {
               "markdown": "walkthrough/inputs.md"
             },
@@ -222,7 +229,7 @@
           {
             "id": "complexity",
             "title": "See why it's O(n)",
-            "description": "Open a memoised dynamic-programming solution and press **Complexity**.\n[Open Climbing Stairs in C#](command:dsaPlayback.openSample?%5B%22ClimbStairs.cs%22%5D) \u00b7 [in Python](command:dsaPlayback.openSample?%5B%22climb_stairs.py%22%5D) \u00b7 [in C++](command:dsaPlayback.openSample?%5B%22climb_stairs.cpp%22%5D) \u00b7 [in Rust](command:dsaPlayback.openSample?%5B%22climb_stairs.rs%22%5D) \u00b7 [in Java](command:dsaPlayback.openSample?%5B%22ClimbStairs.java%22%5D)",
+            "description": "Open a memoised dynamic-programming solution and press **Complexity**.\n[Open Climbing Stairs in C#](command:dsaPlayback.openSample?%5B%22ClimbStairs.cs%22%5D) \u00b7 [in Python](command:dsaPlayback.openSample?%5B%22climb_stairs.py%22%5D) \u00b7 [in C++](command:dsaPlayback.openSample?%5B%22climb_stairs.cpp%22%5D) \u00b7 [in Rust](command:dsaPlayback.openSample?%5B%22climb_stairs.rs%22%5D) \u00b7 [in Java](command:dsaPlayback.openSample?%5B%22ClimbStairs.java%22%5D) \u00b7 [in JavaScript](command:dsaPlayback.openSample?%5B%22climb_stairs.js%22%5D) \u00b7 [in TypeScript](command:dsaPlayback.openSample?%5B%22climb_stairs.ts%22%5D)",
             "media": {
               "markdown": "walkthrough/complexity.md"
             },

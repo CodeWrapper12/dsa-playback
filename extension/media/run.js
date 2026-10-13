@@ -1127,6 +1127,7 @@
       case "python": return "Approximate, from Python's tracemalloc: what your code allocated, not the visualizer. Python allocates even for integers above 256. Sizes are each structure itself (sys.getsizeof), not what its elements point to.";
       case "java": return "Exact: every byte your code allocated, from the JVM's own count — objects and arrays alike — not the visualizer's. A variable Java would not let be read yet says so. Sizes are approximate: each structure itself, not what its elements point to.";
       case "rust": return "Exact: every byte your code allocated on the heap — each Vec's, String's and map's storage, every Box and Rc — not the visualizer's. Values on the stack are not counted. A variable the compiler would not let be read at a step says why: moved, borrowed, not set yet, or no longer used.";
+      case "javascript": return "Estimated where it is created: each array, object, map, set and string your code makes — a literal, new, slice or map, a push, set or add — counted on the line that makes it, at a fixed size per element. Node cannot say what one line allocated, so this is an estimate, the same on every run.";
       case "cpp": return "Exact: every byte your code allocated with new — each container's storage — not the visualizer's. Variables on the stack are not counted. Sizes are approximate: each structure itself, not what its elements point to.";
       default: return "Bytes allocated by your code, not by the visualizer. Sizes are approximate: each structure itself, not what its elements point to.";
     }

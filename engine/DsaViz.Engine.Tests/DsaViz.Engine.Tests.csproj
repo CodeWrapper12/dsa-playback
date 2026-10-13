@@ -21,6 +21,6 @@
   </ItemGroup>
   <ItemGroup>
     <!-- Copied, not compiled: these are fixtures the engine compiles at runtime. -->
-    <None Include="../../samples/**/*.cs;../../samples/**/*.py;../../samples/**/*.cpp;../../samples/**/*.rs;../../samples/**/*.java" CopyToOutputDirectory="PreserveNewest" LinkBase="samples" />
+    <None Include="../../samples/**/*.cs;../../samples/**/*.py;../../samples/**/*.cpp;../../samples/**/*.rs;../../samples/**/*.java;../../samples/**/*.js;../../samples/**/*.ts" CopyToOutputDirectory="PreserveNewest" LinkBase="samples" />
   </ItemGroup>
 </Project>

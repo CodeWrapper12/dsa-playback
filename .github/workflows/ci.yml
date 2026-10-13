@@ -69,14 +69,18 @@ jobs:
         shell: bash
         run: ${DSAVIZ_CXX:-$(command -v clang++ || command -v g++)} --version
 
+      # The engine reads JavaScript and TypeScript with the TypeScript compiler the extension
+      # depends on, so the extension's packages are installed before the engine is tested.
+      - name: Extension dependencies
+        working-directory: extension
+        run: npm ci
+
       - name: Engine tests
         run: dotnet test engine/DsaViz.sln
 
       - name: Extension tests
         working-directory: extension
-        run: |
-          npm ci
-          npm test
+        run: npm test
 
       - name: Integration tests in VS Code (Linux)
         if: runner.os == 'Linux'

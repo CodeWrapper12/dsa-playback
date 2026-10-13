@@ -24,6 +24,11 @@
     <None Include="rust/*.rs" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <!-- The Java runtime is compiled by the student's javac, once per JDK. -->
     <None Include="java/*.java" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="js/*.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <!-- The TypeScript compiler JavaScript and TypeScript are read with: the extension's own copy, shipped beside the scripts. -->
+    <None Include="../../extension/node_modules/typescript/lib/typescript.js" Link="js/typescript.js"
+          Condition="Exists('../../extension/node_modules/typescript/lib/typescript.js')"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../DsaViz.Runtime/DsaViz.Runtime.csproj" />

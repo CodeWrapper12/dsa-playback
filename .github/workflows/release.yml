@@ -93,14 +93,18 @@ jobs:
           version=$(node -p "require('./extension/package.json').version")
           test "v$version" = "${GITHUB_REF_NAME}" || { echo "Tag ${GITHUB_REF_NAME} does not match package.json version $version"; exit 1; }
 
+      # The engine reads JavaScript and TypeScript with the TypeScript compiler the extension
+      # depends on, so the extension's packages are installed before the engine is tested.
+      - name: Extension dependencies
+        working-directory: extension
+        run: npm ci
+
       - name: Engine tests
         run: dotnet test engine/DsaViz.sln
 
       - name: Extension tests
         working-directory: extension
-        run: |
-          npm ci
-          npm test
+        run: npm test
 
       - name: Package
         working-directory: extension

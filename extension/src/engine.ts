@@ -141,13 +141,19 @@ export class EntryListError extends Error {
 export interface ListOptions {
   /** The file's text, when it has unsaved changes; read from disk otherwise. */
   source?: string;
-  language?: "csharp" | "python" | "cpp" | "rust" | "java";
+  language?: Language;
   python?: string;
+  /** The Node.js for a JavaScript or TypeScript file, when the student set one. */
+  node?: string;
   signal?: AbortSignal;
 }
 
-export function languageOfFile(file: string): "csharp" | "python" | "cpp" | "rust" | "java" {
+export type Language = "csharp" | "python" | "cpp" | "rust" | "java" | "javascript" | "typescript";
+
+export function languageOfFile(file: string): Language {
   const lower = file.toLowerCase();
+  if (lower.endsWith(".js") || lower.endsWith(".mjs")) return "javascript";
+  if (lower.endsWith(".ts") && !lower.endsWith(".d.ts")) return "typescript";
   if (lower.endsWith(".py")) return "python";
   if ([".cpp", ".cc", ".cxx", ".c++"].some(extension => lower.endsWith(extension))) return "cpp";
   if (lower.endsWith(".rs")) return "rust";
@@ -161,6 +167,7 @@ export async function listEntryPoints(file: string, options: ListOptions = {}): 
   const language = options.language ?? languageOfFile(file);
   if (language !== "csharp") args.push("--language", language);
   if (options.python) args.push("--python", options.python);
+  if (options.node) args.push("--node", options.node);
 
   const output = await run(resolveEnginePath(), args, options.source, options.signal);
   const answer = JSON.parse(output) as { entries?: EntryPoint[]; error?: string; errorCode?: string };

@@ -80,10 +80,11 @@ export class EntryPointLenses implements vscode.CodeLensProvider {
     const abort = new AbortController();
     const subscription = token.onCancellationRequested(() => abort.abort());
     try {
-      const language = (["python", "cpp", "rust", "java"] as const).find(l => l === document.languageId) ?? "csharp";
+      const language = (["python", "cpp", "rust", "java", "javascript", "typescript"] as const).find(l => l === document.languageId) ?? "csharp";
       const python = language === "python" ? await pythonInterpreter(document.uri) : undefined;
+      const node = vscode.workspace.getConfiguration("dsaPlayback").get<string>("node")?.trim() || undefined;
       const entries = await listEntryPoints(document.fileName,
-        { source: document.getText(), language, python, signal: abort.signal });
+        { source: document.getText(), language, python, node, signal: abort.signal });
       this.cache.set(key, { version: document.version, entries });
       return entries;
     } catch (error) {

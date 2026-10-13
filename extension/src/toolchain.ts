@@ -26,8 +26,8 @@ const LINKER: Record<string, { command?: string; guide: string }> = {
 };
 
 /**
- * Shown when nothing can run because a tool is missing: Python, a C++ compiler, Rust, or
- * the linker Rust needs. Each offers what fixes it, as buttons. Nothing is installed
+ * Shown when nothing can run because a tool is missing: Python, a C++ compiler, Rust, the
+ * linker Rust needs, a JDK, or Node.js. Each offers what fixes it, as buttons. Nothing is installed
  * without the student doing it.
  */
 export async function offerToolchain(code: string | undefined, message: string) {
@@ -43,7 +43,20 @@ export async function offerToolchain(code: string | undefined, message: string) 
     await offerJava(message);
     return;
   }
+  if (code === "node-missing" || code === "node-version") {
+    await offerNode(message);
+    return;
+  }
   await offerPython(message);
+}
+
+/** Node.js's own downloads, for every system. */
+const NODE_DOWNLOAD = "https://nodejs.org/en/download";
+
+async function offerNode(message: string) {
+  const choice = await vscode.window.showErrorMessage(message, "Download Node.js", "Set Node Path");
+  if (choice === "Download Node.js") await vscode.env.openExternal(vscode.Uri.parse(NODE_DOWNLOAD));
+  if (choice === "Set Node Path") await vscode.commands.executeCommand("workbench.action.openSettings", "dsaPlayback.node");
 }
 
 /** A free, widely used JDK build, for every system. */

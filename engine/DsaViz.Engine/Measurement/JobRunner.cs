@@ -40,6 +40,11 @@ public static class JobRunner
             // Nothing runs without rustc, or without the linker it needs, and the editor can say how to get them.
             return new JobResponse { Errors = new[] { ex.Message }, ErrorCode = ex.Code };
         }
+        catch (Js.JsUnavailableException ex)
+        {
+            // Nothing runs without Node, and the editor can say how to get it.
+            return new JobResponse { Errors = new[] { ex.Message }, ErrorCode = ex.Code };
+        }
         catch (Cpp.CppUnavailableException ex)
         {
             // Nothing runs without a compiler, and the editor can say how to get one.
@@ -69,6 +74,10 @@ public static class JobRunner
         Java.JavaHost? java = null;
         Java.JavaHost JavaHost() => java ??= Java.JavaHost.Locate(request.JavaHome);
         bool isJava = Java.JavaSolution.IsJava(request.File);
+        Js.JsHost? js = null;
+        Js.JsHost JsHost() => js ??= Js.JsHost.Locate(request.Node);
+        bool isJs = Js.JsSolution.IsJs(request.File);
+        bool isTs = Js.JsSolution.IsTypeScript(request.File);
 
         if (request.AllExamples)
         {
@@ -80,6 +89,8 @@ public static class JobRunner
                 ? Stepper.RunExamplesRust(RustHost(), primarySource, request.Entry, request.Budget)
                 : isJava
                 ? Stepper.RunExamplesJava(JavaHost(), primarySource, request.Entry, request.Budget)
+                : isJs
+                ? Stepper.RunExamplesJs(JsHost(), primarySource, request.Entry, isTs, request.Budget)
                 : Stepper.RunExamples(DsaViz.Engine.Analysis.SourceAnalysis.Create(primarySource), request.Entry, request.Budget);
             return new JobResponse
             {
@@ -103,6 +114,9 @@ public static class JobRunner
                 : isJava
                 ? Stepper.RecordJava(JavaHost(), primarySource, request.Entry, request.Inputs,
                     stepSize, request.MaxSteps, request.Strategy, request.Budget, request.Values, request.Example)
+                : isJs
+                ? Stepper.RecordJs(JsHost(), primarySource, request.Entry, isTs, request.Inputs,
+                    stepSize, request.MaxSteps, request.Strategy, request.Budget, request.Values, request.Example)
                 : Stepper.Record(
                     DsaViz.Engine.Analysis.SourceAnalysis.Create(primarySource), request.Entry, request.Inputs,
                     stepSize, request.MaxSteps, request.Strategy, request.Budget, request.Values, request.Example);
@@ -124,6 +138,8 @@ public static class JobRunner
                 ? Measurer.MeasureRust(RustHost(), source, entry, inputs, sizes, request.Budget, strategy)
                 : Java.JavaSolution.IsJava(file)
                 ? Measurer.MeasureJava(JavaHost(), source, entry, inputs, sizes, request.Budget, strategy)
+                : Js.JsSolution.IsJs(file)
+                ? Measurer.MeasureJs(JsHost(), source, entry, Js.JsSolution.IsTypeScript(file), inputs, sizes, request.Budget, strategy)
                 : Measurer.Measure(source, entry, inputs, sizes, request.Budget, strategy);
 
         var primary = Measure(request.File, primarySource, request.Entry, request.Inputs, request.Sizes, request.Strategy);

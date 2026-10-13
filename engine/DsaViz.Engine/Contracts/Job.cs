@@ -54,6 +54,9 @@ public sealed record JobRequest
     /// <summary>The C++ compiler to build C++ files with: the dsaPlayback.cppCompiler setting, when set.</summary>
     public string? CppCompiler { get; init; }
 
+    /// <summary>The Node.js to run JavaScript and TypeScript with: dsaPlayback.node, when it is set.</summary>
+    public string? Node { get; init; }
+
     /// <summary>The Python interpreter to run Python files with: the one selected in VS Code, when there is one.</summary>
     public string? Python { get; init; }
 
