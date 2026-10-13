@@ -367,15 +367,65 @@ Released as 1.1.0 through the existing release workflow.
 | 40 | Met, for C# and Python, against `samples/TwoSumExamples.cs`, whose second example fails and third throws. | `StepInputTests.Every_example_is_run…`, `PythonTests.Every_example_is_run…`; panel test: *run all examples lists each result*; integration: *Run all examples lists every example's result* |
 | 41 | Open: the publisher's own check. | By hand |
 
-## Phase 6 — reach (outline; planned in detail when it starts)
+## Phase 6 — reach (planned in detail)
 
-- Files opened through the official LeetCode extension visualize, including their
-  examples when it is set to put the description in a comment.
-- Windows on ARM and Linux on ARM packages.
-- LeetCode design problems — a class and a list of calls, as in LRU Cache.
-- An optional AI explanation of each step through VS Code's language-model API, using
-  the student's own Copilot. It is off by default, and the setting says plainly that
-  turning it on sends the code to Copilot.
+Found while planning: a C# file made by the LeetCode extension does not compile here at
+all. LeetCode adds `using` lines behind the scenes and leaves `TreeNode` and `ListNode`
+commented out, so `Dictionary`, `Math` and `TreeNode` are all "not found". Python files
+from the same extension already work.
+
+42. **C# written for LeetCode compiles as it does on LeetCode.**
+    - The `using` lines LeetCode adds itself are assumed: `System`,
+      `System.Collections.Generic`, `System.Linq` and `System.Text`.
+    - `TreeNode` and `ListNode` are supplied when the file uses them but does not define
+      them, as Python's already are. A file that defines its own is left alone.
+    - Checked with files in the LeetCode extension's layout (`1.two-sum.cs`, the
+      `@lc` header, the description in a `/* */` comment, `@lc code=start/end`): Two
+      Sum, Maximum Depth of Binary Tree and Reverse Linked List, in C# and Python, each
+      showing ▶ Visualize, running its example and showing ✓.
+43. **Design problems.** A class whose example is LeetCode's two lines — operations and
+    arguments — such as LRU Cache, Min Stack or Implement Trie:
+    ```
+    Input
+    ["LRUCache","put","put","get"]
+    [[2],[1,1],[2,2],[1]]
+    Output
+    [null,null,null,1]
+    ```
+    - ▶ Visualize appears above the class.
+    - The run creates the object and makes every call in order, as one recording; the
+      run view shows which call is running.
+    - The list of results is checked against Output (✓ / ✗), and Run all examples works.
+    - A value can be typed for both lines, in the same format.
+    - C# and Python. No Complexity button: a design problem's cost is per operation,
+      which this phase does not measure.
+44. **ARM packages.** Windows on ARM (`win32-arm64`) and Linux on ARM (`linux-arm64`)
+    packages are built and checked by `verify-package` on GitHub's own ARM machines,
+    and published with the other four.
+45. **Optional AI explanation, off by default.**
+    - Setting `dsaPlayback.explainWithAI`, off by default. Its description says plainly:
+      turning it on sends your code and the current step to GitHub Copilot.
+    - When on, the run view has an **Explain this step** button. It sends the method's
+      code, the current line and the variables at that step to the student's own
+      Copilot, through VS Code's language-model API, and shows the answer under the step.
+    - Nothing is sent until the button is pressed. VS Code asks the student's permission
+      the first time.
+    - No Copilot, or an editor without the API (VSCodium, for example): the button says
+      why and does nothing else.
+    - Tested with a stand-in model. The real Copilot answer is checked by hand.
+
+Release plan (chosen 2026-10-12): 42 ships first as 1.1.1, because LeetCode-extension C#
+files fail today; 43–45 follow as 1.2.0. The AI explanation runs only when its button
+is pressed.
+
+### Phase 6 status
+
+| # | Status | Checked by |
+|---|---|---|
+| 42 | Met: `using` lines and `TreeNode`/`ListNode` supplied beside the file, never into it, so error lines are still the student's own. A file's own definitions are kept. | `LeetCodeExtensionTests` (13 tests over `samples/leetcode-extension`, C# and Python); integration: *a C# file made by the LeetCode extension…* |
+| 43 | Not started. | |
+| 44 | Not started. | |
+| 45 | Not started. | |
 
 ## Phase 7 — new languages (outline)
 

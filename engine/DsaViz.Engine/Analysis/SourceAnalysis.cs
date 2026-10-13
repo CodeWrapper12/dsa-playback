@@ -16,10 +16,11 @@ public sealed class SourceAnalysis
 {
     private readonly Lazy<CostCallAnalysis> _costCalls;
 
-    private SourceAnalysis(string source, SyntaxTree tree, CSharpCompilation compilation)
+    private SourceAnalysis(string source, SyntaxTree tree, IReadOnlyList<SyntaxTree> prelude, CSharpCompilation compilation)
     {
         Source = source;
         Tree = tree;
+        Prelude = prelude;
         Compilation = compilation;
         Model = compilation.GetSemanticModel(tree);
 
@@ -33,6 +34,9 @@ public sealed class SourceAnalysis
 
     public string Source { get; }
     public SyntaxTree Tree { get; }
+
+    /// <summary>What LeetCode provides without it being written, compiled beside <see cref="Tree"/>.</summary>
+    public IReadOnlyList<SyntaxTree> Prelude { get; }
     public CSharpCompilation Compilation { get; }
     public SemanticModel Model { get; }
     public IReadOnlyList<string> Errors { get; }
@@ -43,7 +47,8 @@ public sealed class SourceAnalysis
     public static SourceAnalysis Create(string source)
     {
         var tree = CSharpSyntaxTree.ParseText(source, path: "solution.cs");
-        return new SourceAnalysis(source, tree, InMemoryCompiler.CreateCompilation(tree, "Analysis"));
+        var prelude = LeetCodePrelude.For(tree);
+        return new SourceAnalysis(source, tree, prelude, InMemoryCompiler.CreateCompilation(prelude.Prepend(tree), "Analysis"));
     }
 
     /// <summary>"line 12: CS0103 The name 'x' does not exist" — positions in the user's own file.</summary>

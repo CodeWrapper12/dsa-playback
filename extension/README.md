@@ -106,6 +106,12 @@ and press Enter.
 Ask in [Discussions](https://github.com/CodeWrapper12/dsa-playback/discussions). If
 DSA Playback helps you, a rating helps other students find it.
 
+## Files from LeetCode
+
+Solutions copied from LeetCode, or made by the LeetCode extension, run as they are —
+no `using` lines to add, and `TreeNode` and `ListNode` are supplied when the file leaves
+them commented out. If the problem's description is in the file, its examples are used.
+
 ## Get started
 
 Open the Command Palette and run **Welcome: Open Walkthrough…**, then **Get started with

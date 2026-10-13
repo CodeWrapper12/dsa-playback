@@ -40,7 +40,9 @@ public static class EntryPointScanner
     {
         var root = CSharpSyntaxTree.ParseText(source).GetRoot();
         var classes = root.DescendantNodes().OfType<ClassDeclarationSyntax>().ToList();
-        var nodeTypes = classes.Where(IsNodeClass).Select(c => c.Identifier.Text).ToHashSet();
+        var nodeTypes = classes.Where(IsNodeClass).Select(c => c.Identifier.Text)
+            .Concat(Compilation.LeetCodePrelude.SuppliedNodes(root))
+            .ToHashSet();
 
         var entries = new List<EntryPoint>();
 

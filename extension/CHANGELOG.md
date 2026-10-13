@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.1
+
+- Fixed: C# files made by the LeetCode extension, or copied from LeetCode, did not
+  compile — "Dictionary could not be found", "TreeNode could not be found". LeetCode
+  adds the usual `using` lines itself and leaves `TreeNode` and `ListNode` commented
+  out; DSA Playback now does the same, so these files run as they do on LeetCode.
+
 ## 1.1.0
 
 - **Plain words.** Every time and space verdict now says what it means without notation:

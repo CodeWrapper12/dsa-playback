@@ -100,7 +100,7 @@ public static class Runner
         if (analysis.HasErrors)
             return new CompileOutcome(null, RunStatus.CompileError, analysis.Errors);
 
-        IReadOnlyList<Microsoft.CodeAnalysis.SyntaxTree> trees = new[] { analysis.Tree };
+        IReadOnlyList<Microsoft.CodeAnalysis.SyntaxTree> trees = analysis.Prelude.Prepend(analysis.Tree).ToList();
         IReadOnlyList<StatementInfo> statements = Array.Empty<StatementInfo>();
         IReadOnlyList<LibraryCallSite> sites = Array.Empty<LibraryCallSite>();
 

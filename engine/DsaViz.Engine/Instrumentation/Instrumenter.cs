@@ -11,8 +11,11 @@ public sealed record InstrumentedSource(
     IReadOnlyList<StatementInfo> Statements,
     IReadOnlyList<LibraryCallSite> Sites)
 {
-    /// <summary>Everything that has to be compiled together: the solution and its tracer slot.</summary>
-    public IReadOnlyList<SyntaxTree> Trees => new[] { Tree, TraceCalls.HolderTree() };
+    /// <summary>What LeetCode provides without it being written, compiled unchanged.</summary>
+    public IReadOnlyList<SyntaxTree> Prelude { get; init; } = Array.Empty<SyntaxTree>();
+
+    /// <summary>Everything that has to be compiled together: the solution, its tracer slot, and the prelude.</summary>
+    public IReadOnlyList<SyntaxTree> Trees => new[] { Tree, TraceCalls.HolderTree() }.Concat(Prelude).ToList();
 }
 
 /// <summary>
@@ -70,6 +73,9 @@ public static class Instrumenter
         return new InstrumentedSource(
             CSharpSyntaxTree.Create((CompilationUnitSyntax)instrumented, path: "instrumented.cs"),
             rewriter.Statements,
-            charged.Select(call => call.ToSite()).ToList());
+            charged.Select(call => call.ToSite()).ToList())
+        {
+            Prelude = analysis.Prelude
+        };
     }
 }

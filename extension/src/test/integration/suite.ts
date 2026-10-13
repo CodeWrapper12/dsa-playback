@@ -180,6 +180,18 @@ const checks: [string, (api: TestApi) => Promise<void>][] = [
     assert.ok(!body.includes(os.homedir()), "the home folder is never included");
   }],
 
+  ["a C# file made by the LeetCode extension gets its buttons and runs its example", async api => {
+    // No using lines, and TreeNode left commented out, as LeetCode's template has it.
+    const document = await open("samples/leetcode-extension/104.maximum-depth-of-binary-tree.cs");
+    assert.deepEqual((await api.lenses(document)).map(lens => lens.command?.title), ["$(play) Visualize", "$(graph) Complexity"]);
+
+    const before = api.lastSteps();
+    await vscode.commands.executeCommand("dsaPlayback.visualize", document.uri, "Solution.MaxDepth");
+    const steps = await waitFor(() => (api.lastSteps() !== before ? api.lastSteps() : undefined), "a recorded run");
+    assert.equal(steps.status, "Completed", steps.errors.join("; "));
+    assert.equal(steps.check?.matches, true);
+  }],
+
   ["the walkthrough opens an editable copy of its sample", async () => {
     await vscode.commands.executeCommand("dsaPlayback.openSample", "LevelOrder.cs");
     const opened = vscode.window.activeTextEditor?.document.fileName ?? "";
