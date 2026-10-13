@@ -753,4 +753,4 @@ Released as 1.7.0.
 | 80 | Met. | `DesignComplexityTests.Each_size_repeats_the_examples_calls…`, `…Words_characters_and_arrays…` |
 | 81 | Met. | `DesignComplexityTests` (fast samples, slow samples in five languages, a helper, the classifier); panel and VS Code design tests |
 | 82 | Met. | `DesignComplexityTests.Nothing_to_repeat…`, `…Without_an_example…` |
-| 83 | Local: engine 562, panel 99, VS Code 22 pass. Six platforms: pending. | Tests; release dry run |
+| 83 | Met: engine 562, panel 99, VS Code 22 pass; all six platforms pass in release dry run 38429297454. | Tests; release dry run |
