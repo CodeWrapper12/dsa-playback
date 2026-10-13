@@ -22,7 +22,7 @@ jobs:
   package:
     strategy:
       # Every platform runs to the end, so one failure never hides another. Publishing
-      # still waits for all four.
+      # still waits for all six.
       fail-fast: false
       matrix:
         include:
@@ -30,6 +30,10 @@ jobs:
           - { os: macos-15-intel, target: darwin-x64 }
           - { os: macos-latest, target: darwin-arm64 }
           - { os: ubuntu-latest, target: linux-x64 }
+          # GitHub's own ARM machines, so each ARM package is tested and verified on the
+          # kind of machine it is for, as the others are.
+          - { os: windows-11-arm, target: win32-arm64 }
+          - { os: ubuntu-24.04-arm, target: linux-arm64 }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
