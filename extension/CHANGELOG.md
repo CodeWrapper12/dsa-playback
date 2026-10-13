@@ -11,6 +11,12 @@
   `remove` at an index, sorting, copying, `substring` and `String +=`, and measures memory
   exactly. Exceptions name their type and line.
 - The Get Started walkthrough has its three samples in Java too.
+- Fixed: a run still being recorded for one method could appear under the next method's
+  heading when the panel had moved on. Work for a method the panel has left is now
+  cancelled, and a late result is not shown.
+- Fixed: one stray memory reading at a single size — the runtime's bookkeeping adding a
+  one-off amount — could hide the shape of "allocated at once". That reading is now set
+  aside, and the explanation says which size it was.
 
 ## 1.4.0
 

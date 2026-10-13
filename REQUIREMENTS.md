@@ -651,4 +651,4 @@ charged call keeps its type: widened to an int, `set.remove(c)` looked for an In
 | 66 | Met: every listed structure; a variable not yet set says so. | `JavaTests.A_variable_not_yet_set…`, `A_Deque_used_with_push_and_pop…`; panel: *every step of every Java sample*, *Java structures…* |
 | 67 | Met. | `JavaTests.Growth_is_measured…` (8), `Hidden_work_is_named…`, `Memory_counts_only_the_solution`, `The_code_is_read…` (6) |
 | 68 | Met. | `JavaTests` (compile error, exception, budget, depth) |
-| 69 | Met on this Mac: first ▶ Visualize of Two Sum 1.5 s including compiling the runtime. All six platforms: pending the release dry run. | By hand; CI |
+| 69 | Met: first ▶ Visualize of Two Sum 1.5 s on this Mac, including compiling the runtime; every engine and panel test, the package build and `verify-package` — including a Java run — pass on all six platforms with Temurin 21 in release dry run 38384969619. | By hand; release dry run |
