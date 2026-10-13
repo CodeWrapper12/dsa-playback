@@ -128,6 +128,32 @@ public class SpaceTests
     }
 
     [Fact]
+    public void One_outlying_reading_does_not_hide_a_line()
+    {
+        // The readings from the run on GitHub's Intel Mac that failed: int[n] allocated n times,
+        // and at n=1,000 one execution read 6,400 bytes where the array is 4,024, with no
+        // collection during the run.
+        int[] sizes = { 10, 25, 50, 100, 250, 500, 1000 };
+        long[] totals = { 640, 3200, 11200, 42400, 256000, 1012000, 4026376 };
+        long[] largest = { 64, 128, 224, 424, 1024, 2024, 6400 };
+        var runs = sizes.Select((n, i) => new MeasuredRun(n, new TraceResult
+        {
+            Status = RunStatus.Completed,
+            Statements = new[] { new StatementCost(0, 5, 9, 40, "int[] buffer = new int[values.Length];", n, totals[i]) { LargestAllocation = largest[i] } },
+            Lines = Array.Empty<LineCost>(),
+            TotalOperations = n,
+            TotalBytesAllocated = totals[i],
+            ElapsedMs = 1
+        })).ToList();
+
+        var space = Derivations.Space(runs, null, new StaticEstimate(ComplexityClass.Unknown, "", 0, 0, 0))!;
+
+        Assert.Equal(ComplexityClass.Linear, space.LargestAllocation.Best);
+        Assert.Contains("n=1,000, was left out", space.LargestAllocation.Explanation);
+        Assert.Equal(ComplexityClass.Linear, space.LikelyPeak);
+    }
+
+    [Fact]
     public void The_churn_explanation_points_at_the_line_and_the_fix()
     {
         var space = Space("leetcode/AllocateInLoop.cs", "Scratch", GenerationStrategy.Random);
