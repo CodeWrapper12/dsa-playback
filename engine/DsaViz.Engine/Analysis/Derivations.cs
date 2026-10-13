@@ -224,6 +224,8 @@ public static class Derivations
         bool disagree = peak != ComplexityClass.Unknown && staticSpace.Class != ComplexityClass.Unknown && peak != staticSpace.Class;
         return new SpaceReading
         {
+            Evidence = runs.Select(r => (r.Size, r.Trace.TotalBytesAllocated,
+                r.Trace.Statements.Select(s => s.LargestAllocation).DefaultIfEmpty(0).Max(), r.Trace.CollectionsDuringRun)).ToList(),
             Held = held,
             Allocation = allocation,
             LargestAllocation = largest,

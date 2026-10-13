@@ -87,6 +87,10 @@ public class SpaceTests
     private static SpaceReading Space(string sample, string entry, GenerationStrategy? strategy = null)
         => LeetCodeTests.Measure(sample, entry, strategy).Space!;
 
+    /// <summary>Each size's total, largest single allocation and collections, for a failure message.</summary>
+    private static string Evidence(SpaceReading space)
+        => string.Join("; ", space.Evidence.Select(e => $"n={e.Size}: total {e.Total}, largest {e.Largest}, collections {e.Collections}"));
+
     [Fact]
     public void An_in_place_sort_uses_constant_space()
     {
@@ -115,6 +119,8 @@ public class SpaceTests
         // be the interview mistake this exists to prevent.
         var space = Space(sample, entry, GenerationStrategy.Random);
 
+        Assert.True(space.Allocation.Best == ComplexityClass.Quadratic && space.LargestAllocation.Best == ComplexityClass.Linear,
+            $"allocation {space.Allocation.Best}, largest {space.LargestAllocation.Best}. Measured: {Evidence(space)}");
         Assert.Equal(ComplexityClass.Quadratic, space.Allocation.Best);
         Assert.Equal(ComplexityClass.Linear, space.LargestAllocation.Best);
         Assert.Equal(ComplexityClass.Linear, space.LikelyPeak);
@@ -126,7 +132,7 @@ public class SpaceTests
     {
         var space = Space("leetcode/AllocateInLoop.cs", "Scratch", GenerationStrategy.Random);
 
-        Assert.Contains("int[] buffer = new int[values.Length];", space.Summary);
+        Assert.True(space.Summary.Contains("int[] buffer = new int[values.Length];"), $"{space.Summary} Measured: {Evidence(space)}");
         Assert.Contains("outside the loop", space.Summary);
     }
 
