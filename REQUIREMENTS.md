@@ -582,7 +582,7 @@ builds do; step-through builds panic, as debug builds do.
 | 58 | Met: linear, hidden-quadratic, memoised, exponential, n log n and 2-D samples; a set's `contains` is not charged; peak memory measured directly; the code's own estimate, nested helpers included. | `RustTests.Growth_is_measured…` (7), `A_scan_hidden_in_the_library…`, `Memory_is_exact…`, `The_code_is_read…` (5) |
 | 59 | Met. | `RustTests` (compile error, panic, overflow, budget, depth) |
 | 60 | Met on this Mac: first ▶ Visualize of Two Sum 2.4 s including building the runtime, about 1 s after; repairs are remembered, so a re-run compiles nothing. | By hand |
-| 61 | Pending: CI and the release dry run on all six platforms. | CI |
+| 61 | Met: every engine and panel test, the package build and `verify-package` — including a Rust run — pass on all six platforms with rustup's stable toolchain in release dry run 38374493266, Windows on ARM included. | Release dry run |
 
 ### Phase 7c — Java (outline)
 
