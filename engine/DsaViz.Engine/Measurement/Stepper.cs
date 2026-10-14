@@ -632,7 +632,8 @@ public static class Stepper
             Errors = recorded.Errors,
             ErrorLine = recorded.ErrorLine,
             Check = Check(chosenExample, resolved, recorded.ReturnValue),
-            Calls = arguments[0] is string[] operations && plan.NotGenerated == DesignNotGenerated
+            // A method with no parameters has no arguments at all.
+            Calls = arguments is [string[] operations, ..] && plan.NotGenerated == DesignNotGenerated
                 ? recorded.CallStarts.Where(c => c.Index < operations.Length)
                     .Select(c => new DesignCall(c.Index, operations[c.Index], c.Step)).ToList()
                 : Array.Empty<DesignCall>()

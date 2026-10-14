@@ -99,6 +99,24 @@ public class StepThroughTests
     }
 
     [Fact]
+    public void A_method_without_parameters_can_be_followed()
+    {
+        // Issue #1: nothing to pass in left the arguments empty, and the recording read the
+        // first one anyway.
+        var analysis = SourceAnalysis.Create("""
+            public static class Arrays
+            {
+                public static int[] IntArray0() => new int[0];
+            }
+            """);
+        var trace = Stepper.Record(analysis, "IntArray0");
+
+        Assert.Equal(RunStatus.Completed, trace.Status);
+        Assert.Equal("[]", trace.ReturnValue);
+        Assert.Empty(trace.Arguments);
+    }
+
+    [Fact]
     public void Recursion_is_recorded_with_its_depth_and_method()
     {
         var trace = Record("leetcode/MaxDepth.cs", "MaxDepth", 7, GenerationStrategy.Skewed);
