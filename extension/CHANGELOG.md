@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.8.1
+
+- ▶ Visualize no longer stops with "The visualizer stopped unexpectedly" on a method that
+  takes no parameters, in any language.
+
 ## 1.8.0
 
 - **JavaScript and TypeScript.** ▶ Visualize and Complexity for both, run with your own
