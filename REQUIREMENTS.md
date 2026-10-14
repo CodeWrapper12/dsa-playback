@@ -809,4 +809,4 @@ Released as 1.8.0.
 | 89 | Met. | `JsTests.A_design_class_is_offered_once_in_either_style`, `…measured_per_call…` |
 | 90 | Met. | `JsTests.An_error_names_its_type_and_line`, `…A_missing_base_case…`, `…A_syntax_error…`; `constructs.js` |
 | 91 | Met. | `toolchain.ts`; walkthrough samples run all their examples |
-| 92 | Local: engine 591, panel 102, VS Code 23 pass. Six platforms: pending. | Tests; release dry run |
+| 92 | Met: engine 591, panel 102, VS Code 23 pass; all six platforms pass in release dry run 38491924938. | Tests; release dry run |
